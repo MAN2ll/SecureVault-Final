@@ -4,7 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
 
+// ✅ Разрешаем использование экспериментальных API Material3
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
     onAdd: () -> Unit,
@@ -73,7 +76,9 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
             modifier = Modifier
@@ -82,8 +87,15 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(text = entry.username, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = entry.service,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = entry.username,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
             IconButton(onClick = { /* Копировать пароль */ }) {
                 Icon(Icons.Default.ContentCopy, "Копировать")
