@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Star  // ✅ Иконка из базового пакета
+import androidx.compose.material.icons.filled.Star  //  Иконка из базового пакета
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,7 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
 
-// ✅ Разрешаем использование экспериментальных API Material3
+//  Разрешаем использование экспериментальных API Material3
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
@@ -32,7 +32,7 @@ fun VaultListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("🔐 Пароли", fontWeight = FontWeight.Bold) },
+                title = { Text(" Пароли", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onLock) {
                         Icon(Icons.Default.Lock, "Заблокировать")
@@ -41,9 +41,13 @@ fun VaultListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) {
-                Icon(Icons.Default.Add, "Добавить")
-            }
+            FloatingActionButton(
+                onClick = { onAdd() },  // onAdd теперь вызывает навигацию на "generator?mode=new"
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Add, "Создать запись")
+                }
         }
     ) { padding ->
         if (entries.isEmpty()) {
@@ -98,7 +102,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            // ✅ Используем иконку Star вместо ContentCopy
+            //  Используем иконку Star вместо ContentCopy
             IconButton(onClick = { /* TODO: Копировать пароль */ }) {
                 Icon(Icons.Default.Star, "Избранное")
             }
