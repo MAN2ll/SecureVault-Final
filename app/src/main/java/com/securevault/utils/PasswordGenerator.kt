@@ -69,7 +69,6 @@ object PasswordGenerator {
         }
     }
     
-    /**
      *  Режим: случайный пароль
      */
     private fun generateRandom(options: GeneratorOptions): GenerationResult {
@@ -91,8 +90,8 @@ object PasswordGenerator {
         
         // Гарантируем наличие хотя бы одного символа из каждого выбранного набора
         val password = StringBuilder()
-        if (options.useUppercase) password.append(charset.first { it in UPPERCASE })
-        if (options.useDigits) password.append(charset.first { it.isDigit() })
+        if (options.useUppercase) password.append(charset.firstOrNull { it in UPPERCASE } ?: 'A')
+        if (options.useDigits) password.append(charset.firstOrNull { it.isDigit() } ?: '2')
         if (options.useSpecial) password.append(SPECIAL.random())
         
         // Заполняем оставшуюся длину
@@ -100,13 +99,13 @@ object PasswordGenerator {
             password.append(charset.random())
         }
         
-        // Перемешиваем
-        return password.toString().shuffled().let { pwd ->
-            GenerationResult(
-                password = pwd,
-                strength = calculateStrength(pwd, options)
-            )
-        }
+        //  ИСПРАВЛЕНО: shuffled() возвращает List<Char> → joinToString("")
+        val shuffled = password.toString().toList().shuffled().joinToString("")
+        
+        return GenerationResult(
+            password = shuffled,
+            strength = calculateStrength(shuffled, options)
+        )
     }
     
     /**
