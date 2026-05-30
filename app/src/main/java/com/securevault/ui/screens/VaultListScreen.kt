@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star  // ✅ Иконка из базового пакета
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -97,8 +98,9 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            IconButton(onClick = { /* Копировать пароль */ }) {
-                Icon(Icons.Default.ContentCopy, "Копировать")
+            // ✅ Используем иконку Star вместо ContentCopy
+            IconButton(onClick = { /* TODO: Копировать пароль */ }) {
+                Icon(Icons.Default.Star, "Избранное")
             }
         }
     }
