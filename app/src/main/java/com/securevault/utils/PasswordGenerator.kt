@@ -7,7 +7,7 @@ import kotlin.random.Random
  */
 object PasswordGenerator {
     
-    //  Словарь русских слов для мнемонических паролей (локальный, без интернета)
+    //  Словарь русских слов для мнемонических паролей
     private val MNEMONIC_WORDS = listOf(
         "кошка", "гора", "солнце", "река", "лес", "небо", "ветер", "дождь",
         "огонь", "вода", "земля", "луна", "звезда", "птица", "рыба", "цветок",
@@ -20,23 +20,21 @@ object PasswordGenerator {
     //  Наборы символов
     private const val LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
     private const val UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    private const val DIGITS = "23456789"  // Исключаем 0 и 1
+    private const val DIGITS = "23456789"
     private const val SPECIAL = "!@#$%^&*()-_=+[]{}|;:,.<>?"
-    
-    //  Символы, которые легко перепутать (исключаются при опции)
     private const val SIMILAR = "O0Il1"
     
     /**
      * Настройки генерации
      */
     data class GeneratorOptions(
-        val length: Int = 16,                    // Длина пароля (8-64)
-        val useUppercase: Boolean = true,        // Заглавные буквы
-        val useDigits: Boolean = true,           // Цифры
-        val useSpecial: Boolean = false,         // Спецсимволы
-        val excludeSimilar: Boolean = true,      // Исключить 0/O, 1/l, I
-        val mnemonicMode: Boolean = false,       // Режим "запоминаемый пароль"
-        val mnemonicWordCount: Int = 4           // Количество слов в мнемонике (3-5)
+        val length: Int = 16,
+        val useUppercase: Boolean = true,
+        val useDigits: Boolean = true,
+        val useSpecial: Boolean = false,
+        val excludeSimilar: Boolean = true,
+        val mnemonicMode: Boolean = false,
+        val mnemonicWordCount: Int = 4
     )
     
     /**
@@ -45,17 +43,17 @@ object PasswordGenerator {
     data class GenerationResult(
         val password: String,
         val strength: Strength,
-        val mnemonicHint: String? = null  // Подсказка для запоминания
+        val mnemonicHint: String? = null
     )
     
     /**
      * Уровень сложности пароля
      */
     enum class Strength(val score: Int, val colorHex: String) {
-        WEAK(1, "#FF6B6B"),      // Красный
-        MEDIUM(2, "#FFB74D"),    // Оранжевый
-        STRONG(3, "#4CAF50"),    // Зелёный
-        VERY_STRONG(4, "#2E7D32") // Тёмно-зелёный
+        WEAK(1, "#FF6B6B"),
+        MEDIUM(2, "#FFB74D"),
+        STRONG(3, "#4CAF50"),
+        VERY_STRONG(4, "#2E7D32")
     }
     
     /**
@@ -69,37 +67,39 @@ object PasswordGenerator {
         }
     }
     
+    /**
      *  Режим: случайный пароль
      */
     private fun generateRandom(options: GeneratorOptions): GenerationResult {
         var charset = LOWERCASE
-        if (options.useUppercase) charset += if (options.excludeSimilar) {
-            UPPERCASE.filter { it !in SIMILAR }
-        } else {
-            UPPERCASE
+        if (options.useUppercase) {
+            charset += if (options.excludeSimilar) {
+                UPPERCASE.filter { it !in SIMILAR }
+            } else {
+                UPPERCASE
+            }
         }
-        if (options.useDigits) charset += if (options.excludeSimilar) {
-            DIGITS  // уже без 0 и 1
-        } else {
-            DIGITS + "01"
+        if (options.useDigits) {
+            charset += if (options.excludeSimilar) {
+                DIGITS
+            } else {
+                DIGITS + "01"
+            }
         }
         if (options.useSpecial) charset += SPECIAL
         if (options.excludeSimilar) {
             charset = charset.filter { it !in SIMILAR }
         }
         
-        // Гарантируем наличие хотя бы одного символа из каждого выбранного набора
         val password = StringBuilder()
         if (options.useUppercase) password.append(charset.firstOrNull { it in UPPERCASE } ?: 'A')
         if (options.useDigits) password.append(charset.firstOrNull { it.isDigit() } ?: '2')
-        if (options.useSpecial) password.append(SPECIAL.random())
+        if (options.useSpecial && SPECIAL.isNotEmpty()) password.append(SPECIAL.random())
         
-        // Заполняем оставшуюся длину
         while (password.length < options.length.coerceIn(8, 64)) {
             password.append(charset.random())
         }
         
-        //  ИСПРАВЛЕНО: shuffled() возвращает List<Char> → joinToString("")
         val shuffled = password.toString().toList().shuffled().joinToString("")
         
         return GenerationResult(
@@ -109,19 +109,16 @@ object PasswordGenerator {
     }
     
     /**
-     *  Режим: мнемонический пароль (3-4 осмысленных слова)
+     * Режим: мнемонический пароль
      */
     private fun generateMnemonic(options: GeneratorOptions): GenerationResult {
         val wordCount = options.mnemonicWordCount.coerceIn(3, 5)
         val words = MutableList(wordCount) { MNEMONIC_WORDS.random() }
         
-        // Добавляем разделитель и суффикс для сложности
         val separator = if (options.useSpecial) listOf("_", "-", ".", "!").random() else "_"
         val suffix = if (options.useDigits) Random.nextInt(2, 99).toString() else ""
         
         val password = words.joinToString(separator) + suffix
-        
-        // Подсказка для запоминания
         val hint = words.joinToString(" ") + if (suffix.isNotEmpty()) ", $suffix" else ""
         
         return GenerationResult(
@@ -132,25 +129,21 @@ object PasswordGenerator {
     }
     
     /**
-     *  Расчёт сложности пароля
+     * Расчёт сложности пароля
      */
     private fun calculateStrength(password: String, options: GeneratorOptions): Strength {
         var score = 0
         
-        // Длина
         score += when {
             password.length >= 20 -> 2
             password.length >= 12 -> 1
             else -> 0
         }
         
-        // Разнообразие символов
         if (password.any { it.isLowerCase() }) score++
         if (password.any { it.isUpperCase() }) score++
         if (password.any { it.isDigit() }) score++
         if (password.any { !it.isLetterOrDigit() }) score++
-        
-        // Мнемоника добавляет +1 за запоминаемость
         if (options.mnemonicMode) score++
         
         return when {
@@ -162,16 +155,14 @@ object PasswordGenerator {
     }
     
     /**
-     *  Массовая генерация (создать N вариантов)
+     *  Массовая генерация
      */
     fun generateBatch(count: Int = 5, options: GeneratorOptions = GeneratorOptions()): List<GenerationResult> {
         return List(count) { generate(options) }
     }
     
     /**
-     *  Фильтрация похожих символов из строки
+     *  Фильтрация похожих символов
      */
     fun removeSimilarChars(text: String): String {
-        return text.filter { it !in SIMILAR }
-    }
-}
+        return text.filter { it !in SIMIL
