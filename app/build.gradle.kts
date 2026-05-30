@@ -1,7 +1,3 @@
-// ✅ ФАЙЛ: app/build.gradle.kts
-// ✅ ЯЗЫК: KOTLIN
-import androidx.compose.material.icons.filled.ContentCopy
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
