@@ -109,7 +109,7 @@ object PasswordGenerator {
     }
     
     /**
-     * Режим: мнемонический пароль
+     *  Режим: мнемонический пароль
      */
     private fun generateMnemonic(options: GeneratorOptions): GenerationResult {
         val wordCount = options.mnemonicWordCount.coerceIn(3, 5)
@@ -165,4 +165,6 @@ object PasswordGenerator {
      *  Фильтрация похожих символов
      */
     fun removeSimilarChars(text: String): String {
-        return text.filter { it !in SIMIL
+        return text.filter { it !in SIMILAR }
+    }
+}
