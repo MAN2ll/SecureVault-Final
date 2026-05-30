@@ -25,11 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.ui.components.PasswordStrengthIndicator
 import com.securevault.utils.PasswordGenerator
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GeneratorScreen(
-    onGenerated: (String) -> Unit,  // Callback: вернуть сгенерированный пароль
+    onGenerated: (String) -> Unit,
     onBack: () -> Unit
 ) {
     var length by remember { mutableStateOf(16) }
@@ -46,7 +47,6 @@ fun GeneratorScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     
-    // Генерация при изменении настроек
     LaunchedEffect(length, useUppercase, useDigits, useSpecial, excludeSimilar, mnemonicMode, mnemonicWordCount) {
         val options = PasswordGenerator.GeneratorOptions(
             length = length,
@@ -60,163 +60,154 @@ fun GeneratorScreen(
         generatedResult = PasswordGenerator.generate(options)
     }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(" Генератор", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            //  Поле с паролем
-            generatedResult?.let { result ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = result.password,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(onClick = {
-                                // Копировать в буфер
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("password", result.password))
-                                showCopiedToast = true
-                                // Автоочистка буфера через 30 сек (в реальном приложении — через Coroutine)
-                            }) {
-                                Icon(Icons.Default.ContentCopy, "Копировать")
-                            }
+    //  ИСПРАВЛЕНО: Обёртка в Box для позиционирования тоста
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(" Генератор", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, "Назад")
                         }
-                        
-                        // Подсказка для мнемоники
-                        result.mnemonicHint?.let { hint ->
-                            Text(
-                                text = " Запомни: $hint",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                        
-                        // Индикатор сложности
-                        PasswordStrengthIndicator(
-                            strength = result.strength,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
                     }
-                }
+                )
             }
-            
-            //  Настройки
-            Card(
-                modifier = Modifier.fillMaxWidth()
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(scrollState)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Настройки", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    
-                    // Длина
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Длина: $length", modifier = Modifier.weight(1f))
-                        Slider(
-                            value = length.toFloat(),
-                            onValueChange = { length = it.toInt() },
-                            valueRange = 8f..64f,
-                            steps = 56,
-                            modifier = Modifier.weight(2f)
-                        )
+                generatedResult?.let { result ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = result.password,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("password", result.password))
+                                    showCopiedToast = true
+                                }) {
+                                    Icon(Icons.Default.ContentCopy, "Копировать")
+                                }
+                            }
+                            
+                            result.mnemonicHint?.let { hint ->
+                                Text(
+                                    text = " Запомни: $hint",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                            
+                            PasswordStrengthIndicator(
+                                strength = result.strength,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
                     }
-                    
-                    // Чекбоксы
-                    SwitchSetting("Заглавные буквы", useUppercase) { useUppercase = it }
-                    SwitchSetting("Цифры", useDigits) { useDigits = it }
-                    SwitchSetting("Спецсимволы (!@#...)", useSpecial) { useSpecial = it }
-                    SwitchSetting("Исключить 0/O, 1/l", excludeSimilar) { excludeSimilar = it }
-                    
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
-                    
-                    //  Режим мнемоники
-                    SwitchSetting(" Запоминаемый пароль (слова)", mnemonicMode) { mnemonicMode = it }
-                    
-                    if (mnemonicMode) {
+                }
+                
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Настройки", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Слов: $mnemonicWordCount", modifier = Modifier.weight(1f))
+                            Text("Длина: $length", modifier = Modifier.weight(1f))
                             Slider(
-                                value = mnemonicWordCount.toFloat(),
-                                onValueChange = { mnemonicWordCount = it.toInt() },
-                                valueRange = 3f..5f,
-                                steps = 2,
+                                value = length.toFloat(),
+                                onValueChange = { length = it.toInt() },
+                                valueRange = 8f..64f,
+                                steps = 56,
                                 modifier = Modifier.weight(2f)
                             )
                         }
+                        
+                        SwitchSetting("Заглавные буквы", useUppercase) { useUppercase = it }
+                        SwitchSetting("Цифры", useDigits) { useDigits = it }
+                        SwitchSetting("Спецсимволы (!@#...)", useSpecial) { useSpecial = it }
+                        SwitchSetting("Исключить 0/O, 1/l", excludeSimilar) { excludeSimilar = it }
+                        
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                        
+                        SwitchSetting(" Запоминаемый пароль (слова)", mnemonicMode) { mnemonicMode = it }
+                        
+                        if (mnemonicMode) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Слов: $mnemonicWordCount", modifier = Modifier.weight(1f))
+                                Slider(
+                                    value = mnemonicWordCount.toFloat(),
+                                    onValueChange = { mnemonicWordCount = it.toInt() },
+                                    valueRange = 3f..5f,
+                                    steps = 2,
+                                    modifier = Modifier.weight(2f)
+                                )
+                            }
+                        }
                     }
                 }
-            }
-            
-            // Кнопки
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val options = PasswordGenerator.GeneratorOptions(
-                            length = length,
-                            useUppercase = useUppercase,
-                            useDigits = useDigits,
-                            useSpecial = useSpecial,
-                            excludeSimilar = excludeSimilar,
-                            mnemonicMode = mnemonicMode,
-                            mnemonicWordCount = mnemonicWordCount
-                        )
-                        generatedResult = PasswordGenerator.generate(options)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Обновить")
-                }
                 
-                Button(
-                    onClick = { generatedResult?.password?.let(onGenerated) },
-                    enabled = generatedResult != null,
-                    modifier = Modifier.weight(1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Использовать")
+                    Button(
+                        onClick = {
+                            val options = PasswordGenerator.GeneratorOptions(
+                                length = length,
+                                useUppercase = useUppercase,
+                                useDigits = useDigits,
+                                useSpecial = useSpecial,
+                                excludeSimilar = excludeSimilar,
+                                mnemonicMode = mnemonicMode,
+                                mnemonicWordCount = mnemonicWordCount
+                            )
+                            generatedResult = PasswordGenerator.generate(options)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(4.dp))
+                        Text("Обновить")
+                    }
+                    
+                    Button(
+                        onClick = { generatedResult?.password?.let(onGenerated) },
+                        enabled = generatedResult != null,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(4.dp))
+                        Text("Использовать")
+                    }
                 }
             }
         }
         
-        //  Всплывающее уведомление о копировании
+        //  ИСПРАВЛЕНО: Тост внутри того же Box с alignment
         if (showCopiedToast) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.BottomCenter)  //  Теперь работает, потому что мы внутри Box
                     .padding(16.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF323232))
@@ -225,7 +216,7 @@ fun GeneratorScreen(
                 Text("✓ Скопировано!", color = Color.White, fontSize = 14.sp)
             }
             LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(2000)
+                delay(2000)
                 showCopiedToast = false
             }
         }
