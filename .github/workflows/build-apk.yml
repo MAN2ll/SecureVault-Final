@@ -1,3 +1,5 @@
+# ✅ ФАЙЛ: .github/workflows/build-apk.yml
+# ✅ ЯЗЫК: YAML
 name: Build APK
 
 on:
@@ -17,10 +19,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # ✅ ФИКСИРУЕМ ВЕРСИЮ GRADLE
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: '8.2'
 
-      # ✅ ЭТОТ ШАГ СОЗДАЁТ GRADLE WRAPPER, ЕСЛИ ЕГО НЕТ
+      # ✅ СОЗДАЁМ WRAPPER, ЕСЛИ НЕТ
       - name: Generate Gradle Wrapper
         run: |
           if [ ! -f gradlew ]; then
