@@ -1,0 +1,49 @@
+package com.securevault.data
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Database(entities = [Entry::class], version = 1, exportSchema = false)
+abstract class VaultDatabase : RoomDatabase() {
+    abstract fun entryDao(): EntryDao
+
+    companion object {
+        @Volatile private var INSTANCE: VaultDatabase? = null
+
+        fun getDatabase(context: Context): VaultDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    VaultDatabase::class.java,
+                    "vault_db"
+                ).build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object DatabaseModule {
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): VaultDatabase {
+        return VaultDatabase.getDatabase(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideEntryDao(database: VaultDatabase): EntryDao {
+        return database.entryDao()
+    }
+}
