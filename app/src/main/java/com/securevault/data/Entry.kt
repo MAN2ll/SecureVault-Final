@@ -1,5 +1,6 @@
 package com.securevault.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.securevault.utils.CryptoUtils
@@ -11,39 +12,41 @@ data class Entry(
     val service: String,
     val username: String,
     
-    //  Пароль хранится ЗАШИФРОВАННЫМ
-    private val _encryptedPassword: String,
+    //  Room видит это поле благодаря @ColumnInfo
+    @ColumnInfo(name = "encrypted_password")
+    val encryptedPassword: String,  //  Публичное поле для Room
     
     val category: String = "general",
     val notes: String = "",
     val isFavorite: Boolean = false,
     
-    //  Профиль: рабочий или личный
+    // Профиль: рабочий или личный
     val profile: Profile = Profile.PERSONAL,
     
     //  Для напоминаний о смене пароля
     val createdAt: Long = System.currentTimeMillis(),
     val lastChanged: Long = System.currentTimeMillis(),
-    val changeIntervalDays: Int = 90, // через сколько дней напомнить
+    val changeIntervalDays: Int = 90,
     
-    //  Для защиты от подбора
+    // Для защиты от подбора
     val failedAttempts: Int = 0,
-    val lockedUntil: Long = 0L // timestamp, до которого запись заблокирована
+    val lockedUntil: Long = 0L
 ) {
-    //  Геттер: дешифрует пароль "на лету"
+    // Вычисляемое свойство: дешифрует пароль "на лету"
+    // @Ignore не нужен, т.к. это не поле БД, а свойство с геттером
     val password: String
-        get() = if (CryptoUtils.isEncrypted(_encryptedPassword)) {
-            CryptoUtils.decrypt(_encryptedPassword)
+        get() = if (CryptoUtils.isEncrypted(encryptedPassword)) {
+            CryptoUtils.decrypt(encryptedPassword)
         } else {
-            _encryptedPassword // для обратной совместимости
+            encryptedPassword
         }
 
-    //  Метод для создания записи с шифрованием
+    // Метод для создания записи с шифрованием
     companion object {
         fun create(
             service: String,
             username: String,
-            password: String, // открытый пароль
+            password: String,
             category: String = "general",
             profile: Profile = Profile.PERSONAL,
             notes: String = "",
@@ -52,7 +55,7 @@ data class Entry(
             return Entry(
                 service = service,
                 username = username,
-                _encryptedPassword = CryptoUtils.encrypt(password), // шифруем!
+                encryptedPassword = CryptoUtils.encrypt(password), // шифруем!
                 category = category,
                 profile = profile,
                 notes = notes,
@@ -67,7 +70,7 @@ data class Entry(
         return daysSinceChange >= changeIntervalDays
     }
 
-    // Проверка: заблокирована ли запись из-за подбора?
+    // Проверка: заблокирована ли запись?
     fun isLocked(): Boolean {
         return System.currentTimeMillis() < lockedUntil
     }
