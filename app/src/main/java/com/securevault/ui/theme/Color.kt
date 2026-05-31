@@ -2,18 +2,16 @@ package com.securevault.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Dark theme colors
-val DarkBg = Color(0xFF0A0E1A)
-val DarkSurface = Color(0xFF121828)
-val DarkPrimary = Color(0xFF6C9EFF)
-val DarkOnPrimary = Color.White
-val DarkOnSurface = Color(0xFFE8EAF6)
-val DarkError = Color(0xFFFF6B6B)
+// Цвета для светлой темы
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
 
-// Light theme colors
-val LightBg = Color(0xFFF8FAFF)
-val LightSurface = Color.White
-val LightPrimary = Color(0xFF3366CC)
-val LightOnPrimary = Color.White
-val LightOnSurface = Color(0xFF1A1F36)
-val LightError = Color(0xFFD32F2F)
+// Цвета для темной темы
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+
+// Дополнительные цвета (опционально)
+val Teal20 = Color(0xFF03DAC5)
+val Teal80 = Color(0xFF03DAC5)
