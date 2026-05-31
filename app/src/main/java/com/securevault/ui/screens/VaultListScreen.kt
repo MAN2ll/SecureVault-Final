@@ -1,6 +1,145 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.securevault.ui.screens
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.Entry
+import com.securevault.data.Profile
+import com.securevault.viewmodel.VaultViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VaultListScreen(
+    onAdd: () -> Unit,
+    onEdit: (String) -> Unit,
+    onLock: () -> Unit,
+    viewModel: VaultViewModel = hiltViewModel()
+) {
+    val entries by viewModel.entries.collectAsState()
+    val currentFilter by viewModel.currentFilter.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(" Vault", fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = onLock) {
+                        Icon(Icons.Default.Lock, "Заблокировать")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAdd) {
+                Icon(Icons.Default.Add, "Добавить")
+            }
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            //  ФИЛЬТРЫ: Все / Личные / Рабочие
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                //  Обёртка в Box для корректного weight
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == null,
+                        onClick = { viewModel.setFilter(null) },
+                        label = { Text("Все", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == Profile.PERSONAL,
+                        onClick = { viewModel.setFilter(Profile.PERSONAL) },
+                        label = { Text(" Личные", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == Profile.WORK,
+                        onClick = { viewModel.setFilter(Profile.WORK) },
+                        label = { Text(" Рабочие", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            //  СПИСОК ЗАПИСЕЙ
+            if (entries.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 80.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Нет записей — добавьте первую!",
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(entries, key = { it.id }) { entry ->
+                        EntryCard(entry = entry, onClick = { onEdit(entry.id) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+//  Компонент кнопки-фильтра
+@Composable
+private fun FilterChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = label,
+        modifier = modifier
+    )
+}
+
+//  Карточка записи с индикацией срока действия
 @Composable
 fun EntryCard(entry: Entry, onClick: () -> Unit) {
-    //  Цвет карточки в зависимости от статуса пароля
+    //  Цвет границы в зависимости от статуса пароля
     val borderColor = when (entry.getExpiryStatus()) {
         Entry.ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
         Entry.ExpiryStatus.CRITICAL -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
@@ -20,6 +159,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Верхняя строка: сервис + кнопка копирования
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -32,15 +172,16 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     )
                     Text(
                         text = entry.username,
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = { /* Копировать */ }) {
+                IconButton(onClick = { /* TODO: Копировать пароль */ }) {
                     Icon(Icons.Default.ContentCopy, "Копировать")
                 }
             }
             
-            // 🔖 Метка профиля + статус пароля
+            // Нижняя строка: профиль + статус пароля
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -48,13 +189,15 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Метка профиля
                 Text(
                     text = if (entry.profile == Profile.WORK) " Работа" else " Личное",
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
                 )
                 
-                //  Индикатор срока действия
+                //  Индикатор срока действия (показывается только если не OK)
                 if (entry.getExpiryStatus() != Entry.ExpiryStatus.OK) {
                     val statusText = when (entry.getExpiryStatus()) {
                         Entry.ExpiryStatus.EXPIRED -> " Просрочен"
@@ -65,7 +208,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     Text(
                         text = statusText,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Bold,
                         color = borderColor
                     )
                 }
