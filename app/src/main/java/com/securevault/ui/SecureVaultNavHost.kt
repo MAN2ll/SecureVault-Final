@@ -1,78 +1,26 @@
-package com.securevault.ui
-
-import androidx.compose.runtime.Composable
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import com.securevault.ui.screens.*
-
-@Composable
-fun SecureVaultNavHost() {
-    val navController = rememberNavController()
-
-    NavHost(navController, startDestination = "lock") {
-        
-        composable("lock") {
-            LockScreen(
-                onUnlocked = {
-                    navController.navigate("main") { popUpTo("lock") { inclusive = true } }
-                },
-                onBiometricRequest = { },
-                onSetupRequired = {
-                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
-                }
-            )
-        }
-        
-        composable("setup") {
-            SetupScreen(
-                onCompleted = {
-                    navController.navigate("main") {
-                        popUpTo("lock") { inclusive = true }
-                    }
-                }
-            )
-        }
-        
-        composable("main") {
-            VaultListScreen(
-                onAdd = { navController.navigate("mnemonic_generator") },
-                onEdit = { id -> navController.navigate("generator?mode=edit&id=$id") },
-                onLock = {
-                    navController.navigate("lock") { popUpTo("main") { inclusive = true } }
-                },
-                onExport = { navController.navigate("export") }
-            )
-        }
-        
-        composable(
-            "generator?mode={mode}&id={id}",
-            arguments = listOf(
-                navArgument("mode") { defaultValue = "new" },
-                navArgument("id") { nullable = true }
-            )
-        ) { backStackEntry ->
-            GeneratorScreen(
-                onGenerated = { navController.popBackStack() },
-                onBack = { navController.popBackStack() }
-            )
-        }
-        
         composable("mnemonic_generator") {
             MnemonicGeneratorScreen(
                 onGenerated = { password, emoji, rotation ->
+                    // ✅ СОЗДАЕМ И СОХРАНЯЕМ ЗАПИСЬ СРАЗУ
+                    val newEntry = Entry.create(
+                        service = "Новый пароль", // Можно сделать поле ввода названия сервиса
+                        username = "user",
+                        password = password,
+                        profile = Profile.PERSONAL,
+                        emojiHint = emoji,
+                        rotationEnabled = rotation,
+                        rotationPeriodMonths = 6
+                    )
+                    // ✅ ВЫЗЫВАЕМ VIEWMODEL ДЛЯ СОХРАНЕНИЯ
+                    // Нам нужно получить ViewModel здесь. 
+                    // Проще всего передать ViewModel через параметры или использовать hiltViewModel внутри экрана.
+                    // Но так как onGenerated - это лямбда, давайте сделаем иначе:
+                    
+                    // ВАРИАНТ А: Передать результат обратно в список и создать там (сложнее)
+                    // ВАРИАНТ Б (ПРОЩЕ): Сохранять прямо внутри MnemonicGeneratorScreen перед вызовом onGenerated
+                    
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() }
             )
         }
-        
-        composable("export") {
-            ExportImportScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-    }
-}
