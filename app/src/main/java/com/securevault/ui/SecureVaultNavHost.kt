@@ -20,7 +20,10 @@ fun SecureVaultNavHost() {
                 onUnlocked = {
                     navController.navigate("main") { popUpTo("lock") { inclusive = true } }
                 },
-                onBiometricRequest = { }
+                onBiometricRequest = { },
+                onSetupRequired = {
+                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
+                }
             )
         }
         
@@ -33,6 +36,15 @@ fun SecureVaultNavHost() {
                     navController.navigate("lock") { popUpTo("main") { inclusive = true } }
                 },
                 onExport = { navController.navigate("export") }
+            )
+        }
+        composable("setup") {
+            SetupScreen(
+                onCompleted = {
+                    navController.navigate("main") {
+                        popUpTo("lock") { inclusive = true }
+                    }
+                }
             )
         }
         
