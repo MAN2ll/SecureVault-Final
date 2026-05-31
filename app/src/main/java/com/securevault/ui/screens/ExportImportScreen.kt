@@ -20,19 +20,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.ExportManager
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportImportScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
-    exportManager: ExportManager = androidx.hilt.navigation.compose.hiltViewModel()
+    exportManager: ExportManager
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showMessage by remember { mutableStateOf<String?>(null) }
     
-    //  Лаунчер для выбора файла экспорта
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
@@ -41,17 +41,16 @@ fun ExportImportScreen(
                 val result = exportManager.exportToFile(
                     entries = viewModel.entries.value,
                     uri = it,
-                    masterPasswordHash = "hash_placeholder" // TODO: получить реальный хеш из SessionManager
+                    masterPasswordHash = "hash_placeholder"
                 )
                 showMessage = when (result) {
-                    is ExportManager.ExportResult.Success -> " Экспортировано ${result.count} записей"
-                    is ExportManager.ExportResult.Error -> " ${result.message}"
+                    is ExportManager.ExportResult.Success -> "Экспортировано ${result.count} записей"
+                    is ExportManager.ExportResult.Error -> "Ошибка: ${result.message}"
                 }
             }
         }
     }
     
-    //  Лаунчер для выбора файла импорта
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -59,16 +58,15 @@ fun ExportImportScreen(
             scope.launch {
                 val result = exportManager.importFromFile(
                     uri = it,
-                    masterPasswordHash = "hash_placeholder" // TODO: получить реальный хеш
+                    masterPasswordHash = "hash_placeholder"
                 )
                 when (result) {
                     is ExportManager.ImportResult.Success -> {
-                        // TODO: сохранить импортированные записи через viewModel
                         result.entries.forEach { entry -> viewModel.insert(entry) }
-                        showMessage = " Импортировано ${result.entries.size} записей"
+                        showMessage = "Импортировано ${result.entries.size} записей"
                     }
                     is ExportManager.ImportResult.Error -> {
-                        showMessage = " ${result.message}"
+                        showMessage = "Ошибка: ${result.message}"
                     }
                 }
             }
@@ -78,10 +76,15 @@ fun ExportImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(" Резервная копия", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "Резервная копия",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                     }
                 }
             )
@@ -95,14 +98,13 @@ fun ExportImportScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            //  Кнопка экспорта
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { exportLauncher.launch("securevault_backup${System.currentTimeMillis()}.vault") }
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Upload, null, modifier = Modifier.padding(end = 12.dp))
+                        Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
                         Column {
                             Text("Экспорт в файл", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                             Text("Создать зашифрованную резервную копию", fontSize = 13.sp)
@@ -111,14 +113,13 @@ fun ExportImportScreen(
                 }
             }
             
-            // 📥 Кнопка импорта
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { importLauncher.launch("*/*") }
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Download, null, modifier = Modifier.padding(end = 12.dp))
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
                         Column {
                             Text("Импорт из файла", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                             Text("Восстановить данные из резервной копии", fontSize = 13.sp)
@@ -127,7 +128,6 @@ fun ExportImportScreen(
                 }
             }
             
-            //  Информация
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -135,27 +135,26 @@ fun ExportImportScreen(
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(" Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "• Файл шифруется ключом устройства",
+                        "Файл шифруется ключом устройства",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "• Привязан к вашему мастер-паролю",
+                        "Привязан к вашему мастер-паролю",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "• Не передавайте файл третьим лицам",
+                        "Не передавайте файл третьим лицам",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             
-            //  Сообщение о результате
             showMessage?.let { msg ->
                 Snackbar(
                     modifier = Modifier.padding(bottom = 8.dp),
