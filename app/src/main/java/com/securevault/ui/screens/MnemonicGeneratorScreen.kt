@@ -18,17 +18,21 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.Entry
+import com.securevault.data.Profile
 import com.securevault.utils.MnemonicPasswordGenerator
+import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MnemonicGeneratorScreen(
-    onGenerated: (String, String?, Boolean) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    viewModel: VaultViewModel = hiltViewModel() // ✅ Добавляем ViewModel
 ) {
     var phrase by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("") }
+    var serviceName by remember { mutableStateOf("") } // ✅ Поле для названия сервиса
     var targetLength by remember { mutableStateOf(12) }
     var includeUppercase by remember { mutableStateOf(true) }
     var includeDigits by remember { mutableStateOf(true) }
@@ -41,6 +45,7 @@ fun MnemonicGeneratorScreen(
     var generatedResult by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
     var showError by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
+    var showSuccessDialog by remember { mutableStateOf(false) } // ✅ Диалог успеха
     
     val generator = remember { MnemonicPasswordGenerator() }
     val scope = rememberCoroutineScope()
@@ -93,6 +98,15 @@ fun MnemonicGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Поле названия сервиса
+            OutlinedTextField(
+                value = serviceName,
+                onValueChange = { serviceName = it },
+                label = { Text("Название сервиса (например, Google)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
             // Поле ввода фразы
             OutlinedTextField(
                 value = phrase,
@@ -128,7 +142,6 @@ fun MnemonicGeneratorScreen(
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     
-                    // Длина
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $targetLength", modifier = Modifier.weight(1f))
                         Slider(
@@ -160,7 +173,6 @@ fun MnemonicGeneratorScreen(
                     if (enableRotation) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Период:", modifier = Modifier.weight(1f))
-                            // Упрощённый выбор периода
                             var expanded by remember { mutableStateOf(false) }
                             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                                 OutlinedTextField(
@@ -203,7 +215,6 @@ fun MnemonicGeneratorScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(onClick = {
-                                // Копирование в буфер
                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", result.password))
                             }) {
@@ -235,7 +246,6 @@ fun MnemonicGeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // ✅ Кнопка "Сгенерировать" - нормального размера
                 Button(
                     onClick = {
                         if (phrase.isNotEmpty()) {
@@ -264,21 +274,59 @@ fun MnemonicGeneratorScreen(
                     Text("Сгенерировать")
                 }
                 
-                // ✅ Кнопка "Использовать" - нормального размера, горизонтальный текст
+                // ✅ Кнопка "Сохранить" - нормального размера
                 Button(
                     onClick = {
                         generatedResult?.let { result ->
-                            onGenerated(result.password, result.emoji, enableRotation)
+                            if (serviceName.isBlank()) {
+                                showError = "Введите название сервиса"
+                                return@Button
+                            }
+                            
+                            // ✅ СОЗДАЕМ И СОХРАНЯЕМ ЗАПИСЬ
+                            val newEntry = Entry.create(
+                                service = serviceName,
+                                username = "user", // Можно добавить поле для логина
+                                password = result.password,
+                                profile = Profile.PERSONAL,
+                                emojiHint = result.emoji,
+                                rotationEnabled = enableRotation,
+                                rotationPeriodMonths = rotationPeriod
+                            )
+                            
+                            viewModel.insert(newEntry)
+                            showSuccessDialog = true
                         }
                     },
-                    enabled = generatedResult != null,
+                    enabled = generatedResult != null && serviceName.isNotBlank(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Использовать")
+                    Text("Сохранить")
                 }
             }
+            
+            if (showError != null) {
+                Text(text = showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+        }
+        
+        // ✅ Диалог успеха
+        if (showSuccessDialog) {
+            AlertDialog(
+                onDismissRequest = { showSuccessDialog = false },
+                title = { Text("Успешно!") },
+                text = { Text("Пароль сохранен в хранилище.") },
+                confirmButton = {
+                    TextButton(onClick = { 
+                        showSuccessDialog = false
+                        onBack() // Возвращаемся назад
+                    }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }
