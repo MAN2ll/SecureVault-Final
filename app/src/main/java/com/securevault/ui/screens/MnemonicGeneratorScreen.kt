@@ -86,12 +86,15 @@ fun MnemonicGeneratorScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Исправлено: вес применяется к модифайеру поля, не к функции
                 OutlinedTextField(
                     value = emoji,
                     onValueChange = { emoji = it },
                     label = { Text("Эмодзи-подсказка") },
-                    placeholder = { Text("например: 🚗") },
-                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("например: авто") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     singleLine = true
                 )
                 IconButton(
@@ -188,7 +191,7 @@ fun MnemonicGeneratorScreen(
                         
                         if (!result.isUnique) {
                             Text(
-                                text = "⚠ Не удалось создать уникальный пароль за ${result.attempts} попыток",
+                                text = "Не удалось создать уникальный пароль за ${result.attempts} попыток",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(top = 4.dp)
