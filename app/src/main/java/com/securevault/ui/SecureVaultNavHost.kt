@@ -14,6 +14,7 @@ fun SecureVaultNavHost() {
 
     NavHost(navController, startDestination = "lock") {
         
+        // Экран блокировки
         composable("lock") {
             LockScreen(
                 onUnlocked = {
@@ -23,9 +24,10 @@ fun SecureVaultNavHost() {
             )
         }
         
+        // Главный экран списка
         composable("main") {
             VaultListScreen(
-                onAdd = { navController.navigate("generator?mode=new") },
+                onAdd = { navController.navigate("mnemonic_generator") },
                 onEdit = { id -> navController.navigate("generator?mode=edit&id=$id") },
                 onLock = {
                     navController.navigate("lock") { popUpTo("main") { inclusive = true } }
@@ -34,6 +36,7 @@ fun SecureVaultNavHost() {
             )
         }
         
+        // Стандартный генератор (случайный)
         composable(
             "generator?mode={mode}&id={id}",
             arguments = listOf(
@@ -47,6 +50,20 @@ fun SecureVaultNavHost() {
             )
         }
         
+        // Новый мнемонический генератор
+        composable("mnemonic_generator") {
+            MnemonicGeneratorScreen(
+                onGenerated = { password, emoji, rotation ->
+                    // Здесь можно передать данные обратно или создать запись сразу
+                    // Для простоты просто возвращаемся назад, а создание происходит в UI списка
+                    // Или можно передать результат через ViewModel/SharedFlow
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        
+        // Экран экспорта/импорта
         composable("export") {
             ExportImportScreen(
                 onBack = { navController.popBackStack() }
