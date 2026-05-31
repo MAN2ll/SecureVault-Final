@@ -1,76 +1,99 @@
-package com.securevault.utils
+package com.securevault.data
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import com.securevault.utils.CryptoUtils
+import java.util.UUID
 
-/**
- * Утилита для шифрования паролей через Android Keystore + AES-GCM
- */
-object CryptoUtils {
-    private const val KEY_ALIAS = "SecureVaultKey"
-    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-    private const val TRANSFORMATION = "AES/GCM/NoPadding"
-    private const val IV_SIZE = 12 // bytes for GCM
+@Entity(tableName = "entries")
+data class Entry(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val service: String,
+    val username: String,
+    
+    @ColumnInfo(name = "encrypted_password")
+    val encryptedPassword: String,
+    
+    val category: String = "general",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val profile: Profile = Profile.PERSONAL,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastChanged: Long = System.currentTimeMillis(),
+    val changeIntervalDays: Int = 90,
+    val failedAttempts: Int = 0,
+    val lockedUntil: Long = 0L
+) {
+    //  Геттер: дешифрует пароль при чтении
+    val password: String
+        get() = if (CryptoUtils.isEncrypted(encryptedPassword)) {
+            CryptoUtils.decrypt(encryptedPassword)
+        } else {
+            encryptedPassword
+        }
 
-    private val keyStore: KeyStore by lazy {
-        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-    }
-
-    /**
-     * Получает или создаёт ключ шифрования в Keystore
-     */
-    private fun getOrCreateKey(): SecretKey {
-        val existingKey = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-        if (existingKey != null) return existingKey.secretKey
-
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE).apply {
-            init(
-                KeyGenParameterSpec.Builder(
-                    KEY_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build()
+    //  Factory-метод для создания с шифрованием
+    companion object {
+        fun create(
+            service: String,
+            username: String,
+            password: String,
+            category: String = "general",
+            profile: Profile = Profile.PERSONAL,
+            notes: String = "",
+            changeIntervalDays: Int = 90
+        ): Entry {
+            return Entry(
+                service = service,
+                username = username,
+                encryptedPassword = CryptoUtils.encrypt(password),
+                category = category,
+                profile = profile,
+                notes = notes,
+                changeIntervalDays = changeIntervalDays
             )
-        }.generateKey()
+        }
     }
 
-    /**
-     * Шифрует строку → возвращает Base64 (IV + ciphertext)
-     */
-    fun encrypt(plaintext: String): String {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val iv = cipher.iv
-        val ciphertext = cipher.doFinal(plaintext.toByteArray())
-        // Объединяем IV и шифротекст
-        return Base64.encodeToString(iv + ciphertext, Base64.DEFAULT)
+    //  Проверка: просрочен ли пароль
+    fun isPasswordExpired(): Boolean {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return daysSinceChange >= changeIntervalDays
     }
+    
+    //  Дней до истечения (может быть отрицательным)
+    fun getDaysUntilExpiry(): Int {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return changeIntervalDays - daysSinceChange.toInt()
+    }
+    
+    //  Статус для цветовой индикации в UI
+    fun getExpiryStatus(): ExpiryStatus {
+        return when {
+            isPasswordExpired() -> ExpiryStatus.EXPIRED
+            getDaysUntilExpiry() <= 3 -> ExpiryStatus.CRITICAL
+            getDaysUntilExpiry() <= 7 -> ExpiryStatus.WARNING
+            else -> ExpiryStatus.OK
+        }
+    }
+    
+    //  Проверка блокировки после неудачных попыток
+    fun isLocked(): Boolean {
+        return System.currentTimeMillis() < lockedUntil
+    }
+    
+    //  Статусы для UI
+    enum class ExpiryStatus {
+        OK,
+        WARNING,
+        CRITICAL,
+        EXPIRED
+    }
+} // ← Закрывает data class Entry
 
-    /**
-     * Дешифрует Base64 → строку
-     */
-    fun decrypt(encryptedBase64: String): String {
-        val data = Base64.decode(encryptedBase64, Base64.DEFAULT)
-        val iv = data.copyOfRange(0, IV_SIZE)
-        val ciphertext = data.copyOfRange(IV_SIZE, data.size)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(ciphertext))
-    }
-
-    /**
-     * Проверяет, зашифрована ли строка (простая эвристика)
-     */
-    fun isEncrypted(value: String): Boolean {
-        return value.length > 50 && value.matches(Regex("^[A-Za-z0-9+/=]+$"))
-    }
-}
+//  Профили: отдельный enum вне класса
+enum class Profile {
+    PERSONAL,
+    WORK
+} // ← Закрывает enum class Profile
