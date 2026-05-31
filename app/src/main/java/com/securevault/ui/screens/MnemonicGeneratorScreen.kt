@@ -12,10 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.MnemonicPasswordGenerator
 import kotlinx.coroutines.launch
 
@@ -43,16 +45,38 @@ fun MnemonicGeneratorScreen(
     val generator = remember { MnemonicPasswordGenerator() }
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+
+    // ✅ Генерируем пароль при изменении ЛЮБОЙ настройки
+    LaunchedEffect(
+        phrase, targetLength, includeUppercase, includeDigits, includeSpecial,
+        useRussianReplacement, useLatinReplacement, enableRotation, rotationPeriod
+    ) {
+        if (phrase.isNotEmpty()) {
+            isGenerating = true
+            val options = MnemonicPasswordGenerator.GenerationOptions(
+                phrase = phrase,
+                emoji = emoji.takeIf { it.isNotEmpty() },
+                targetLength = targetLength,
+                includeUppercase = includeUppercase,
+                includeDigits = includeDigits,
+                includeSpecial = includeSpecial,
+                useRussianSymbolReplacement = useRussianReplacement,
+                useLatinSymbolReplacement = useLatinReplacement,
+                enableRotation = enableRotation,
+                rotationPeriodMonths = rotationPeriod,
+                rotationDate = if (enableRotation) System.currentTimeMillis() else null,
+                previousHashes = emptyList()
+            )
+            generatedResult = generator.generate(options)
+            isGenerating = false
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Генератор по фразе",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Генератор по фразе", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -69,6 +93,7 @@ fun MnemonicGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Поле ввода фразы
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
@@ -76,12 +101,10 @@ fun MnemonicGeneratorScreen(
                 placeholder = { Text("например: мой синий автомобиль") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text("Введите фразу на русском языке для генерации пароля")
-                }
+                supportingText = { Text("Введите фразу на русском языке") }
             )
 
-            //  Эмодзи поле: используем fillMaxWidth вместо weight
+            // Поле эмодзи
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -91,32 +114,29 @@ fun MnemonicGeneratorScreen(
                     value = emoji,
                     onValueChange = { emoji = it },
                     label = { Text("Эмодзи-подсказка") },
-                    placeholder = { Text("например: авто") },
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f),
+                    placeholder = { Text("например: 🚗") },
+                    modifier = Modifier.weight(1f),
                     singleLine = true
                 )
-                IconButton(
-                    onClick = { emoji = "" },
-                    enabled = emoji.isNotEmpty()
-                ) {
+                IconButton(onClick = { emoji = "" }, enabled = emoji.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Очистить")
                 }
             }
 
+            // Настройки
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     
-                    //  Длина: используем fillMaxWidth вместо weight
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text("Длина: $targetLength", modifier = Modifier.padding(bottom = 4.dp))
+                    // Длина
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Длина: $targetLength", modifier = Modifier.weight(1f))
                         Slider(
                             value = targetLength.toFloat(),
                             onValueChange = { targetLength = it.toInt() },
                             valueRange = 8f..20f,
                             steps = 12,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.weight(2f)
                         )
                     }
                     
@@ -138,25 +158,38 @@ fun MnemonicGeneratorScreen(
                     SwitchSetting("Добавить дату ротации", enableRotation) { enableRotation = it }
                     
                     if (enableRotation) {
-                        //  Период: используем Column вместо Row с weight
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Период ротации:", modifier = Modifier.padding(bottom = 4.dp))
-                            DropdownPeriodSelector(
-                                selected = rotationPeriod,
-                                onSelected = { rotationPeriod = it }
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Период:", modifier = Modifier.weight(1f))
+                            // Упрощённый выбор периода
+                            var expanded by remember { mutableStateOf(false) }
+                            ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                                OutlinedTextField(
+                                    value = "$rotationPeriod мес",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                                    modifier = Modifier.menuAnchor().weight(1f)
+                                )
+                                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                    listOf(3, 6, 12).forEach { period ->
+                                        DropdownMenuItem(
+                                            text = { Text("$period мес") },
+                                            onClick = { rotationPeriod = period; expanded = false }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
 
+            // Результат генерации
             if (generatedResult != null) {
                 val result = generatedResult!!
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -165,11 +198,15 @@ fun MnemonicGeneratorScreen(
                         ) {
                             Text(
                                 text = result.password,
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = { }) {
+                            IconButton(onClick = {
+                                // Копирование в буфер
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", result.password))
+                            }) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
                             }
                         }
@@ -189,44 +226,19 @@ fun MnemonicGeneratorScreen(
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
-                        
-                        if (!result.isUnique) {
-                            Text(
-                                text = "Не удалось создать уникальный пароль за ${result.attempts} попыток",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
                     }
                 }
             }
 
-            showError?.let { error ->
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-            }
-
-            //  Кнопки: используем fillMaxWidth с явными размерами
+            // Кнопки
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // ✅ Кнопка "Сгенерировать" - нормального размера
                 Button(
                     onClick = {
-                        showError = null
-                        val validation = generator.validatePhrase(phrase)
-                        if (validation is MnemonicPasswordGenerator.ValidationResult.Error) {
-                            showError = validation.message
-                            return@Button
-                        }
-                        
-                        isGenerating = true
-                        scope.launch {
+                        if (phrase.isNotEmpty()) {
                             val options = MnemonicPasswordGenerator.GenerationOptions(
                                 phrase = phrase,
                                 emoji = emoji.takeIf { it.isNotEmpty() },
@@ -242,24 +254,17 @@ fun MnemonicGeneratorScreen(
                                 previousHashes = emptyList()
                             )
                             generatedResult = generator.generate(options)
-                            isGenerating = false
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(0.5f),
-                    enabled = !isGenerating && phrase.isNotBlank()
+                    modifier = Modifier.weight(1f),
+                    enabled = phrase.isNotEmpty() && !isGenerating
                 ) {
-                    if (isGenerating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(4.dp))
-                        Text("Сгенерировать")
-                    }
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Сгенерировать")
                 }
                 
+                // ✅ Кнопка "Использовать" - нормального размера, горизонтальный текст
                 Button(
                     onClick = {
                         generatedResult?.let { result ->
@@ -267,7 +272,7 @@ fun MnemonicGeneratorScreen(
                         }
                     },
                     enabled = generatedResult != null,
-                    modifier = Modifier.fillMaxWidth(0.5f)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
@@ -287,45 +292,5 @@ private fun SwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boo
     ) {
         Text(label, fontSize = 14.sp)
         Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun DropdownPeriodSelector(
-    selected: Int,
-    onSelected: (Int) -> Unit
-) {
-    val periods = listOf(3, 6, 12)
-    var expanded by remember { mutableStateOf(false) }
-    
-    //  Полностью убираем weight — используем fillMaxWidth
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        OutlinedTextField(
-            value = "$selected мес",
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            periods.forEach { period ->
-                DropdownMenuItem(
-                    text = { Text("$period мес") },
-                    onClick = {
-                        onSelected(period)
-                        expanded = false
-                    }
-                )
-            }
-        }
     }
 }
