@@ -1,10 +1,15 @@
 package com.securevault.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.securevault.security.BruteForceGuard
 import com.securevault.security.DataWiper
+import com.securevault.security.MasterPasswordHasher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,9 +18,33 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val bruteForceGuard: BruteForceGuard,
-    private val dataWiper: DataWiper
+    private val dataWiper: DataWiper,
+    private val hasher: MasterPasswordHasher
 ) : ViewModel() {
+
+    companion object {
+        private const val PREFS_NAME = "auth_prefs"
+        private const val KEY_MASTER_HASH = "master_hash"
+        private const val KEY_SETUP_COMPLETE = "setup_complete"
+    }
+
+    private val masterKey by lazy {
+        MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+    }
+
+    private val prefs by lazy {
+        EncryptedSharedPreferences.create(
+            context,
+            PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
     private val _failedAttempts = MutableStateFlow(0)
     val failedAttempts: StateFlow<Int> = _failedAttempts.asStateFlow()
@@ -34,62 +63,122 @@ class AuthViewModel @Inject constructor(
     }
 
     private fun loadSecurityState() {
-        _failedAttempts.value = bruteForceGuard.getFailedAttempts()
-        _lockedUntil.value = bruteForceGuard.getLockedUntil()
-        _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
-    }
-
-    fun verifyPassword(password: String, storedHash: String): Boolean {
-        if (!bruteForceGuard.shouldAllowAttempt()) {
-            _authState.value = AuthState.Blocked(
-                bruteForceGuard.getRemainingLockoutTime(),
-                bruteForceGuard.isWipeTriggered()
-            )
-            return false
-        }
-
-        val isValid = storedHash.isNotEmpty() && password.length >= 4
-        
-        if (isValid) {
-            bruteForceGuard.resetAttempts()
-            _authState.value = AuthState.Success
-            loadSecurityState()
-        } else {
-            bruteForceGuard.incrementAttempts()
+        try {
             _failedAttempts.value = bruteForceGuard.getFailedAttempts()
             _lockedUntil.value = bruteForceGuard.getLockedUntil()
             _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
-            
-            _authState.value = when {
-                bruteForceGuard.isWipeTriggered() -> AuthState.WipeTriggered
-                bruteForceGuard.isLocked() -> AuthState.Blocked(
-                    bruteForceGuard.getRemainingLockoutTime(),
-                    false
-                )
-                else -> AuthState.Failed(bruteForceGuard.getFailedAttempts())
-            }
+        } catch (e: Exception) {
+            // Игнорируем ошибки при загрузке, чтобы не крашиться
         }
-        
-        return isValid
+    }
+
+    // ✅ Проверка: завершена ли первоначальная настройка
+    fun isSetupComplete(): Boolean {
+        return try {
+            prefs.getBoolean(KEY_SETUP_COMPLETE, false)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ✅ Сохранение хеша мастер-пароля при первом запуске
+    fun setupMasterPassword(password: String): Boolean {
+        return try {
+            if (password.length < 4) return false
+            
+            val hash = hasher.hash(password.toCharArray())
+            prefs.edit()
+                .putString(KEY_MASTER_HASH, hash)
+                .putBoolean(KEY_SETUP_COMPLETE, true)
+                .apply()
+            
+            bruteForceGuard.resetAttempts()
+            loadSecurityState()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ✅ Проверка пароля с безопасной обработкой
+    fun verifyPassword(password: String): Boolean {
+        return try {
+            if (!bruteForceGuard.shouldAllowAttempt()) {
+                _authState.value = AuthState.Blocked(
+                    bruteForceGuard.getRemainingLockoutTime(),
+                    bruteForceGuard.isWipeTriggered()
+                )
+                return false
+            }
+
+            val storedHash = prefs.getString(KEY_MASTER_HASH, null)
+            if (storedHash.isNullOrEmpty()) {
+                _authState.value = AuthState.Error("Мастер-пароль не настроен")
+                return false
+            }
+
+            val isValid = hasher.verify(password.toCharArray(), storedHash)
+            
+            if (isValid) {
+                bruteForceGuard.resetAttempts()
+                _authState.value = AuthState.Success
+                loadSecurityState()
+            } else {
+                bruteForceGuard.incrementAttempts()
+                _failedAttempts.value = bruteForceGuard.getFailedAttempts()
+                _lockedUntil.value = bruteForceGuard.getLockedUntil()
+                _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
+                
+                _authState.value = when {
+                    bruteForceGuard.isWipeTriggered() -> AuthState.WipeTriggered
+                    bruteForceGuard.isLocked() -> AuthState.Blocked(
+                        bruteForceGuard.getRemainingLockoutTime(),
+                        false
+                    )
+                    else -> AuthState.Failed(bruteForceGuard.getFailedAttempts())
+                }
+            }
+            
+            isValid
+        } catch (e: Exception) {
+            _authState.value = AuthState.Error(e.message ?: "Ошибка проверки")
+            false
+        }
     }
 
     fun resetSecurity() {
-        bruteForceGuard.resetAttempts()
-        loadSecurityState()
+        try {
+            bruteForceGuard.resetAttempts()
+            loadSecurityState()
+        } catch (e: Exception) {
+            // Игнорируем
+        }
     }
 
     suspend fun triggerWipe(): DataWiper.WipeResult {
-        val result = dataWiper.wipeAllData()
-        if (result is DataWiper.WipeResult.Success) {
-            dataWiper.markWipeConfirmed()
-            bruteForceGuard.resetAttempts()
-            loadSecurityState()
+        return try {
+            val result = dataWiper.wipeAllData()
+            if (result is DataWiper.WipeResult.Success) {
+                dataWiper.markWipeConfirmed()
+                prefs.edit()
+                    .remove(KEY_MASTER_HASH)
+                    .remove(KEY_SETUP_COMPLETE)
+                    .apply()
+                bruteForceGuard.resetAttempts()
+                loadSecurityState()
+            }
+            result
+        } catch (e: Exception) {
+            DataWiper.WipeResult.Error(e.message ?: "Unknown error")
         }
-        return result
     }
 
     fun getRemainingLockoutTime(): Long {
-        return bruteForceGuard.getRemainingLockoutTime()
+        return try {
+            bruteForceGuard.getRemainingLockoutTime()
+        } catch (e: Exception) {
+            0L
+        }
     }
 
     fun formatLockoutTime(milliseconds: Long): String {
@@ -107,5 +196,6 @@ class AuthViewModel @Inject constructor(
         data class Failed(val attempts: Int) : AuthState()
         data class Blocked(val remainingMs: Long, val isWipe: Boolean) : AuthState()
         object WipeTriggered : AuthState()
+        data class Error(val message: String) : AuthState()
     }
 }
