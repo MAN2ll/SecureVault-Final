@@ -17,7 +17,7 @@ import android.util.Base64
 import java.security.KeyStore
 
 class ExportManager(private val context: Context) {
-    
+
     companion object {
         private const val MAGIC_HEADER = "SV_EXPORT_V1"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -37,54 +37,16 @@ class ExportManager(private val context: Context) {
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
             val exportKey = getOrCreateExportKey()
-            
             val jsonArray = JSONArray()
-            entries.forEach { entry ->
-                jsonArray.put(JSONObject().apply {
-                    put("id", entry.id)
-                    put("service", entry.service)
-                    put("username", entry.username)
-                    put("encryptedPassword", entry.encryptedPassword)
-                    put("category", entry.category)
-                    put("notes", entry.notes)
-                    put("isFavorite", entry.isFavorite)
-                    put("profile", entry.profile.name)
-                    put("createdAt", entry.createdAt)
-                    put("lastChanged", entry.lastChanged)
-                    put("changeIntervalDays", entry.changeIntervalDays)
-                })
-            }
-            val json = jsonArray.toString()
-            
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, exportKey)
-            val iv = cipher.iv
-            val encrypted = cipher.doFinal(json.toByteArray())
-            
-            val outputStream = context.contentResolver.openOutputStream(uri)
-                ?: return@withContext ExportResult.Error("Не удалось открыть файл")
-            
-            val writer = OutputStreamWriter(outputStream)
-            writer.appendLine("$MAGIC_HEADER|${masterPasswordHash.take(16)}")
-            writer.appendLine(Base64.encodeToString(iv + encrypted, Base64.DEFAULT))
-            writer.flush()
-            writer.close()
-            
-            ExportResult.Success(entries.size)
-            
-        } catch (e: Exception) {
-            ExportResult.Error("Ошибка экспорта: ${e.message}")
-        }
-    }
-
-    suspend fun importFromFile(
-        uri: Uri,
-        masterPasswordHash: String
-    ): ImportResult = withContext(Dispatchers.IO) {
-        try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-                ?: return@withContext ImportResult.Error("Не удалось открыть файл")
-            
-            val reader = InputStreamReader(inputStream)
-            val lines = reader.readLines()
-            reader
+            for (entry in entries) {
+                val obj = JSONObject()
+                obj.put("id", entry.id)
+                obj.put("service", entry.service)
+                obj.put("username", entry.username)
+                obj.put("encryptedPassword", entry.encryptedPassword)
+                obj.put("category", entry.category)
+                obj.put("notes", entry.notes)
+                obj.put("isFavorite", entry.isFavorite)
+                obj.put("profile", entry.profile.name)
+                obj.put("createdAt", entry.createdAt)
+                obj.put("lastChanged", entry.lastChanged)
