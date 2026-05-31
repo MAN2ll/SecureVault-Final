@@ -19,7 +19,7 @@ fun FadeInContent(
                 slideInVertically(animationSpec = tween(durationMillis = 300, delayMillis = delayMillis)) {
                     it / 4
                 },
-        content = content
+        content = { content() }
     )
 }
 
