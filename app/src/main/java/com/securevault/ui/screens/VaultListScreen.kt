@@ -80,7 +80,7 @@ fun VaultListScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    FilterChip(
+                    ProfileFilterChip(
                         selected = currentFilter == null,
                         onClick = { viewModel.setFilter(null) },
                         label = { Text("Все", fontSize = 13.sp) },
@@ -88,7 +88,7 @@ fun VaultListScreen(
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    FilterChip(
+                    ProfileFilterChip(
                         selected = currentFilter == Profile.PERSONAL,
                         onClick = { viewModel.setFilter(Profile.PERSONAL) },
                         label = { Text("Личные", fontSize = 13.sp) },
@@ -96,7 +96,7 @@ fun VaultListScreen(
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    FilterChip(
+                    ProfileFilterChip(
                         selected = currentFilter == Profile.WORK,
                         onClick = { viewModel.setFilter(Profile.WORK) },
                         label = { Text("Рабочие", fontSize = 13.sp) },
@@ -136,14 +136,15 @@ fun VaultListScreen(
     }
 }
 
+// ✅ ИСПРАВЛЕНО: Уникальное имя функции + вызов правильного Material3 компонента
 @Composable
-private fun FilterChip(
+private fun ProfileFilterChip(
     selected: Boolean,
     onClick: () -> Unit,
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    FilterChip(
+    androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
@@ -159,9 +160,9 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
         Entry.ExpiryStatus.WARNING -> MaterialTheme.colorScheme.tertiary
         Entry.ExpiryStatus.OK -> MaterialTheme.colorScheme.outline
     }
-    
+
     val daysUntilExpiry = entry.getDaysUntilExpiry()
-    
+
     Card(
         onClick = onClick,
         modifier = Modifier
@@ -195,7 +196,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     )
                 }
             }
-            
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -209,7 +210,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
                 )
-                
+
                 if (entry.getExpiryStatus() != Entry.ExpiryStatus.OK) {
                     val statusText = when (entry.getExpiryStatus()) {
                         Entry.ExpiryStatus.EXPIRED -> "Просрочен"
