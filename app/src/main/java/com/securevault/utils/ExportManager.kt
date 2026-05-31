@@ -15,8 +15,11 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import android.util.Base64
 import java.security.KeyStore
+import dagger.hilt.android.qualifiers.ApplicationContext
 
-class ExportManager(private val context: Context) {
+class ExportManager @Inject constructor(
+    @ApplicationContext private val context: Context  //  Если используется @Inject
+) {
     
     companion object {
         private const val FILE_EXTENSION = ".vault"
