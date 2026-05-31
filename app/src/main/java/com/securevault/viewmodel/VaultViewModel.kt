@@ -15,11 +15,11 @@ class VaultViewModel @Inject constructor(
     private val repository: VaultRepository
 ) : ViewModel() {
 
-    //  Текущий выбранный фильтр (по умолчанию: ВСЕ)
+    //  Текущий выбранный фильтр
     private val _currentFilter = MutableStateFlow<Profile?>(null)
     val currentFilter: StateFlow<Profile?> = _currentFilter.asStateFlow()
 
-    //  Список записей (обновляется при смене фильтра)
+    //  Список записей
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
 
@@ -27,7 +27,6 @@ class VaultViewModel @Inject constructor(
         loadEntries()
     }
 
-    //  Загрузка с учётом фильтра
     fun setFilter(profile: Profile?) {
         _currentFilter.value = profile
         loadEntries()
@@ -35,36 +34,37 @@ class VaultViewModel @Inject constructor(
 
     private fun loadEntries() = viewModelScope.launch {
         val flow = when (val profile = _currentFilter.value) {
-            null -> repository.allEntries          // Все записи
-            else -> repository.getEntriesByProfile(profile) // Только профиль
+            null -> repository.allEntries
+            else -> repository.getEntriesByProfile(profile)
         }
         flow.collect { _entries.value = it }
+    }
+
+    //  Просроченные записи (исправлено: добавлен initial)
+    val expiredEntries: StateFlow<List<Entry>> = repository.allEntries
+        .map { entries -> entries.filter { it.isPasswordExpired() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    //  Записи, требующие внимания
+    fun getEntriesNeedingAttention(): StateFlow<List<Entry>> = repository.allEntries
+        .map { entries -> 
+            entries.filter { 
+                it.isPasswordExpired() || it.getDaysUntilExpiry() <= 7 
+            } 
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    //  Обновить дату последнего изменения
+    fun markPasswordChanged(entryId: String) = viewModelScope.launch {
+        val entry = repository.getById(entryId) ?: return@launch
+        repository.update(entry.copy(
+            lastChanged = System.currentTimeMillis(),
+            failedAttempts = 0
+        ))
     }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
     fun update(entry: Entry) = viewModelScope.launch { repository.update(entry) }
     fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
     fun deleteById(id: String) = viewModelScope.launch { repository.deleteById(id) }
-
-        //  Поток просроченных записей (для отдельного экрана/уведомлений)
-    val expiredEntries: Flow<List<Entry>> = repository.allEntries
-        .map { entries -> entries.filter { it.isPasswordExpired() } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    
-    //  Проверка: есть ли записи, требующие внимания
-    fun getEntriesNeedingAttention(): Flow<List<Entry>> = repository.allEntries
-        .map { entries -> 
-            entries.filter { 
-                it.isPasswordExpired() || it.getDaysUntilExpiry() <= 7 
-            } 
-        }
-    
-    // Обновить дату последнего изменения (после смены пароля)
-    fun markPasswordChanged(entryId: String) = viewModelScope.launch {
-        val entry = repository.getById(entryId) ?: return@launch
-        repository.update(entry.copy(
-            lastChanged = System.currentTimeMillis(),
-            failedAttempts = 0  // Сбросить счётчик попыток при успешной смене
-        ))
-    }
 }
