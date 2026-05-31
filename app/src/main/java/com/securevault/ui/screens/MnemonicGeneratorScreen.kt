@@ -81,22 +81,22 @@ fun MnemonicGeneratorScreen(
                 }
             )
 
+            //  Эмодзи поле: вес через Box
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Исправлено: вес применяется к модифайеру поля, не к функции
-                OutlinedTextField(
-                    value = emoji,
-                    onValueChange = { emoji = it },
-                    label = { Text("Эмодзи-подсказка") },
-                    placeholder = { Text("например: авто") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    singleLine = true
-                )
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = emoji,
+                        onValueChange = { emoji = it },
+                        label = { Text("Эмодзи-подсказка") },
+                        placeholder = { Text("например: авто") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
                 IconButton(
                     onClick = { emoji = "" },
                     enabled = emoji.isNotEmpty()
@@ -168,7 +168,7 @@ fun MnemonicGeneratorScreen(
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = { /* Копировать */ }) {
+                            IconButton(onClick = { }) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
                             }
                         }
@@ -296,7 +296,7 @@ private fun DropdownPeriodSelector(
     val periods = listOf(3, 6, 12)
     var expanded by remember { mutableStateOf(false) }
     
-    //  Оборачиваем в Box с весом, чтобы избежать конфликта модификаторов
+    //  Вес через Box
     Box(modifier = Modifier.weight(1f)) {
         ExposedDropdownMenuBox(
             expanded = expanded,
@@ -309,7 +309,7 @@ private fun DropdownPeriodSelector(
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier
                     .menuAnchor()
-                    .fillMaxWidth() //  Занимает всю ширину Box
+                    .fillMaxWidth()
             )
             ExposedDropdownMenu(
                 expanded = expanded,
