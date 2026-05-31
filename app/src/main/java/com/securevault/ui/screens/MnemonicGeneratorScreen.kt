@@ -28,34 +28,33 @@ import kotlinx.coroutines.launch
 @Composable
 fun MnemonicGeneratorScreen(
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel() // ✅ Добавляем ViewModel
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
     var phrase by remember { mutableStateOf("") }
     var emoji by remember { mutableStateOf("") }
-    var serviceName by remember { mutableStateOf("") } // ✅ Поле для названия сервиса
+    var serviceName by remember { mutableStateOf("") }
+    
+    // Настройки пароля
     var targetLength by remember { mutableStateOf(12) }
-    var includeUppercase by remember { mutableStateOf(true) }
-    var includeDigits by remember { mutableStateOf(true) }
-    var includeSpecial by remember { mutableStateOf(true) }
-    var useRussianReplacement by remember { mutableStateOf(false) }
-    var useLatinReplacement by remember { mutableStateOf(false) }
+    var useLeetSpeak by remember { mutableStateOf(false) } // Замена a->@, e->3
+    var addDigits by remember { mutableStateOf(true) }
+    var addSpecial by remember { mutableStateOf(false) }
     var enableRotation by remember { mutableStateOf(false) }
     var rotationPeriod by remember { mutableStateOf(6) }
     
     var generatedResult by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
     var showError by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
-    var showSuccessDialog by remember { mutableStateOf(false) } // ✅ Диалог успеха
+    var showSuccessDialog by remember { mutableStateOf(false) }
     
     val generator = remember { MnemonicPasswordGenerator() }
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val context = LocalContext.current
 
-    // ✅ Генерируем пароль при изменении ЛЮБОЙ настройки
+    // Автогенерация при изменении параметров
     LaunchedEffect(
-        phrase, targetLength, includeUppercase, includeDigits, includeSpecial,
-        useRussianReplacement, useLatinReplacement, enableRotation, rotationPeriod
+        phrase, targetLength, useLeetSpeak, addDigits, addSpecial, enableRotation, rotationPeriod
     ) {
         if (phrase.isNotEmpty()) {
             isGenerating = true
@@ -63,11 +62,10 @@ fun MnemonicGeneratorScreen(
                 phrase = phrase,
                 emoji = emoji.takeIf { it.isNotEmpty() },
                 targetLength = targetLength,
-                includeUppercase = includeUppercase,
-                includeDigits = includeDigits,
-                includeSpecial = includeSpecial,
-                useRussianSymbolReplacement = useRussianReplacement,
-                useLatinSymbolReplacement = useLatinReplacement,
+                includeUppercase = true, // Всегда делаем первую букву заглавной для красоты
+                includeDigits = addDigits,
+                includeSpecial = addSpecial,
+                useLeetSpeak = useLeetSpeak,
                 enableRotation = enableRotation,
                 rotationPeriodMonths = rotationPeriod,
                 rotationDate = if (enableRotation) System.currentTimeMillis() else null,
@@ -98,7 +96,7 @@ fun MnemonicGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Поле названия сервиса
+            // Название сервиса
             OutlinedTextField(
                 value = serviceName,
                 onValueChange = { serviceName = it },
@@ -107,18 +105,18 @@ fun MnemonicGeneratorScreen(
                 singleLine = true
             )
 
-            // Поле ввода фразы
+            // Фраза
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
-                label = { Text("Мнемоническая фраза") },
-                placeholder = { Text("например: мой синий автомобиль") },
+                label = { Text("Фраза для запоминания") },
+                placeholder = { Text("мой синий автомобиль") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 modifier = Modifier.fillMaxWidth(),
-                supportingText = { Text("Введите фразу на русском языке") }
+                supportingText = { Text("Пароль будет создан на основе этой фразы") }
             )
 
-            // Поле эмодзи
+            // Эмодзи
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -128,7 +126,7 @@ fun MnemonicGeneratorScreen(
                     value = emoji,
                     onValueChange = { emoji = it },
                     label = { Text("Эмодзи-подсказка") },
-                    placeholder = { Text("например: 🚗") },
+                    placeholder = { Text("🚗") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
@@ -137,11 +135,12 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Настройки
+            // Карточка настроек
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Настройки сложности", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     
+                    // Длина
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $targetLength", modifier = Modifier.weight(1f))
                         Slider(
@@ -153,22 +152,31 @@ fun MnemonicGeneratorScreen(
                         )
                     }
                     
-                    SwitchSetting("Заглавные буквы", includeUppercase) { includeUppercase = it }
-                    SwitchSetting("Цифры", includeDigits) { includeDigits = it }
-                    SwitchSetting("Спецсимволы", includeSpecial) { includeSpecial = it }
-                    
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
-                    
-                    SwitchSetting("Замена русских букв (@, $, 0...)", useRussianReplacement) { 
-                        useRussianReplacement = it 
-                    }
-                    SwitchSetting("Замена латинских букв (5, !, 3...)", useLatinReplacement) { 
-                        useLatinReplacement = it 
+                    // Чекбоксы вместо сложных свитчей для простоты
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = addDigits, onCheckedChange = { addDigits = it })
+                        Text("Добавить цифру", modifier = Modifier.padding(start = 8.dp))
                     }
                     
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = useLeetSpeak, onCheckedChange = { useLeetSpeak = it })
+                        Column(modifier = Modifier.padding(start = 8.dp)) {
+                            Text("Заменить похожие буквы")
+                            Text("a→@, e→3, o→0 (легче запомнить)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = addSpecial, onCheckedChange = { addSpecial = it })
+                        Text("Добавить спецсимвол (!@#...)", modifier = Modifier.padding(start = 8.dp))
+                    }
                     
-                    SwitchSetting("Добавить дату ротации", enableRotation) { enableRotation = it }
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = enableRotation, onCheckedChange = { enableRotation = it })
+                        Text("Добавить дату ротации", modifier = Modifier.padding(start = 8.dp))
+                    }
                     
                     if (enableRotation) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -196,7 +204,7 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Результат генерации
+            // Результат
             if (generatedResult != null) {
                 val result = generatedResult!!
                 Card(
@@ -210,8 +218,9 @@ fun MnemonicGeneratorScreen(
                         ) {
                             Text(
                                 text = result.password,
-                                fontSize = 16.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Medium,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(onClick = {
@@ -228,15 +237,6 @@ fun MnemonicGeneratorScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
                         )
-                        
-                        if (result.rotationSuffix != null) {
-                            Text(
-                                text = "Ротация: ${result.rotationSuffix}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
                     }
                 }
             }
@@ -253,11 +253,10 @@ fun MnemonicGeneratorScreen(
                                 phrase = phrase,
                                 emoji = emoji.takeIf { it.isNotEmpty() },
                                 targetLength = targetLength,
-                                includeUppercase = includeUppercase,
-                                includeDigits = includeDigits,
-                                includeSpecial = includeSpecial,
-                                useRussianSymbolReplacement = useRussianReplacement,
-                                useLatinSymbolReplacement = useLatinReplacement,
+                                includeUppercase = true,
+                                includeDigits = addDigits,
+                                includeSpecial = addSpecial,
+                                useLeetSpeak = useLeetSpeak,
                                 enableRotation = enableRotation,
                                 rotationPeriodMonths = rotationPeriod,
                                 rotationDate = if (enableRotation) System.currentTimeMillis() else null,
@@ -271,10 +270,9 @@ fun MnemonicGeneratorScreen(
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Сгенерировать")
+                    Text("Обновить")
                 }
                 
-                // ✅ Кнопка "Сохранить" - нормального размера
                 Button(
                     onClick = {
                         generatedResult?.let { result ->
@@ -283,10 +281,9 @@ fun MnemonicGeneratorScreen(
                                 return@Button
                             }
                             
-                            // ✅ СОЗДАЕМ И СОХРАНЯЕМ ЗАПИСЬ
                             val newEntry = Entry.create(
                                 service = serviceName,
-                                username = "user", // Можно добавить поле для логина
+                                username = "user",
                                 password = result.password,
                                 profile = Profile.PERSONAL,
                                 emojiHint = result.emoji,
@@ -312,33 +309,20 @@ fun MnemonicGeneratorScreen(
             }
         }
         
-        // ✅ Диалог успеха
         if (showSuccessDialog) {
             AlertDialog(
                 onDismissRequest = { showSuccessDialog = false },
                 title = { Text("Успешно!") },
-                text = { Text("Пароль сохранен в хранилище.") },
+                text = { Text("Пароль сохранен.") },
                 confirmButton = {
                     TextButton(onClick = { 
                         showSuccessDialog = false
-                        onBack() // Возвращаемся назад
+                        onBack()
                     }) {
                         Text("OK")
                     }
                 }
             )
         }
-    }
-}
-
-@Composable
-private fun SwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(label, fontSize = 14.sp)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
