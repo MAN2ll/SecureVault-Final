@@ -34,9 +34,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun GeneratorScreen(
     onGenerated: (String) -> Unit,
-    onBack: () -> Unit,
-    clipboardHelper: ClipboardHelper
+    onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardHelper = remember { ClipboardHelper(context) }
+    
     var length by remember { mutableStateOf(16) }
     var useUppercase by remember { mutableStateOf(true) }
     var useDigits by remember { mutableStateOf(true) }
@@ -49,7 +51,6 @@ fun GeneratorScreen(
     var showCopiedHint by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     
