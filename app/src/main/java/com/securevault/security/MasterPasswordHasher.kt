@@ -56,7 +56,6 @@ class MasterPasswordHasher @Inject constructor() {
         return skf.generateSecret(spec).encoded
     }
     
-    // ✅ ИСПРАВЛЕНО: конвертируем Byte в Int перед xor
     private fun secureCompare(a: ByteArray, b: ByteArray): Boolean {
         if (a.size != b.size) return false
         var result = 0
