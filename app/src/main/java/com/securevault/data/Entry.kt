@@ -18,21 +18,82 @@ data class Entry(
     val category: String = "general",
     val notes: String = "",
     val isFavorite: Boolean = false,
-    
-    //  Профиль: рабочий или личный
     val profile: Profile = Profile.PERSONAL,
-    
-    //  Для напоминаний о смене пароля
     val createdAt: Long = System.currentTimeMillis(),
     val lastChanged: Long = System.currentTimeMillis(),
     val changeIntervalDays: Int = 90,
-    
-    //  Для защиты от подбора
     val failedAttempts: Int = 0,
     val lockedUntil: Long = 0L
 ) {
-    //  Геттер: дешифрует пароль "на лету"
+    //  Геттер пароля (дешифровка на лету)
     val password: String
         get() = if (CryptoUtils.isEncrypted(encryptedPassword)) {
             CryptoUtils.decrypt(encryptedPassword)
+        } else {
+            encryptedPassword
         }
+
+    //  Factory-метод для создания с шифрованием
+    companion object {
+        fun create(
+            service: String,
+            username: String,
+            password: String,
+            category: String = "general",
+            profile: Profile = Profile.PERSONAL,
+            notes: String = "",
+            changeIntervalDays: Int = 90
+        ): Entry {
+            return Entry(
+                service = service,
+                username = username,
+                encryptedPassword = CryptoUtils.encrypt(password),
+                category = category,
+                profile = profile,
+                notes = notes,
+                changeIntervalDays = changeIntervalDays
+            )
+        }
+    }
+
+    //  Проверка: просрочен ли пароль
+    fun isPasswordExpired(): Boolean {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return daysSinceChange >= changeIntervalDays
+    }
+    
+    //  Дней до истечения (может быть отрицательным)
+    fun getDaysUntilExpiry(): Int {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return changeIntervalDays - daysSinceChange.toInt()
+    }
+    
+    //  Статус для цветовой индикации
+    fun getExpiryStatus(): ExpiryStatus {
+        return when {
+            isPasswordExpired() -> ExpiryStatus.EXPIRED
+            getDaysUntilExpiry() <= 3 -> ExpiryStatus.CRITICAL
+            getDaysUntilExpiry() <= 7 -> ExpiryStatus.WARNING
+            else -> ExpiryStatus.OK
+        }
+    }
+    
+    //  Проверка блокировки
+    fun isLocked(): Boolean {
+        return System.currentTimeMillis() < lockedUntil
+    }
+    
+    //  Статусы для UI
+    enum class ExpiryStatus {
+        OK,
+        WARNING,
+        CRITICAL,
+        EXPIRED
+    }
+}
+
+//  Профили (отдельно от класса)
+enum class Profile {
+    PERSONAL,
+    WORK
+}
