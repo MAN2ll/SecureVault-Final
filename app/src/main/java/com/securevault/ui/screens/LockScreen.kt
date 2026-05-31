@@ -41,7 +41,6 @@ fun LockScreen(
     val failedAttempts by viewModel.failedAttempts.collectAsState()
     val wipeTriggered by viewModel.wipeTriggered.collectAsState()
     
-    // 🔍 Проверяем: нужен ли первый запуск (настройка мастер-пароля)
     LaunchedEffect(Unit) {
         if (!viewModel.isSetupComplete()) {
             onSetupRequired()
@@ -187,7 +186,6 @@ fun LockScreen(
                             return@Button
                         }
                         
-                        //  Безопасный вызов с обработкой исключений
                         val isValid = viewModel.verifyPassword(password)
                         
                         if (!isValid) {
@@ -196,7 +194,6 @@ fun LockScreen(
                             password = ""
                         }
                     } catch (e: Exception) {
-                        // 🛡️ Ловим любые исключения, чтобы приложение не упало
                         showError = true
                         Toast.makeText(
                             context,
