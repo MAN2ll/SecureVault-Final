@@ -10,8 +10,9 @@ import javax.inject.Singleton
 
 @Singleton
 class DataWiper @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context  // Добавлена аннотация
 ) {
+
     companion object {
         private const val WIPE_CONFIRMATION_KEY = "wipe_confirmed"
     }
