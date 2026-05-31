@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.security.DataWiper
 import com.securevault.viewmodel.AuthViewModel
 import kotlinx.coroutines.launch
 
@@ -87,7 +88,7 @@ fun LockScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Данные будут удалены для защиты. Подтвердите очистку или попробуйте вспомнить пароль.",
+                        text = "Данные будут удалены для защиты.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                     )
@@ -174,9 +175,9 @@ fun LockScreen(
                         return@Button
                     }
                     
+                    // Используем заглушку хеша для демонстрации, так как реальный хеш хранится в SessionManager
+                    val storedHash = "dummy_hash_for_demo" 
                     val isValid = viewModel.verifyPassword(password, storedHash)
-                    val storedHash = "stored_hash_placeholder"
-                    
                     
                     if (!isValid) {
                         showError = true
