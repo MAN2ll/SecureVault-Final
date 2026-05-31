@@ -1,12 +1,12 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Star  //  Иконка из базового пакета
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,9 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.data.Profile
 import com.securevault.viewmodel.VaultViewModel
 
-//  Разрешаем использование экспериментальных API Material3
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
@@ -27,12 +27,13 @@ fun VaultListScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val entries by viewModel.allEntries.collectAsState(initial = emptyList())
+    val entries by viewModel.entries.collectAsState()
+    val currentFilter by viewModel.currentFilter.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(" Пароли", fontWeight = FontWeight.Bold) },
+                title = { Text(" Vault", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onLock) {
                         Icon(Icons.Default.Lock, "Заблокировать")
@@ -41,39 +42,54 @@ fun VaultListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onAdd() },  // onAdd теперь вызывает навигацию на "generator?mode=new"
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, "Создать запись")
-                }
+            FloatingActionButton(onClick = onAdd) {
+                Icon(Icons.Default.Add, "Добавить")
+            }
         }
     ) { padding ->
-        if (entries.isEmpty()) {
-            Box(
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            
+            //  ФИЛЬТРЫ: Все / Личные / Рабочие
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Нет записей — добавьте первую!", modifier = Modifier.padding(16.dp))
+                FilterChip("Все", currentFilter == null) { viewModel.setFilter(null) }
+                FilterChip("👤 Личные", currentFilter == Profile.PERSONAL) { viewModel.setFilter(Profile.PERSONAL) }
+                FilterChip("💼 Рабочие", currentFilter == Profile.WORK) { viewModel.setFilter(Profile.WORK) }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(entries, key = { it.id }) { entry ->
-                    EntryCard(entry = entry, onClick = { onEdit(entry.id) })
+
+            // 📋 СПИСОК
+            if (entries.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет записей — добавьте первую!", modifier = Modifier.padding(16.dp))
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp, bottom = 80.dp)
+                ) {
+                    items(entries, key = { it.id }) { entry ->
+                        EntryCard(entry = entry, onClick = { onEdit(entry.id) })
+                    }
                 }
             }
         }
     }
+}
+
+//  Компонент кнопки-фильтра
+@Composable
+private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, fontSize = 13.sp) },
+        modifier = Modifier.weight(1f)
+    )
 }
 
 @Composable
@@ -81,30 +97,25 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(text = entry.username, style = MaterialTheme.typography.bodyMedium)
+                //  Метка профиля
                 Text(
-                    text = entry.service,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
-                )
-                Text(
-                    text = entry.username,
-                    style = MaterialTheme.typography.bodyMedium
+                    text = if (entry.profile == Profile.WORK) "💼 Работа" else "👤 Личное",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            //  Используем иконку Star вместо ContentCopy
-            IconButton(onClick = { /* TODO: Копировать пароль */ }) {
-                Icon(Icons.Default.Star, "Избранное")
+            IconButton(onClick = { /* Копировать */ }) {
+                Icon(Icons.Default.ContentCopy, "Копировать")
             }
         }
     }
