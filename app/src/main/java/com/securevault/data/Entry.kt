@@ -12,15 +12,14 @@ data class Entry(
     val service: String,
     val username: String,
     
-    //  Room видит это поле благодаря @ColumnInfo
     @ColumnInfo(name = "encrypted_password")
-    val encryptedPassword: String,  //  Публичное поле для Room
+    val encryptedPassword: String,
     
     val category: String = "general",
     val notes: String = "",
     val isFavorite: Boolean = false,
     
-    // Профиль: рабочий или личный
+    //  Профиль: рабочий или личный
     val profile: Profile = Profile.PERSONAL,
     
     //  Для напоминаний о смене пароля
@@ -28,85 +27,12 @@ data class Entry(
     val lastChanged: Long = System.currentTimeMillis(),
     val changeIntervalDays: Int = 90,
     
-    // Для защиты от подбора
+    //  Для защиты от подбора
     val failedAttempts: Int = 0,
     val lockedUntil: Long = 0L
 ) {
-    // Вычисляемое свойство: дешифрует пароль "на лету"
-    // @Ignore не нужен, т.к. это не поле БД, а свойство с геттером
+    //  Геттер: дешифрует пароль "на лету"
     val password: String
         get() = if (CryptoUtils.isEncrypted(encryptedPassword)) {
             CryptoUtils.decrypt(encryptedPassword)
-        } else {
-            encryptedPassword
         }
-
-    // Метод для создания записи с шифрованием
-    companion object {
-        fun create(
-            service: String,
-            username: String,
-            password: String,
-            category: String = "general",
-            profile: Profile = Profile.PERSONAL,
-            notes: String = "",
-            changeIntervalDays: Int = 90
-        ): Entry {
-            return Entry(
-                service = service,
-                username = username,
-                encryptedPassword = CryptoUtils.encrypt(password), // шифруем!
-                category = category,
-                profile = profile,
-                notes = notes,
-                changeIntervalDays = changeIntervalDays
-            )
-        }
-    }
-
-    // Проверка: пора ли сменить пароль?
-    fun isPasswordExpired(): Boolean {
-        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
-        return daysSinceChange >= changeIntervalDays
-    }
-
-    // Проверка: заблокирована ли запись?
-    fun isLocked(): Boolean {
-        return System.currentTimeMillis() < lockedUntil
-    }
-        //  Проверка: просрочен ли пароль
-    fun isPasswordExpired(): Boolean {
-        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
-        return daysSinceChange >= changeIntervalDays
-    }
-    
-    //  Сколько дней осталось до истечения (может быть отрицательным)
-    fun getDaysUntilExpiry(): Int {
-        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
-        return changeIntervalDays - daysSinceChange.toInt()
-    }
-    
-    //  Статус для отображения в UI
-    fun getExpiryStatus(): ExpiryStatus {
-        return when {
-            isPasswordExpired() -> ExpiryStatus.EXPIRED
-            getDaysUntilExpiry() <= 3 -> ExpiryStatus.CRITICAL
-            getDaysUntilExpiry() <= 7 -> ExpiryStatus.WARNING
-            else -> ExpiryStatus.OK
-        }
-    }
-    
-    // Статус истечения для цветовой индикации
-    enum class ExpiryStatus {
-        OK,         // Зелёный: всё хорошо
-        WARNING,    // Жёлтый: скоро истечёт
-        CRITICAL,   // Оранжевый: очень скоро
-        EXPIRED     // Красный: уже просрочено
-    }
-}
-
-// Профили для разделения
-enum class Profile {
-    PERSONAL,
-    WORK
-}
