@@ -3,12 +3,13 @@ package com.securevault.security
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class BruteForceGuard @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context  //  Добавлена аннотация
 ) {
     companion object {
         private const val PREFS_NAME = "brute_force_prefs"
