@@ -2,6 +2,7 @@
 
 package com.securevault.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 fun LockScreen(
     onUnlocked: () -> Unit,
     onBiometricRequest: () -> Unit,
+    onSetupRequired: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     var password by remember { mutableStateOf("") }
@@ -37,8 +39,14 @@ fun LockScreen(
     
     val authState by viewModel.authState.collectAsState()
     val failedAttempts by viewModel.failedAttempts.collectAsState()
-    val lockedUntil by viewModel.lockedUntil.collectAsState()
     val wipeTriggered by viewModel.wipeTriggered.collectAsState()
+    
+    // 🔍 Проверяем: нужен ли первый запуск (настройка мастер-пароля)
+    LaunchedEffect(Unit) {
+        if (!viewModel.isSetupComplete()) {
+            onSetupRequired()
+        }
+    }
     
     LaunchedEffect(authState) {
         when (val state = authState) {
@@ -112,7 +120,10 @@ fun LockScreen(
                 }
                 
                 OutlinedButton(
-                    onClick = { viewModel.resetSecurity() },
+                    onClick = { 
+                        viewModel.resetSecurity()
+                        showError = false
+                    },
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Сбросить")
@@ -169,20 +180,30 @@ fun LockScreen(
             
             Button(
                 onClick = {
-                    showError = false
-                    if (password.length < 4) {
+                    try {
+                        showError = false
+                        if (password.length < 4) {
+                            showError = true
+                            return@Button
+                        }
+                        
+                        //  Безопасный вызов с обработкой исключений
+                        val isValid = viewModel.verifyPassword(password)
+                        
+                        if (!isValid) {
+                            showError = true
+                        } else {
+                            password = ""
+                        }
+                    } catch (e: Exception) {
+                        // 🛡️ Ловим любые исключения, чтобы приложение не упало
                         showError = true
-                        return@Button
+                        Toast.makeText(
+                            context,
+                            "Ошибка входа: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                    
-                    // Используем заглушку хеша для демонстрации, так как реальный хеш хранится в SessionManager
-                    val storedHash = "dummy_hash_for_demo" 
-                    val isValid = viewModel.verifyPassword(password, storedHash)
-                    
-                    if (!isValid) {
-                        showError = true
-                    }
-                    password = ""
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = authState !is AuthViewModel.AuthState.Blocked
@@ -229,9 +250,17 @@ fun LockScreen(
                     onClick = {
                         showWipeDialog = false
                         scope.launch {
-                            val result = viewModel.triggerWipe()
-                            if (result is DataWiper.WipeResult.Success) {
-                                onUnlocked()
+                            try {
+                                val result = viewModel.triggerWipe()
+                                if (result is DataWiper.WipeResult.Success) {
+                                    onUnlocked()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    "Ошибка: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
                         }
                     },
