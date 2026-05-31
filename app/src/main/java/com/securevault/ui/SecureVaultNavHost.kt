@@ -19,7 +19,7 @@ fun SecureVaultNavHost() {
                 onUnlocked = {
                     navController.navigate("main") { popUpTo("lock") { inclusive = true } }
                 },
-                onBiometricRequest = { /* TODO */ }
+                onBiometricRequest = { }
             )
         }
         
@@ -29,7 +29,8 @@ fun SecureVaultNavHost() {
                 onEdit = { id -> navController.navigate("generator?mode=edit&id=$id") },
                 onLock = {
                     navController.navigate("lock") { popUpTo("main") { inclusive = true } }
-                }
+                },
+                onExport = { navController.navigate("export") }
             )
         }
         
@@ -41,12 +42,11 @@ fun SecureVaultNavHost() {
             )
         ) { back ->
             GeneratorScreen(
-                onGenerated = { /* TODO: сохранить */ navController.popBackStack() },
+                onGenerated = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )
         }
         
-        //  НОВОЕ: Экран экспорта/импорта
         composable("export") {
             ExportImportScreen(
                 onBack = { navController.popBackStack() }
