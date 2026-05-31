@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack  //  Правильный импорт
+import androidx.compose.material.icons.automirrored.filled.ArrowBack  // ✅ Правильный импорт
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,10 +30,19 @@ fun ExpiredPasswordsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(" Просроченные", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "Просроченные пароли",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад")  //  Исправлено
+                        // ✅ Используем Icons.AutoMirrored.Filled.ArrowBack
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Назад"
+                        )
                     }
                 }
             )
@@ -46,7 +55,10 @@ fun ExpiredPasswordsScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(" Все пароли актуальны!", modifier = Modifier.padding(16.dp))
+                Text(
+                    "Все пароли актуальны!",
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         } else {
             LazyColumn(
