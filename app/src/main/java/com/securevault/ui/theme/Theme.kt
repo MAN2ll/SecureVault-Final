@@ -15,14 +15,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Цветовая схема для темной темы
+// Схема цветов для темной темы
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
     secondary = PurpleGrey80,
     tertiary = Pink80
 )
 
-// Цветовая схема для светлой темы
+// Схема цветов для светлой темы
 private val LightColorScheme = lightColorScheme(
     primary = Purple40,
     secondary = PurpleGrey40,
@@ -31,12 +31,13 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun SecureVaultTheme(
-    // ✅ Автоматически берем тему из настроек системы
+    // ✅ Автоматически определяет тему системы (темная/светлая)
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // ✅ Динамические цвета (Material You) для Android 12+
+    // ✅ Включает динамические цвета (Material You) на Android 12+
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    // Выбираем цветовую схему
     val colorScheme = when {
         // Динамические цвета на Android 12+
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -47,7 +48,7 @@ fun SecureVaultTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    
+
     // Применяем цвет статус-бара под тему
     val view = LocalView.current
     if (!view.isInEditMode) {
