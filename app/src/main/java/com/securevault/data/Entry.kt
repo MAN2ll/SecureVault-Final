@@ -19,13 +19,37 @@ data class Entry(
     val notes: String = "",
     val isFavorite: Boolean = false,
     val profile: Profile = Profile.PERSONAL,
+    
+    // Дата создания и последнего изменения
     val createdAt: Long = System.currentTimeMillis(),
     val lastChanged: Long = System.currentTimeMillis(),
+    
+    // Настройки срока действия пароля
     val changeIntervalDays: Int = 90,
+    
+    // Поля для защиты от подбора
     val failedAttempts: Int = 0,
-    val lockedUntil: Long = 0L
+    val lockedUntil: Long = 0L,
+    
+    // --- НОВЫЕ ПОЛЯ ДЛЯ МНЕМОНИЧЕСКОГО ГЕНЕРАТОРА ---
+    
+    // Эмодзи-подсказка (не входит в пароль, хранится отдельно)
+    val emojiHint: String? = null,
+    
+    // Включена ли ротация пароля
+    val rotationEnabled: Boolean = false,
+    
+    // Период ротации в месяцах (3, 6, 12)
+    val rotationPeriodMonths: Int = 6,
+    
+    // Дата последней смены пароля (для расчёта следующей ротации)
+    val lastRotationDate: Long? = null,
+    
+    // История хешей паролей (для проверки уникальности при ротации)
+    // Хранится как JSON-строка или список, разделённый запятыми
+    val passwordHistoryHashes: String = "" 
 ) {
-    //  Геттер пароля (дешифровка на лету)
+    // Геттер для расшифровки пароля
     val password: String
         get() = if (CryptoUtils.isEncrypted(encryptedPassword)) {
             CryptoUtils.decrypt(encryptedPassword)
@@ -33,7 +57,6 @@ data class Entry(
             encryptedPassword
         }
 
-    //  Factory-метод для создания с шифрованием
     companion object {
         fun create(
             service: String,
@@ -42,7 +65,10 @@ data class Entry(
             category: String = "general",
             profile: Profile = Profile.PERSONAL,
             notes: String = "",
-            changeIntervalDays: Int = 90
+            changeIntervalDays: Int = 90,
+            emojiHint: String? = null,
+            rotationEnabled: Boolean = false,
+            rotationPeriodMonths: Int = 6
         ): Entry {
             return Entry(
                 service = service,
@@ -51,24 +77,28 @@ data class Entry(
                 category = category,
                 profile = profile,
                 notes = notes,
-                changeIntervalDays = changeIntervalDays
+                changeIntervalDays = changeIntervalDays,
+                emojiHint = emojiHint,
+                rotationEnabled = rotationEnabled,
+                rotationPeriodMonths = rotationPeriodMonths,
+                lastRotationDate = System.currentTimeMillis()
             )
         }
     }
 
-    //  Проверка: просрочен ли пароль
+    // Проверка: просрочен ли пароль по сроку действия
     fun isPasswordExpired(): Boolean {
         val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
         return daysSinceChange >= changeIntervalDays
     }
     
-    //  Дней до истечения (может быть отрицательным)
+    // Дней до истечения срока
     fun getDaysUntilExpiry(): Int {
         val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
         return changeIntervalDays - daysSinceChange.toInt()
     }
     
-    //  Статус для цветовой индикации
+    // Статус для UI
     fun getExpiryStatus(): ExpiryStatus {
         return when {
             isPasswordExpired() -> ExpiryStatus.EXPIRED
@@ -78,21 +108,55 @@ data class Entry(
         }
     }
     
-    //  Проверка блокировки
+    // Проверка блокировки
     fun isLocked(): Boolean {
         return System.currentTimeMillis() < lockedUntil
     }
+
+    // --- МЕТОДЫ ДЛЯ РОТАЦИИ ---
+
+    // Нужно ли менять пароль по графику ротации?
+    fun shouldRotateBySchedule(): Boolean {
+        if (!rotationEnabled || lastRotationDate == null) return false
+        val monthsSinceRotation = (System.currentTimeMillis() - lastRotationDate) / 
+            (30L * 24 * 60 * 60 * 1000)
+        return monthsSinceRotation >= rotationPeriodMonths
+    }
+
+    // Добавление хеша текущего пароля в историю
+    fun addToHistory(currentPasswordHash: String): Entry {
+        val currentList = if (passwordHistoryHashes.isBlank()) {
+            emptyList()
+        } else {
+            passwordHistoryHashes.split(",").filter { it.isNotBlank() }
+        }
+        
+        // Храним последние 10 хешей
+        val newList = (currentList + currentPasswordHash).takeLast(10)
+        
+        return copy(
+            passwordHistoryHashes = newList.joinToString(","),
+            lastRotationDate = System.currentTimeMillis(),
+            lastChanged = System.currentTimeMillis()
+        )
+    }
+
+    // Проверка: был ли такой пароль ранее
+    fun isPasswordInHistory(newPassword: String): Boolean {
+        if (passwordHistoryHashes.isBlank()) return false
+        
+        val newHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(newPassword.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+            
+        return passwordHistoryHashes.split(",").contains(newHash)
+    }
     
-    //  Статусы для UI
     enum class ExpiryStatus {
-        OK,
-        WARNING,
-        CRITICAL,
-        EXPIRED
+        OK, WARNING, CRITICAL, EXPIRED
     }
 }
 
-//  Профили (отдельно от класса)
 enum class Profile {
     PERSONAL,
     WORK
