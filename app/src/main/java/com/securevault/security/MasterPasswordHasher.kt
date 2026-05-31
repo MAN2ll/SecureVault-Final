@@ -1,6 +1,7 @@
 package com.securevault.security
 
 import de.mkammerer.argon2.Argon2Factory
+import java.nio.charset.StandardCharsets
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +19,8 @@ class MasterPasswordHasher @Inject constructor() {
     
     fun hash(password: CharArray): String {
         return try {
-            argon2.hash(ITERATIONS, MEMORY_KB, PARALLELISM, password, HASH_LENGTH)
+            // Исправлено: добавлен StandardCharsets.UTF_8
+            argon2.hash(ITERATIONS, MEMORY_KB, PARALLELISM, password, StandardCharsets.UTF_8, HASH_LENGTH)
         } finally {
             clearCharArray(password)
         }
@@ -26,7 +28,7 @@ class MasterPasswordHasher @Inject constructor() {
     
     fun verify(password: CharArray, storedHash: String): Boolean {
         return try {
-            argon2.verify(storedHash, password)
+            argon2.verify(storedHash, password, StandardCharsets.UTF_8)
         } finally {
             clearCharArray(password)
         }
@@ -41,7 +43,8 @@ class MasterPasswordHasher @Inject constructor() {
     }
     
     fun isValidHashFormat(hash: String): Boolean {
-        return hash.startsWith("$argon2id$") && hash.count { it == '$' } >= 4
+        // Исправлено: строковый литерал в кавычках
+        return hash.startsWith("\$argon2id\$") && hash.count { it == '$' } >= 4
     }
     
     fun shouldSelfDestruct(failedAttempts: Int, maxAttempts: Int = 10): Boolean {
