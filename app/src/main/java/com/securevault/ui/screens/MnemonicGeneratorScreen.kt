@@ -296,31 +296,34 @@ private fun DropdownPeriodSelector(
     val periods = listOf(3, 6, 12)
     var expanded by remember { mutableStateOf(false) }
     
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = "$selected мес",
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .weight(1f)
-        )
-        ExposedDropdownMenu(
+    //  Оборачиваем в Box с весом, чтобы избежать конфликта модификаторов
+    Box(modifier = Modifier.weight(1f)) {
+        ExposedDropdownMenuBox(
             expanded = expanded,
-            onDismissRequest = { expanded = false }
+            onExpandedChange = { expanded = !expanded }
         ) {
-            periods.forEach { period ->
-                DropdownMenuItem(
-                    text = { Text("$period мес") },
-                    onClick = {
-                        onSelected(period)
-                        expanded = false
-                    }
-                )
+            OutlinedTextField(
+                value = "$selected мес",
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth() //  Занимает всю ширину Box
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                periods.forEach { period ->
+                    DropdownMenuItem(
+                        text = { Text("$period мес") },
+                        onClick = {
+                            onSelected(period)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
