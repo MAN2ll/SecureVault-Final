@@ -57,4 +57,7 @@ class MasterPasswordHasher @Inject constructor() {
         return hash.startsWith("\$argon2id\$") && hash.count { it == '$' } >= 4
     }
     
-    fun shouldSelfDestruct(failedAttempts: Int
+    fun shouldSelfDestruct(failedAttempts: Int, maxAttempts: Int = 10): Boolean {
+        return failedAttempts >= maxAttempts
+    }
+}
