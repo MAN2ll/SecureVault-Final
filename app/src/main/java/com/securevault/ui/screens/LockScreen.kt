@@ -174,9 +174,9 @@ fun LockScreen(
                         return@Button
                     }
                     
-                    val passwordArray = password.toCharArray()
+                    val isValid = viewModel.verifyPassword(password, storedHash)
                     val storedHash = "stored_hash_placeholder"
-                    val isValid = viewModel.verifyPassword(passwordArray, storedHash)
+                    
                     
                     if (!isValid) {
                         showError = true
