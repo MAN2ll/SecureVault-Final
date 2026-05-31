@@ -2,7 +2,6 @@
 
 package com.securevault.ui.screens
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,37 +19,26 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.ExportManager
 import com.securevault.viewmodel.VaultViewModel
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
-import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportImportScreen(
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel(),
-    exportManager: ExportManager? = null
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showMessage by remember { mutableStateOf<String?>(null) }
     
-    val actualExportManager = exportManager ?: run {
-        val entryPoint = EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            ExportManagerEntryPoint::class.java
-        )
-        entryPoint.exportManager()
-    }
+    val exportManager = remember { ExportManager(context) }
     
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         uri?.let {
             scope.launch {
-                val result = actualExportManager.exportToFile(
+                val result = exportManager.exportToFile(
                     entries = viewModel.entries.value,
                     uri = it,
                     masterPasswordHash = "hash_placeholder"
@@ -68,7 +56,7 @@ fun ExportImportScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val result = actualExportManager.importFromFile(
+                val result = exportManager.importFromFile(
                     uri = it,
                     masterPasswordHash = "hash_placeholder"
                 )
@@ -181,10 +169,4 @@ fun ExportImportScreen(
             }
         }
     }
-}
-
-@ dagger.hilt.EntryPoint
-@InstallIn(SingletonComponent::class)
-interface ExportManagerEntryPoint {
-    fun exportManager(): ExportManager
 }
