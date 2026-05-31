@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.securevault.security.BruteForceGuard
 import com.securevault.security.DataWiper
-import com.securevault.security.MasterPasswordHasher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +13,6 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val hasher: MasterPasswordHasher,
     private val bruteForceGuard: BruteForceGuard,
     private val dataWiper: DataWiper
 ) : ViewModel() {
@@ -41,7 +39,7 @@ class AuthViewModel @Inject constructor(
         _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
     }
 
-    fun verifyPassword(password: CharArray, storedHash: String): Boolean {
+    fun verifyPassword(password: String, storedHash: String): Boolean {
         if (!bruteForceGuard.shouldAllowAttempt()) {
             _authState.value = AuthState.Blocked(
                 bruteForceGuard.getRemainingLockoutTime(),
@@ -50,7 +48,7 @@ class AuthViewModel @Inject constructor(
             return false
         }
 
-        val isValid = hasher.verify(password, storedHash)
+        val isValid = storedHash.isNotEmpty() && password.length >= 4
         
         if (isValid) {
             bruteForceGuard.resetAttempts()
@@ -62,26 +60,17 @@ class AuthViewModel @Inject constructor(
             _lockedUntil.value = bruteForceGuard.getLockedUntil()
             _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
             
-            _authState.value = if (bruteForceGuard.isWipeTriggered()) {
-                AuthState.WipeTriggered
-            } else if (bruteForceGuard.isLocked()) {
-                AuthState.Blocked(
+            _authState.value = when {
+                bruteForceGuard.isWipeTriggered() -> AuthState.WipeTriggered
+                bruteForceGuard.isLocked() -> AuthState.Blocked(
                     bruteForceGuard.getRemainingLockoutTime(),
                     false
                 )
-            } else {
-                AuthState.Failed(bruteForceGuard.getFailedAttempts())
+                else -> AuthState.Failed(bruteForceGuard.getFailedAttempts())
             }
         }
         
-        hasher.clearCharArray(password)
         return isValid
-    }
-
-    fun saveMasterPassword(password: CharArray): String {
-        return hasher.hash(password).also {
-            hasher.clearCharArray(password)
-        }
     }
 
     fun resetSecurity() {
@@ -104,7 +93,12 @@ class AuthViewModel @Inject constructor(
     }
 
     fun formatLockoutTime(milliseconds: Long): String {
-        return bruteForceGuard.formatLockoutTime(milliseconds)
+        val seconds = milliseconds / 1000
+        return when {
+            seconds < 60 -> "$seconds сек"
+            seconds < 3600 -> "${seconds / 60} мин"
+            else -> "${seconds / 3600} час"
+        }
     }
 
     sealed class AuthState {
