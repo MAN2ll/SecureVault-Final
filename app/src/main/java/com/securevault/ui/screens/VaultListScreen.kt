@@ -27,6 +27,7 @@ fun VaultListScreen(
     onAdd: () -> Unit,
     onEdit: (String) -> Unit,
     onLock: () -> Unit,
+    onExport: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
@@ -35,17 +36,35 @@ fun VaultListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(" Vault", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "SecureVault",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 actions = {
+                    IconButton(onClick = onExport) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = "Резервная копия"
+                        )
+                    }
                     IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, "Заблокировать")
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = "Заблокировать"
+                        )
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) {
-                Icon(Icons.Default.Add, "Добавить")
+            FloatingActionButton(
+                onClick = onAdd,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Добавить")
             }
         }
     ) { padding ->
@@ -54,14 +73,12 @@ fun VaultListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            //  ФИЛЬТРЫ: Все / Личные / Рабочие
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                //  Обёртка в Box для корректного weight
                 Box(modifier = Modifier.weight(1f)) {
                     FilterChip(
                         selected = currentFilter == null,
@@ -74,7 +91,7 @@ fun VaultListScreen(
                     FilterChip(
                         selected = currentFilter == Profile.PERSONAL,
                         onClick = { viewModel.setFilter(Profile.PERSONAL) },
-                        label = { Text(" Личные", fontSize = 13.sp) },
+                        label = { Text("Личные", fontSize = 13.sp) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -82,13 +99,12 @@ fun VaultListScreen(
                     FilterChip(
                         selected = currentFilter == Profile.WORK,
                         onClick = { viewModel.setFilter(Profile.WORK) },
-                        label = { Text(" Рабочие", fontSize = 13.sp) },
+                        label = { Text("Рабочие", fontSize = 13.sp) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
 
-            //  СПИСОК ЗАПИСЕЙ
             if (entries.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -120,7 +136,6 @@ fun VaultListScreen(
     }
 }
 
-//  Компонент кнопки-фильтра
 @Composable
 private fun FilterChip(
     selected: Boolean,
@@ -136,10 +151,8 @@ private fun FilterChip(
     )
 }
 
-//  Карточка записи с индикацией срока действия
 @Composable
 fun EntryCard(entry: Entry, onClick: () -> Unit) {
-    //  Цвет границы в зависимости от статуса пароля
     val borderColor = when (entry.getExpiryStatus()) {
         Entry.ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
         Entry.ExpiryStatus.CRITICAL -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
@@ -159,7 +172,6 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Верхняя строка: сервис + кнопка копирования
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -176,12 +188,14 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = { /* TODO: Копировать пароль */ }) {
-                    Icon(Icons.Default.ContentCopy, "Копировать")
+                IconButton(onClick = { }) {
+                    Icon(
+                        Icons.Default.ContentCopy,
+                        contentDescription = "Копировать"
+                    )
                 }
             }
             
-            // Нижняя строка: профиль + статус пароля
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -189,20 +203,18 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Метка профиля
                 Text(
-                    text = if (entry.profile == Profile.WORK) " Работа" else " Личное",
+                    text = if (entry.profile == Profile.WORK) "Работа" else "Личное",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium
                 )
                 
-                //  Индикатор срока действия (показывается только если не OK)
                 if (entry.getExpiryStatus() != Entry.ExpiryStatus.OK) {
                     val statusText = when (entry.getExpiryStatus()) {
-                        Entry.ExpiryStatus.EXPIRED -> " Просрочен"
-                        Entry.ExpiryStatus.CRITICAL -> " $daysUntilExpiry д."
-                        Entry.ExpiryStatus.WARNING -> " $daysUntilExpiry д."
+                        Entry.ExpiryStatus.EXPIRED -> "Просрочен"
+                        Entry.ExpiryStatus.CRITICAL -> "$daysUntilExpiry д."
+                        Entry.ExpiryStatus.WARNING -> "$daysUntilExpiry д."
                         Entry.ExpiryStatus.OK -> ""
                     }
                     Text(
