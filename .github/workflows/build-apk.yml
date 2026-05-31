@@ -1,5 +1,3 @@
-# ✅ ФАЙЛ: .github/workflows/build-apk.yml
-# ✅ ЯЗЫК: YAML
 name: Build APK
 
 on:
@@ -19,19 +17,25 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ✅ ФИКСИРУЕМ ВЕРСИЮ GRADLE
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
         with:
           gradle-version: '8.2'
 
-      # ✅ СОЗДАЁМ WRAPPER, ЕСЛИ НЕТ
       - name: Generate Gradle Wrapper
         run: |
           if [ ! -f gradlew ]; then
             gradle wrapper --gradle-version 8.2
           fi
           chmod +x gradlew
+
+      - name: Clean build cache
+        run: |
+          ./gradlew clean
+          rm -rf app/build/generated
+          rm -rf ~/.gradle/caches/modules-2
+          rm -rf ~/.gradle/caches/transforms-3
+          echo "Cache cleaned successfully"
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
