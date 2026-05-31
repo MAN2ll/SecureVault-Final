@@ -119,7 +119,7 @@ fun SetupScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(
-                text = "⚠️ Если вы забудете мастер-пароль, данные невозможно будет восстановить",
+                text = "Если вы забудете мастер-пароль, данные невозможно будет восстановить",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 8.dp)
