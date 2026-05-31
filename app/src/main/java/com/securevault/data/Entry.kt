@@ -74,6 +74,35 @@ data class Entry(
     fun isLocked(): Boolean {
         return System.currentTimeMillis() < lockedUntil
     }
+        //  Проверка: просрочен ли пароль
+    fun isPasswordExpired(): Boolean {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return daysSinceChange >= changeIntervalDays
+    }
+    
+    //  Сколько дней осталось до истечения (может быть отрицательным)
+    fun getDaysUntilExpiry(): Int {
+        val daysSinceChange = (System.currentTimeMillis() - lastChanged) / (1000 * 60 * 60 * 24)
+        return changeIntervalDays - daysSinceChange.toInt()
+    }
+    
+    //  Статус для отображения в UI
+    fun getExpiryStatus(): ExpiryStatus {
+        return when {
+            isPasswordExpired() -> ExpiryStatus.EXPIRED
+            getDaysUntilExpiry() <= 3 -> ExpiryStatus.CRITICAL
+            getDaysUntilExpiry() <= 7 -> ExpiryStatus.WARNING
+            else -> ExpiryStatus.OK
+        }
+    }
+    
+    // Статус истечения для цветовой индикации
+    enum class ExpiryStatus {
+        OK,         // Зелёный: всё хорошо
+        WARNING,    // Жёлтый: скоро истечёт
+        CRITICAL,   // Оранжевый: очень скоро
+        EXPIRED     // Красный: уже просрочено
+    }
 }
 
 // Профили для разделения
