@@ -86,6 +86,8 @@ dependencies {
     // Argon2
     implementation("de.mkammerer:argon2-jvm:2.11")
 
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
