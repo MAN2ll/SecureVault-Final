@@ -8,24 +8,25 @@ import kotlin.math.abs
 class MnemonicPasswordGenerator {
 
     companion object {
+        // Исправлено: используем String (двойные кавычки) вместо Char
         private val CYRILLIC_TO_LATIN = mapOf(
-            'а' to 'a', 'б' to 'b', 'в' to 'v', 'г' to 'g', 'д' to 'd',
-            'е' to 'e', 'ё' to 'yo', 'ж' to 'zh', 'з' to 'z', 'и' to 'i',
-            'й' to 'y', 'к' to 'k', 'л' to 'l', 'м' to 'm', 'н' to 'n',
-            'о' to 'o', 'п' to 'p', 'р' to 'r', 'с' to 's', 'т' to 't',
-            'у' to 'u', 'ф' to 'f', 'х' to 'kh', 'ц' to 'ts', 'ч' to 'ch',
-            'ш' to 'sh', 'щ' to 'shch', 'ъ' to '', 'ы' to 'y', 'ь' to '',
-            'э' to 'e', 'ю' to 'yu', 'я' to 'ya'
+            'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
+            'е' to "e", 'ё' to "yo", 'ж' to "zh", 'з' to "z", 'и' to "i",
+            'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n",
+            'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+            'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch",
+            'ш' to "sh", 'щ' to "shch", 'ъ' to "", 'ы' to "y", 'ь' to "",
+            'э' to "e", 'ю' to "yu", 'я' to "ya"
         )
 
         private val RUSSIAN_TO_SYMBOL = mapOf(
-            'а' to '@', 'с' to '$', 'о' to '0', 'е' to '3', 'к' to '|<',
-            'р' to '?', 'х' to '#', 'в' to '\\/', 'м' to '|\\/|', 'т' to '+'
+            'а' to "@", 'с' to "$", 'о' to "0", 'е' to "3", 'к' to "|<",
+            'р' to "?", 'х' to "#", 'в' to "\\/", 'м' to "|\\/|", 'т' to "+"
         )
 
         private val LATIN_TO_SYMBOL = mapOf(
-            'a' to '@', 's' to '5', 'i' to '!', 'e' to '3', 'o' to '0',
-            't' to '7', 'b' to '8', 'g' to '9', 'l' to '1', 'z' to '2'
+            'a' to "@", 's' to "5", 'i' to "!", 'e' to "3", 'o' to "0",
+            't' to "7", 'b' to "8", 'g' to "9", 'l' to "1", 'z' to "2"
         )
 
         private const val SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|;:,.<>?"
@@ -90,21 +91,21 @@ class MnemonicPasswordGenerator {
     }
 
     private fun transliterate(text: String): String {
-        return text.lowercase().map { char ->
-            CYRILLIC_TO_LATIN[char] ?: if (char.isLetterOrDigit()) char.toString() else ""
+        return text.lowercase().flatMap { char ->
+            CYRILLIC_TO_LATIN[char]?.toList() ?: if (char.isLetterOrDigit()) listOf(char) else emptyList()
         }.joinToString("")
     }
 
     private fun applyReplacements(text: String, options: GenerationOptions): String {
         var result = text
         if (options.useRussianSymbolReplacement) {
-            result = result.map { char ->
-                RUSSIAN_TO_SYMBOL[char] ?: char.toString()
+            result = result.flatMap { char ->
+                RUSSIAN_TO_SYMBOL[char]?.toList() ?: listOf(char)
             }.joinToString("")
         }
         if (options.useLatinSymbolReplacement) {
-            result = result.map { char ->
-                LATIN_TO_SYMBOL[char.lowercaseChar()] ?: char.toString()
+            result = result.flatMap { char ->
+                LATIN_TO_SYMBOL[char.lowercaseChar()]?.toList() ?: listOf(char)
             }.joinToString("")
         }
         return result
@@ -139,10 +140,10 @@ class MnemonicPasswordGenerator {
             password.length >= targetLength -> password.take(targetLength)
             else -> {
                 var result = password
-                val pool = (if (password.any { it.isUpperCase() }) "A-Z" else "a-z") +
-                          (if (password.any { it.isDigit() }) "0-9" else "") +
-                          (if (password.any { it in SPECIAL_CHARS }) SPECIAL_CHARS else "abc")
-                while (result.length < targetLength) {
+                val pool = (if (password.any { it.isUpperCase() }) "ABCDEFGHIJKLMNOPQRSTUVWXYZ" else "") +
+                          (if (password.any { it.isDigit() }) "0123456789" else "") +
+                          (if (password.any { it in SPECIAL_CHARS }) SPECIAL_CHARS else "abcdefghijklmnopqrstuvwxyz")
+                while (result.length < targetLength && pool.isNotEmpty()) {
                     result += pool.random()
                 }
                 result
@@ -163,6 +164,7 @@ class MnemonicPasswordGenerator {
 
     private fun perturbPassword(password: String, seed: Int): String {
         val chars = password.toCharArray()
+        if (chars.isEmpty()) return password
         val offset = abs(seed * 31) % chars.size
         for (i in chars.indices) {
             val idx = (i + offset) % chars.size
