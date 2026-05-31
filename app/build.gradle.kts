@@ -62,6 +62,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.animation:animation:1.6.0")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
@@ -83,11 +84,11 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Argon2
+    // Argon2 (хеширование мастер-пароля)
     implementation("de.mkammerer:argon2-jvm:2.11")
 
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("androidx.compose.animation:animation:1.6.0")
+    // Document File (для экспорта)
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
