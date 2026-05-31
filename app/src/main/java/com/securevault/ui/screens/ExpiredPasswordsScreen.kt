@@ -30,7 +30,7 @@ fun ExpiredPasswordsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("⚠️ Просроченные пароли", fontWeight = FontWeight.Bold) },
+                title = { Text(" Просроченные пароли", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         androidx.compose.material.icons.Icons.Default.ArrowBack.let {
@@ -48,7 +48,7 @@ fun ExpiredPasswordsScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🎉 Все пароли актуальны!", modifier = Modifier.padding(16.dp))
+                Text(" Все пароли актуальны!", modifier = Modifier.padding(16.dp))
             }
         } else {
             LazyColumn(
