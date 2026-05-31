@@ -13,19 +13,11 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.inject.Inject
-import javax.inject.Singleton
 import android.util.Base64
 import java.security.KeyStore
 
-/**
- *  Менеджер экспорта/импорта в зашифрованный файл .vault
- * Формат: JSON + AES-GCM шифрование
- */
-@Singleton
-class ExportManager @Inject constructor(
-    private val context: Context
-) {
+class ExportManager(private val context: Context) {
+    
     companion object {
         private const val FILE_EXTENSION = ".vault"
         private const val MAGIC_HEADER = "SV_EXPORT_V1"
@@ -39,19 +31,14 @@ class ExportManager @Inject constructor(
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
     }
 
-    /**
-     *  Экспорт списка записей в зашифрованный файл
-     */
     suspend fun exportToFile(
         entries: List<Entry>,
         uri: Uri,
-        masterPasswordHash: String // для привязки экспорта к пользователю
+        masterPasswordHash: String
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
-            // 1. Создаём или получаем ключ для шифрования экспорта
             val exportKey = getOrCreateExportKey()
             
-            // 2. Сериализуем в JSON
             val jsonArray = JSONArray()
             entries.forEach { entry ->
                 jsonArray.put(JSONObject().apply {
@@ -70,18 +57,16 @@ class ExportManager @Inject constructor(
             }
             val json = jsonArray.toString()
             
-            // 3. Шифруем JSON
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, exportKey)
             val iv = cipher.iv
             val encrypted = cipher.doFinal(json.toByteArray())
             
-            // 4. Записываем в файл: заголовок + IV + данные
             val outputStream = context.contentResolver.openOutputStream(uri)
                 ?: return@withContext ExportResult.Error("Не удалось открыть файл")
             
             val writer = OutputStreamWriter(outputStream)
-            writer.appendLine("$MAGIC_HEADER|${masterPasswordHash.take(16)}") // хеш для проверки
+            writer.appendLine("$MAGIC_HEADER|${masterPasswordHash.take(16)}")
             writer.appendLine(Base64.encodeToString(iv + encrypted, Base64.DEFAULT))
             writer.flush()
             writer.close()
@@ -93,9 +78,6 @@ class ExportManager @Inject constructor(
         }
     }
 
-    /**
-     *  Импорт записей из зашифрованного файла
-     */
     suspend fun importFromFile(
         uri: Uri,
         masterPasswordHash: String
@@ -108,18 +90,15 @@ class ExportManager @Inject constructor(
             val lines = reader.readLines()
             reader.close()
             
-            // 1. Проверяем заголовок
             if (lines.isEmpty() || !lines[0].startsWith(MAGIC_HEADER)) {
                 return@withContext ImportResult.Error("Неверный формат файла")
             }
             
-            // 2. Проверяем привязку к мастер-паролю
             val headerParts = lines[0].split("|")
             if (headerParts.size < 2 || headerParts[1] != masterPasswordHash.take(16)) {
                 return@withContext ImportResult.Error("Файл создан другим пользователем")
             }
             
-            // 3. Дешифруем данные
             val exportKey = getOrCreateExportKey()
             val encryptedData = Base64.decode(lines[1], Base64.DEFAULT)
             val iv = encryptedData.copyOfRange(0, IV_SIZE)
@@ -129,7 +108,6 @@ class ExportManager @Inject constructor(
             cipher.init(Cipher.DECRYPT_MODE, exportKey, GCMParameterSpec(128, iv))
             val json = String(cipher.doFinal(ciphertext))
             
-            // 4. Парсим JSON в список Entry
             val jsonArray = JSONArray(json)
             val entries = mutableListOf<Entry>()
             for (i in 0 until jsonArray.length()) {
@@ -158,17 +136,11 @@ class ExportManager @Inject constructor(
         }
     }
 
-    /**
-     * Получает или создаёт ключ для шифрования экспорта
-     */
-    private fun getOrCreateExportKey(): javax.crypto.SecretKey {
+    private fun getOrCreateExportKey(): SecretKey {
         val existing = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
         if (existing != null) return existing.secretKey
 
-        return KeyGenerator.getInstance(
-            javax.crypto.KeyGenerator.getInstance("AES").algorithm, 
-            ANDROID_KEYSTORE
-        ).apply {
+        return KeyGenerator.getInstance("AES", ANDROID_KEYSTORE).apply {
             init(
                 android.security.keystore.KeyGenParameterSpec.Builder(
                     KEY_ALIAS,
@@ -183,17 +155,11 @@ class ExportManager @Inject constructor(
         }.generateKey()
     }
 
-    /**
-     * Результат экспорта
-     */
     sealed class ExportResult {
         data class Success(val count: Int) : ExportResult()
         data class Error(val message: String) : ExportResult()
     }
 
-    /**
-     * Результат импорта
-     */
     sealed class ImportResult {
         data class Success(val entries: List<Entry>) : ImportResult()
         data class Error(val message: String) : ImportResult()
