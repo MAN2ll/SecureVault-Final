@@ -1,6 +1,7 @@
 package com.securevault.viewmodel
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -30,13 +31,18 @@ class AuthViewModel @Inject constructor(
         private const val KEY_SETUP_COMPLETE = "setup_complete"
     }
 
-    // Ленивая инициализация EncryptedSharedPreferences
-    private val prefs: EncryptedSharedPreferences by lazy {
+    // ✅ ИСПРАВЛЕНО: используем обычный тип SharedPreferences + lazy-инициализацию через функцию
+    private val prefs: SharedPreferences by lazy {
+        createEncryptedPrefs()
+    }
+    
+    // Выносим создание в отдельный метод для чистоты кода
+    private fun createEncryptedPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
         
-        EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,
             masterKey,
@@ -45,7 +51,6 @@ class AuthViewModel @Inject constructor(
         )
     }
 
-    // StateFlow для UI
     private val _failedAttempts = MutableStateFlow(0)
     val failedAttempts: StateFlow<Int> = _failedAttempts.asStateFlow()
 
@@ -68,7 +73,7 @@ class AuthViewModel @Inject constructor(
             _lockedUntil.value = bruteForceGuard.getLockedUntil()
             _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
         } catch (e: Exception) {
-            // Игнорируем, чтобы не крашиться при старте
+            // Игнорируем
         }
     }
 
