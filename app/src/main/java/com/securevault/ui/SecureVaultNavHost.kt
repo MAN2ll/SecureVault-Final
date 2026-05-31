@@ -7,6 +7,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
+import com.securevault.utils.ClipboardHelper
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 
 @Composable
 fun SecureVaultNavHost() {
@@ -41,9 +44,11 @@ fun SecureVaultNavHost() {
                 navArgument("id") { nullable = true }
             )
         ) { back ->
+            val context = back.arguments?.getString("mode") ?: "new"
             GeneratorScreen(
                 onGenerated = { navController.popBackStack() },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                clipboardHelper = getClipboardHelper(back)
             )
         }
         
@@ -53,4 +58,19 @@ fun SecureVaultNavHost() {
             )
         }
     }
+}
+
+private fun getClipboardHelper(backStackEntry: androidx.navigation.NavBackStackEntry): ClipboardHelper {
+    val context = backStackEntry.context
+    val entryPoint = EntryPointAccessors.fromApplication(
+        context.applicationContext,
+        ClipboardHelperEntryPoint::class.java
+    )
+    return entryPoint.clipboardHelper()
+}
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(SingletonComponent::class)
+interface ClipboardHelperEntryPoint {
+    fun clipboardHelper(): ClipboardHelper
 }
