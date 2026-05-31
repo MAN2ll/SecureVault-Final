@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.ExportManager
 import com.securevault.viewmodel.VaultViewModel
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.launch
 
