@@ -53,4 +53,135 @@ fun ExportImportScreen(
                     masterPasswordHash = "hash_placeholder"
                 )
                 showMessage = when (result) {
-                    is ExportManager.ExportResult.Success -> "Экспортировано ${result.count}
+                    is ExportManager.ExportResult.Success -> "Экспортировано ${result.count} записей"
+                    is ExportManager.ExportResult.Error -> "Ошибка: ${result.message}"
+                }
+            }
+        }
+    }
+    
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                val result = actualExportManager.importFromFile(
+                    uri = it,
+                    masterPasswordHash = "hash_placeholder"
+                )
+                when (result) {
+                    is ExportManager.ImportResult.Success -> {
+                        result.entries.forEach { entry -> viewModel.insert(entry) }
+                        showMessage = "Импортировано ${result.entries.size} записей"
+                    }
+                    is ExportManager.ImportResult.Error -> {
+                        showMessage = "Ошибка: ${result.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Резервная копия",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { exportLauncher.launch("securevault_backup${System.currentTimeMillis()}.vault") }
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
+                        Column {
+                            Text("Экспорт в файл", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            Text("Создать зашифрованную резервную копию", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { importLauncher.launch("*/*") }
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
+                        Column {
+                            Text("Импорт из файла", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            Text("Восстановить данные из резервной копии", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Файл шифруется ключом устройства",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Привязан к вашему мастер-паролю",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Не передавайте файл третьим лицам",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            
+            showMessage?.let { msg ->
+                Snackbar(
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    action = {
+                        TextButton(onClick = { showMessage = null }) {
+                            Text("OK")
+                        }
+                    }
+                ) {
+                    Text(msg)
+                }
+            }
+        }
+    }
+}
+
+@ dagger.hilt.EntryPoint
+@InstallIn(SingletonComponent::class)
+interface ExportManagerEntryPoint {
+    fun exportManager(): ExportManager
+}
