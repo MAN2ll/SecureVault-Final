@@ -30,13 +30,12 @@ class AuthViewModel @Inject constructor(
         private const val KEY_SETUP_COMPLETE = "setup_complete"
     }
 
-    private val masterKey by lazy {
-        MasterKey.Builder(context)
+    // Ленивая инициализация EncryptedSharedPreferences
+    private val prefs: EncryptedSharedPreferences by lazy {
+        val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-    }
-
-    private val prefs by lazy {
+        
         EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,
@@ -46,6 +45,7 @@ class AuthViewModel @Inject constructor(
         )
     }
 
+    // StateFlow для UI
     private val _failedAttempts = MutableStateFlow(0)
     val failedAttempts: StateFlow<Int> = _failedAttempts.asStateFlow()
 
@@ -68,11 +68,10 @@ class AuthViewModel @Inject constructor(
             _lockedUntil.value = bruteForceGuard.getLockedUntil()
             _wipeTriggered.value = bruteForceGuard.isWipeTriggered()
         } catch (e: Exception) {
-            // Игнорируем ошибки при загрузке, чтобы не крашиться
+            // Игнорируем, чтобы не крашиться при старте
         }
     }
 
-    // ✅ Проверка: завершена ли первоначальная настройка
     fun isSetupComplete(): Boolean {
         return try {
             prefs.getBoolean(KEY_SETUP_COMPLETE, false)
@@ -81,12 +80,14 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    // ✅ Сохранение хеша мастер-пароля при первом запуске
     fun setupMasterPassword(password: String): Boolean {
         return try {
             if (password.length < 4) return false
             
-            val hash = hasher.hash(password.toCharArray())
+            val passwordArray = password.toCharArray()
+            val hash = hasher.hash(passwordArray)
+            hasher.clearCharArray(passwordArray)
+            
             prefs.edit()
                 .putString(KEY_MASTER_HASH, hash)
                 .putBoolean(KEY_SETUP_COMPLETE, true)
@@ -100,7 +101,6 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    // ✅ Проверка пароля с безопасной обработкой
     fun verifyPassword(password: String): Boolean {
         return try {
             if (!bruteForceGuard.shouldAllowAttempt()) {
@@ -117,7 +117,9 @@ class AuthViewModel @Inject constructor(
                 return false
             }
 
-            val isValid = hasher.verify(password.toCharArray(), storedHash)
+            val passwordArray = password.toCharArray()
+            val isValid = hasher.verify(passwordArray, storedHash)
+            hasher.clearCharArray(passwordArray)
             
             if (isValid) {
                 bruteForceGuard.resetAttempts()
