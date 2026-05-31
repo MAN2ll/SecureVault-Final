@@ -73,6 +73,7 @@ fun VaultListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // 🔘 ФИЛЬТРЫ: Все / Личные / Рабочие
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -105,6 +106,7 @@ fun VaultListScreen(
                 }
             }
 
+            // 📋 СПИСОК ЗАПИСЕЙ
             if (entries.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -144,6 +146,7 @@ private fun ProfileFilterChip(
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // ✅ Явно указываем пакет: androidx.compose.material3.FilterChip
     androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
