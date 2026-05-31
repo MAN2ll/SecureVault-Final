@@ -85,7 +85,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // Argon2 (хеширование мастер-пароля)
-    implementation("de.mkammerer:argon2-jvm:2.11")
+    // implementation("de.mkammerer:argon2-jvm:2.11")
 
     // Document File (для экспорта)
     implementation("androidx.documentfile:documentfile:1.0.1")
