@@ -31,12 +31,10 @@ class AuthViewModel @Inject constructor(
         private const val KEY_SETUP_COMPLETE = "setup_complete"
     }
 
-    // ✅ ИСПРАВЛЕНО: используем обычный тип SharedPreferences + lazy-инициализацию через функцию
     private val prefs: SharedPreferences by lazy {
         createEncryptedPrefs()
     }
     
-    // Выносим создание в отдельный метод для чистоты кода
     private fun createEncryptedPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
