@@ -138,7 +138,9 @@ fun VaultListScreen(
     }
 }
 
-// ✅ ИСПРАВЛЕНО: Уникальное имя функции + вызов правильного Material3 компонента
+// ✅ ИСПРАВЛЕНО: 
+// 1. Функция переименована в ProfileFilterChip (уникальное имя)
+// 2. Внутри используется полное имя компонента: androidx.compose.material3.FilterChip
 @Composable
 private fun ProfileFilterChip(
     selected: Boolean,
@@ -146,7 +148,6 @@ private fun ProfileFilterChip(
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // ✅ Явно указываем пакет: androidx.compose.material3.FilterChip
     androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
