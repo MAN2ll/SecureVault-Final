@@ -57,11 +57,11 @@ fun VaultListScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip("Все", currentFilter == null) { viewModel.setFilter(null) }
-                FilterChip("👤 Личные", currentFilter == Profile.PERSONAL) { viewModel.setFilter(Profile.PERSONAL) }
-                FilterChip("💼 Рабочие", currentFilter == Profile.WORK) { viewModel.setFilter(Profile.WORK) }
+                FilterChip(" Личные", currentFilter == Profile.PERSONAL) { viewModel.setFilter(Profile.PERSONAL) }
+                FilterChip(" Рабочие", currentFilter == Profile.WORK) { viewModel.setFilter(Profile.WORK) }
             }
 
-            // 📋 СПИСОК
+            //  СПИСОК
             if (entries.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Нет записей — добавьте первую!", modifier = Modifier.padding(16.dp))
@@ -108,7 +108,7 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
                 Text(text = entry.username, style = MaterialTheme.typography.bodyMedium)
                 //  Метка профиля
                 Text(
-                    text = if (entry.profile == Profile.WORK) "💼 Работа" else "👤 Личное",
+                    text = if (entry.profile == Profile.WORK) " Работа" else " Личное",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 4.dp)
