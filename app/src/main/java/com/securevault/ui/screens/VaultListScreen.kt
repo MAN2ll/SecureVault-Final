@@ -47,8 +47,11 @@ fun VaultListScreen(
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
             //  ФИЛЬТРЫ: Все / Личные / Рабочие
             Row(
                 modifier = Modifier
@@ -56,21 +59,53 @@ fun VaultListScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip("Все", currentFilter == null) { viewModel.setFilter(null) }
-                FilterChip(" Личные", currentFilter == Profile.PERSONAL) { viewModel.setFilter(Profile.PERSONAL) }
-                FilterChip(" Рабочие", currentFilter == Profile.WORK) { viewModel.setFilter(Profile.WORK) }
+                // Обёртка в Box для weight
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == null,
+                        onClick = { viewModel.setFilter(null) },
+                        label = { Text("Все", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == Profile.PERSONAL,
+                        onClick = { viewModel.setFilter(Profile.PERSONAL) },
+                        label = { Text(" Личные", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterChip(
+                        selected = currentFilter == Profile.WORK,
+                        onClick = { viewModel.setFilter(Profile.WORK) },
+                        label = { Text(" Рабочие", fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             //  СПИСОК
             if (entries.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        //  ИСПРАВЛЕНО: padding вместо PaddingValues
+                        .padding(bottom = 80.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text("Нет записей — добавьте первую!", modifier = Modifier.padding(16.dp))
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                        //  ИСПРАВЛЕНО: padding вместо PaddingValues
+                        .padding(bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp, bottom = 80.dp)
+                    contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
                     items(entries, key = { it.id }) { entry ->
                         EntryCard(entry = entry, onClick = { onEdit(entry.id) })
@@ -81,17 +116,6 @@ fun VaultListScreen(
     }
 }
 
-//  Компонент кнопки-фильтра
-@Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, fontSize = 13.sp) },
-        modifier = Modifier.weight(1f)
-    )
-}
-
 @Composable
 fun EntryCard(entry: Entry, onClick: () -> Unit) {
     Card(
@@ -100,7 +124,9 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
