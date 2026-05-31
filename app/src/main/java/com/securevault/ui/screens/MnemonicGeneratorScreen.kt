@@ -81,22 +81,21 @@ fun MnemonicGeneratorScreen(
                 }
             )
 
-            //  Эмодзи поле: вес через Box
+            //  Эмодзи поле: используем fillMaxWidth вместо weight
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    OutlinedTextField(
-                        value = emoji,
-                        onValueChange = { emoji = it },
-                        label = { Text("Эмодзи-подсказка") },
-                        placeholder = { Text("например: авто") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
+                OutlinedTextField(
+                    value = emoji,
+                    onValueChange = { emoji = it },
+                    label = { Text("Эмодзи-подсказка") },
+                    placeholder = { Text("например: авто") },
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f),
+                    singleLine = true
+                )
                 IconButton(
                     onClick = { emoji = "" },
                     enabled = emoji.isNotEmpty()
@@ -109,14 +108,15 @@ fun MnemonicGeneratorScreen(
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Длина: $targetLength", modifier = Modifier.weight(1f))
+                    //  Длина: используем fillMaxWidth вместо weight
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Длина: $targetLength", modifier = Modifier.padding(bottom = 4.dp))
                         Slider(
                             value = targetLength.toFloat(),
                             onValueChange = { targetLength = it.toInt() },
                             valueRange = 8f..20f,
                             steps = 12,
-                            modifier = Modifier.weight(2f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                     
@@ -138,8 +138,9 @@ fun MnemonicGeneratorScreen(
                     SwitchSetting("Добавить дату ротации", enableRotation) { enableRotation = it }
                     
                     if (enableRotation) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Период:", modifier = Modifier.weight(1f))
+                        //  Период: используем Column вместо Row с weight
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Период ротации:", modifier = Modifier.padding(bottom = 4.dp))
                             DropdownPeriodSelector(
                                 selected = rotationPeriod,
                                 onSelected = { rotationPeriod = it }
@@ -210,6 +211,7 @@ fun MnemonicGeneratorScreen(
                 )
             }
 
+            //  Кнопки: используем fillMaxWidth с явными размерами
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -243,7 +245,7 @@ fun MnemonicGeneratorScreen(
                             isGenerating = false
                         }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(0.5f),
                     enabled = !isGenerating && phrase.isNotBlank()
                 ) {
                     if (isGenerating) {
@@ -265,7 +267,7 @@ fun MnemonicGeneratorScreen(
                         }
                     },
                     enabled = generatedResult != null,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth(0.5f)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
@@ -296,34 +298,33 @@ private fun DropdownPeriodSelector(
     val periods = listOf(3, 6, 12)
     var expanded by remember { mutableStateOf(false) }
     
-    //  Вес через Box
-    Box(modifier = Modifier.weight(1f)) {
-        ExposedDropdownMenuBox(
+    //  Полностью убираем weight — используем fillMaxWidth
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = "$selected мес",
+            onValueChange = {},
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
             expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
+            onDismissRequest = { expanded = false }
         ) {
-            OutlinedTextField(
-                value = "$selected мес",
-                onValueChange = {},
-                readOnly = true,
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth()
-            )
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                periods.forEach { period ->
-                    DropdownMenuItem(
-                        text = { Text("$period мес") },
-                        onClick = {
-                            onSelected(period)
-                            expanded = false
-                        }
-                    )
-                }
+            periods.forEach { period ->
+                DropdownMenuItem(
+                    text = { Text("$period мес") },
+                    onClick = {
+                        onSelected(period)
+                        expanded = false
+                    }
+                )
             }
         }
     }
