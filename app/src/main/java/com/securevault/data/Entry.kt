@@ -141,6 +141,31 @@ data class Entry(
         )
     }
 
+    // ... существующие поля ...
+
+    // Дата следующего обновления пароля (для ротации)
+    val nextRotationDate: Long? = null,
+
+    // Дней до напоминания (по умолчанию 7)
+    val reminderDaysBefore: Int = 7,
+
+    // ... в методе create() добавь:
+    nextRotationDate = if (rotationEnabled) {
+        System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+    } else null,
+
+    // ... добавь метод для проверки истечения:
+    fun isRotationDue(): Boolean {
+        return nextRotationDate != null && System.currentTimeMillis() >= nextRotationDate!!
+    }
+
+    fun getDaysUntilRotation(): Int? {
+        return nextRotationDate?.let {
+            val diff = it - System.currentTimeMillis()
+            (diff / (1000 * 60 * 60 * 24)).toInt()
+        }
+    }
+
     // Проверка: был ли такой пароль ранее
     fun isPasswordInHistory(newPassword: String): Boolean {
         if (passwordHistoryHashes.isBlank()) return false
