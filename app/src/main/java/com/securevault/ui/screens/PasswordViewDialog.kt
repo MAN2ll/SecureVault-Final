@@ -1,7 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.securevault.ui.screens
-import androidx.compose.ui.text.input.KeyboardType // ✅ Для KeyboardType
-import com.securevault.utils.PasswordGenerator // ✅ Для генерации пароля
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -40,9 +40,15 @@ fun PasswordViewDialog(
                 Column {
                     Text("Введите мастер-пароль:")
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(input, { input = it }, label = { Text("Мастер-пароль") },
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        label = { Text("Мастер-пароль") },
                         visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(KeyboardType.Password), singleLine = true, isError = error)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        isError = error
+                    )
                     if (error) Text("Неверно", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             } else {
@@ -52,12 +58,18 @@ fun PasswordViewDialog(
                     Spacer(Modifier.height(8.dp))
                     Card {
                         Column(Modifier.padding(12.dp)) {
-                            Text(entry.password, fontSize = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Text(
+                                entry.password,
+                                fontSize = 18.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
                             entry.emojiHint?.let { Text("💡 $it", fontSize = 12.sp) }
                             Divider(Modifier.padding(vertical = 8.dp))
                             Text("Создан: ${fmt(entry.createdAt)}")
                             Text("Обновлён: ${fmt(entry.lastChanged)}")
-                            entry.nextRotationDate?.let { Text("След. смена: ${fmt(it)}", color = MaterialTheme.colorScheme.primary) }
+                            entry.nextRotationDate?.let {
+                                Text("След. смена: ${fmt(it)}", color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }
@@ -65,16 +77,36 @@ fun PasswordViewDialog(
         },
         confirmButton = {
             if (!verified) {
-                Button(onClick = { if (viewModel.verifyPassword(input)) { verified = true; error = false } else error = true }) { Text("Показать") }
+                Button(onClick = {
+                    if (viewModel.verifyPassword(input)) {
+                        verified = true
+                        error = false
+                    } else {
+                        error = true
+                    }
+                }) {
+                    Text("Показать")
+                }
             } else {
                 Button(onClick = {
-                    val newPwd = PasswordGenerator.generate(12, true, true, true).password
+                    val newPwd = PasswordGenerator.generate(
+                        length = 12,
+                        useUpper = true,
+                        useDigits = true,
+                        useSpecial = true
+                    ).password
                     vaultViewModel.updatePassword(entry.id, newPwd)
                     onDismiss()
-                }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(4.dp)); Text("Обновить пароль") }
+                }) {
+                    Icon(Icons.Default.Refresh, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Обновить пароль")
+                }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть") }
+        }
     )
 }
 
