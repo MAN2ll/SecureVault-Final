@@ -64,6 +64,7 @@ fun ReminderScreen(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(e.service, FontWeight.Bold)
+                                // ✅ ИСПРАВЛЕННАЯ СТРОКА:
                                 Text(
                                     text = "Осталось: ${e.getDaysUntilRotation()} д.",
                                     fontSize = 12.sp
