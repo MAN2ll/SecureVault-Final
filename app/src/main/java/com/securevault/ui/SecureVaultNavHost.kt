@@ -20,7 +20,6 @@ fun SecureVaultNavHost() {
                 onSetupRequired = {
                     navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
                 }
-                // ✅ onBiometricRequest убран
             )
         }
         
@@ -34,31 +33,37 @@ fun SecureVaultNavHost() {
         
         composable("main") {
             VaultListScreen(
-                onAdd = { navController.navigate("generator?mode=new") },
-                onEdit = { id -> navController.navigate("generator?mode=edit&id=$id") },
+                onAdd = { navController.navigate("generator") },
+                onEdit = { id -> navController.navigate("generator") },
                 onLock = { navController.navigate("lock") { popUpTo("main") { inclusive = true } } },
                 onExport = { navController.navigate("export") },
-                onThemeChange = { /* TODO: показать диалог темы */ }
+                onThemeChange = { }
             )
         }
         
-        composable("generator?mode={mode}&id={id}") {
+        // ✅ ИСПРАВЛЕНО: Убран onGenerated, оставлен только onBack
+        composable("generator") {
             GeneratorScreen(
-                onGenerated = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )
         }
         
         composable("mnemonic_generator") {
-            MnemonicGeneratorScreen(onBack = { navController.popBackStack() })
+            MnemonicGeneratorScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
         
         composable("export") {
-            ExportImportScreen(onBack = { navController.popBackStack() })
+            ExportImportScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
         
         composable("rotation") {
-            RotationScreen(onBack = { navController.popBackStack() })
+            RotationScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }
