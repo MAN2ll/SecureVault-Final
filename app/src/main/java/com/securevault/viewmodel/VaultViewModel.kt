@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
+import com.securevault.utils.CryptoUtils // ✅ Добавь этот импорт
 import com.securevault.utils.PasswordGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -28,18 +29,31 @@ class VaultViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setFilter(profile: Profile?) { _currentFilter.value = profile }
-
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
     fun update(entry: Entry) = viewModelScope.launch { repository.update(entry) }
     fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
 
-    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
+    // ✅ Методы для ротации (добавлены)
+    fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
+        val newPassword = PasswordGenerator.generate(
+            length = 16,
+            useUpper = true,
+            useDigits = true,
+            useSpecial = true
+        ).password
+        
         val updated = entry.copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
             lastChanged = System.currentTimeMillis(),
-            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+            nextRotationDate = if (entry.rotationEnabled) {
+                System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+            } else null
         )
         repository.update(updated)
+    }
+
+    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
+        ids.forEach { id -> rotatePassword(id) }
     }
 }
