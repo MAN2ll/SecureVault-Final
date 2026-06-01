@@ -3,180 +3,210 @@ package com.securevault.utils
 import android.content.Context
 import android.net.Uri
 import com.securevault.data.Entry
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import com.securevault.data.Profile
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.io.OutputStreamWriter
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
-import android.util.Base64
-import java.security.KeyStore
+import java.text.SimpleDateFormat
+import java.util.*
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class ExportManager(private val context: Context) {
-
+@Singleton
+class ExportManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    
     companion object {
-        private const val MAGIC_HEADER = "SV_EXPORT_V1"
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val IV_SIZE = 12
-        private const val KEY_ALIAS = "SecureVaultExportKey"
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val CSV_HEADER = "id,service,username,encrypted_password,profile,emoji_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,is_favorite,failed_attempts,notes"
+        private const val DATE_FORMAT = "yyyy-MM-dd HH:mm:ss"
     }
-
-    private val keyStore: KeyStore by lazy {
-        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    
+    /**
+     * Экспортирует список записей в CSV-файл
+     * @param entries Список записей для экспорта
+     * @param outputStream Поток для записи файла
+     * @return true если экспорт успешен
+     */
+    fun exportToCsv(entries: List<Entry>, outputStream: OutputStream): Boolean {
+        return try {
+            val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
+            
+            // Заголовок
+            writer.append(CSV_HEADER).append("\n")
+            
+            // Данные
+            entries.forEach { entry ->
+                writer.append(escapeCsv(entry.id)).append(",")
+                writer.append(escapeCsv(entry.service)).append(",")
+                writer.append(escapeCsv(entry.username)).append(",")
+                writer.append(escapeCsv(entry.encryptedPassword)).append(",")
+                writer.append(entry.profile.name).append(",")
+                writer.append(escapeCsv(entry.emojiHint ?: "")).append(",")
+                writer.append(if (entry.rotationEnabled) "1" else "0").append(",")
+                writer.append(entry.rotationPeriodMonths.toString()).append(",")
+                writer.append(entry.nextRotationDate?.toString() ?: "").append(",")
+                writer.append(entry.createdAt.toString()).append(",")
+                writer.append(entry.lastChanged.toString()).append(",")
+                writer.append(if (entry.isFavorite) "1" else "0").append(",")
+                writer.append(entry.failedAttempts.toString()).append(",")
+                writer.append(escapeCsv(entry.notes ?: "")).append("\n")
+            }
+            
+            writer.flush()
+            writer.close()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
-
-    suspend fun exportToFile(
-        entries: List<Entry>,
-        uri: Uri,
-        masterPasswordHash: String
-    ): ExportResult {
-        return withContext(Dispatchers.IO) {
-            try {
-                doExport(entries, uri, masterPasswordHash)
-            } catch (e: Exception) {
-                ExportResult.Error("Ошибка: ${e.message}")
+    
+    /**
+     * Импортирует записи из CSV-файла
+     * @param uri URI файла для импорта
+     * @return Список успешно импортированных записей
+     */
+    fun importFromCsv(uri: Uri): List<Entry> {
+        val importedEntries = mutableListOf<Entry>()
+        
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
+                
+                // Пропускаем заголовок
+                val header = reader.readLine()
+                if (header != CSV_HEADER) {
+                    // Файл не соответствует ожидаемому формату
+                    reader.close()
+                    return emptyList()
+                }
+                
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    try {
+                        val entry = parseCsvLine(line!!, header)
+                        entry?.let { importedEntries.add(it) }
+                    } catch (e: Exception) {
+                        // Пропускаем проблемные строки
+                        continue
+                    }
+                }
+                reader.close()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        return importedEntries
+    }
+    
+    /**
+     * Парсит одну строку CSV в объект Entry
+     */
+    private fun parseCsvLine(line: String, header: String): Entry? {
+        val values = parseCsvValues(line)
+        if (values.size < 14) return null
+        
+        return Entry(
+            id = values[0],
+            service = values[1],
+            username = values[2],
+            encryptedPassword = values[3],
+            profile = Profile.valueOf(values[4]),
+            emojiHint = values[5].takeIf { it.isNotEmpty() },
+            rotationEnabled = values[6] == "1",
+            rotationPeriodMonths = values[7].toIntOrNull() ?: 6,
+            nextRotationDate = values[8].toLongOrNull(),
+            createdAt = values[9].toLongOrNull() ?: System.currentTimeMillis(),
+            lastChanged = values[10].toLongOrNull() ?: System.currentTimeMillis(),
+            isFavorite = values[11] == "1",
+            failedAttempts = values[12].toIntOrNull() ?: 0,
+            notes = values[13].takeIf { it.isNotEmpty() }
+        )
+    }
+    
+    /**
+     * Разбивает строку CSV с учётом кавычек
+     */
+    private fun parseCsvValues(line: String): List<String> {
+        val values = mutableListOf<String>()
+        var current = StringBuilder()
+        var inQuotes = false
+        
+        for (char in line) {
+            when (char) {
+                '"' -> inQuotes = !inQuotes
+                ',' -> if (!inQuotes) {
+                    values.add(unescapeCsv(current.toString()))
+                    current = StringBuilder()
+                } else {
+                    current.append(char)
+                }
+                else -> current.append(char)
             }
         }
-    }
-
-    private fun doExport(
-        entries: List<Entry>,
-        uri: Uri,
-        masterPasswordHash: String
-    ): ExportResult {
-        val exportKey = getOrCreateExportKey()
-        val jsonArray = JSONArray()
+        values.add(unescapeCsv(current.toString()))
         
-        for (entry in entries) {
-            val obj = JSONObject()
-            obj.put("id", entry.id)
-            obj.put("service", entry.service)
-            obj.put("username", entry.username)
-            obj.put("encryptedPassword", entry.encryptedPassword)
-            obj.put("category", entry.category)
-            obj.put("notes", entry.notes)
-            obj.put("isFavorite", entry.isFavorite)
-            obj.put("profile", entry.profile.name)
-            obj.put("createdAt", entry.createdAt)
-            obj.put("lastChanged", entry.lastChanged)
-            obj.put("changeIntervalDays", entry.changeIntervalDays)
-            jsonArray.put(obj)
+        return values
+    }
+    
+    /**
+     * Экранирует значение для CSV (добавляет кавычки при необходимости)
+     */
+    private fun escapeCsv(value: String): String {
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"${value.replace("\"", "\"\"")}\""
         }
-        
-        val json = jsonArray.toString()
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, exportKey)
-        val iv = cipher.iv
-        val encrypted = cipher.doFinal(json.toByteArray())
-        
-        val outputStream = context.contentResolver.openOutputStream(uri)
-            ?: return ExportResult.Error("Не удалось открыть файл")
-            
-        val writer = OutputStreamWriter(outputStream)
-        writer.appendLine("$MAGIC_HEADER|${masterPasswordHash.take(16)}")
-        writer.appendLine(Base64.encodeToString(iv + encrypted, Base64.DEFAULT))
-        writer.flush()
-        writer.close()
-        
-        return ExportResult.Success(entries.size)
+        return value
     }
-
-    suspend fun importFromFile(
-        uri: Uri,
-        masterPasswordHash: String
-    ): ImportResult {
-        return withContext(Dispatchers.IO) {
-            try {
-                doImport(uri, masterPasswordHash)
-            } catch (e: Exception) {
-                ImportResult.Error("Ошибка: ${e.message}")
-            }
+    
+    /**
+     * Деэкранирует значение из CSV
+     */
+    private fun unescapeCsv(value: String): String {
+        if (value.startsWith("\"") && value.endsWith("\"")) {
+            return value.substring(1, value.length - 1).replace("\"\"", "\"")
+        }
+        return value
+    }
+    
+    /**
+     * Генерирует имя файла для экспорта
+     */
+    fun generateExportFilename(): String {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        return "securevault_export_$timestamp.csv"
+    }
+    
+    /**
+     * Фильтрует записи по профилю для экспорта
+     */
+    fun filterByProfile(entries: List<Entry>, profile: Profile?): List<Entry> {
+        return if (profile == null) {
+            entries
+        } else {
+            entries.filter { it.profile == profile }
         }
     }
-
-    private fun doImport(uri: Uri, masterPasswordHash: String): ImportResult {
-        val inputStream = context.contentResolver.openInputStream(uri)
-            ?: return ImportResult.Error("Не удалось открыть файл")
-            
-        val reader = InputStreamReader(inputStream)
-        val lines = reader.readLines()
-        reader.close()
-        
-        if (lines.isEmpty() || !lines[0].startsWith(MAGIC_HEADER)) {
-            return ImportResult.Error("Неверный формат файла")
-        }
-        
-        val headerParts = lines[0].split("|")
-        if (headerParts.size < 2 || headerParts[1] != masterPasswordHash.take(16)) {
-            return ImportResult.Error("Файл создан другим пользователем")
-        }
-        
-        val exportKey = getOrCreateExportKey()
-        val encryptedData = Base64.decode(lines[1], Base64.DEFAULT)
-        val iv = encryptedData.copyOfRange(0, IV_SIZE)
-        val ciphertext = encryptedData.copyOfRange(IV_SIZE, encryptedData.size)
-        
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, exportKey, GCMParameterSpec(128, iv))
-        val json = String(cipher.doFinal(ciphertext))
-        
-        val jsonArray = JSONArray(json)
-        val entries = mutableListOf<Entry>()
-        
-        for (i in 0 until jsonArray.length()) {
-            val obj = jsonArray.getJSONObject(i)
-            val entry = Entry(
-                id = obj.getString("id"),
-                service = obj.getString("service"),
-                username = obj.getString("username"),
-                encryptedPassword = obj.getString("encryptedPassword"),
-                category = obj.optString("category", "general"),
-                notes = obj.optString("notes", ""),
-                isFavorite = obj.optBoolean("isFavorite", false),
-                profile = com.securevault.data.Profile.valueOf(
-                    obj.optString("profile", "PERSONAL")
-                ),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                lastChanged = obj.optLong("lastChanged", System.currentTimeMillis()),
-                changeIntervalDays = obj.optInt("changeIntervalDays", 90)
-            )
-            entries.add(entry)
-        }
-        
-        return ImportResult.Success(entries)
+    
+    /**
+     * Фильтрует просроченные записи
+     */
+    fun filterExpired(entries: List<Entry>): List<Entry> {
+        return entries.filter { it.isPasswordExpired() }
     }
-
-    private fun getOrCreateExportKey(): SecretKey {
-        val existing = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-        if (existing != null) return existing.secretKey
-        
-        return KeyGenerator.getInstance("AES", ANDROID_KEYSTORE).apply {
-            init(
-                android.security.keystore.KeyGenParameterSpec.Builder(
-                    KEY_ALIAS,
-                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
-                    android.security.keystore.KeyProperties.PURPOSE_DECRYPT
-                )
-                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
-            )
-        }.generateKey()
-    }
-
-    sealed class ExportResult {
-        data class Success(val count: Int) : ExportResult()
-        data class Error(val message: String) : ExportResult()
-    }
-
-    sealed class ImportResult {
-        data class Success(val entries: List<Entry>) : ImportResult()
-        data class Error(val message: String) : ImportResult()
+    
+    /**
+     * Фильтрует записи, требующие ротации в ближайшие N дней
+     */
+    fun filterUpcomingRotation(entries: List<Entry>, daysAhead: Int = 7): List<Entry> {
+        return entries.filter { entry ->
+            entry.rotationEnabled && 
+            entry.nextRotationDate != null && 
+            entry.getDaysUntilExpiry() in 0..daysAhead
+        }
     }
 }
