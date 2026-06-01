@@ -29,7 +29,7 @@
             android:exported="false"
             android:enabled="true">
             <intent-filter>
-                <action android:name="com.securevault.REMINDER" />
+                <action android:name="com.securevault.PASSWORD_REMINDER" />
             </intent-filter>
         </receiver>
         <!-- Разрешение на установку будильников (для Android 12+) -->
