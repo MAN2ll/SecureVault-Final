@@ -5,7 +5,6 @@ import com.securevault.data.Profile
 import java.util.*
 
 class Converters {
-    
     @TypeConverter
     fun fromTimestamp(value: Long?): Date? = value?.let { Date(it) }
     
