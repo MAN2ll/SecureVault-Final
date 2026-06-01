@@ -25,63 +25,75 @@ import kotlinx.coroutines.launch
 @Composable
 fun ExportImportScreen(
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    exportManager: ExportManager = ExportManager(LocalContext.current)
 ) {
+    var showExportSuccess by remember { mutableStateOf(false) }
+    var showExportError by remember { mutableStateOf<String?>(null) }
+    var showImportSuccess by remember { mutableStateOf(false) }
+    var showImportError by remember { mutableStateOf<String?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+    
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var showMessage by remember { mutableStateOf<String?>(null) }
     
-    val exportManager = remember { ExportManager(context) }
-    
+    // Лаунчер для выбора файла экспорта
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                val result = exportManager.exportToFile(
-                    entries = viewModel.entries.value,
-                    uri = it,
-                    masterPasswordHash = "hash_placeholder"
-                )
-                showMessage = when (result) {
-                    is ExportManager.ExportResult.Success -> "Экспортировано ${result.count} записей"
-                    is ExportManager.ExportResult.Error -> "Ошибка: ${result.message}"
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                isProcessing = true
+                scope.launch {
+                    try {
+                        val entries = viewModel.entries.value
+                        val success = exportManager.exportToCsv(entries, context.contentResolver.openOutputStream(it)!!)
+                        if (success) {
+                            showExportSuccess = true
+                        } else {
+                            showExportError = "Ошибка записи файла"
+                        }
+                    } catch (e: Exception) {
+                        showExportError = "Ошибка: ${e.message}"
+                    } finally {
+                        isProcessing = false
+                    }
                 }
             }
         }
-    }
+    )
     
+    // Лаунчер для выбора файла импорта
     val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                val result = exportManager.importFromFile(
-                    uri = it,
-                    masterPasswordHash = "hash_placeholder"
-                )
-                when (result) {
-                    is ExportManager.ImportResult.Success -> {
-                        result.entries.forEach { entry -> viewModel.insert(entry) }
-                        showMessage = "Импортировано ${result.entries.size} записей"
-                    }
-                    is ExportManager.ImportResult.Error -> {
-                        showMessage = "Ошибка: ${result.message}"
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                isProcessing = true
+                scope.launch {
+                    try {
+                        val importedEntries = exportManager.importFromCsv(it)
+                        if (importedEntries.isNotEmpty()) {
+                            // Сохраняем импортированные записи
+                            importedEntries.forEach { entry ->
+                                viewModel.insert(entry)
+                            }
+                            showImportSuccess = true
+                        } else {
+                            showImportError = "Не найдено записей для импорта"
+                        }
+                    } catch (e: Exception) {
+                        showImportError = "Ошибка: ${e.message}"
+                    } finally {
+                        isProcessing = false
                     }
                 }
             }
         }
-    }
+    )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Резервная копия",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Экспорт / Импорт", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -95,78 +107,119 @@ fun ExportImportScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { exportLauncher.launch("securevault_backup${System.currentTimeMillis()}.vault") }
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
-                        Column {
-                            Text("Экспорт в файл", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                            Text("Создать зашифрованную резервную копию", fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { importLauncher.launch("*/*") }
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 12.dp))
-                        Column {
-                            Text("Импорт из файла", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                            Text("Восстановить данные из резервной копии", fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
+            // 📤 ЭКСПОРТ
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Экспорт данных", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "Файл шифруется ключом устройства",
-                        fontSize = 12.sp,
+                        "Сохраните все пароли в CSV-файл для резервного копирования",
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        "Привязан к вашему мастер-паролю",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        "Не передавайте файл третьим лицам",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val filename = exportManager.generateExportFilename()
+                            exportLauncher.launch(filename)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isProcessing
+                    ) {
+                        Icon(Icons.Default.Upload, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Экспортировать в CSV")
+                    }
                 }
             }
             
-            showMessage?.let { msg ->
-                Snackbar(
-                    modifier = Modifier.padding(bottom = 8.dp),
-                    action = {
-                        TextButton(onClick = { showMessage = null }) {
-                            Text("OK")
-                        }
+            // 📥 ИМПОРТ
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Импорт данных", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Восстановите пароли из ранее сохранённого CSV-файла",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            importLauncher.launch(arrayOf("text/csv"))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isProcessing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Импортировать из CSV")
                     }
-                ) {
-                    Text(msg)
+                }
+            }
+            
+            // Статус обработки
+            if (isProcessing) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text("Обработка...", fontSize = 14.sp)
                 }
             }
         }
+    }
+    
+    // ✅ Диалог успеха экспорта
+    if (showExportSuccess) {
+        AlertDialog(
+            onDismissRequest = { showExportSuccess = false },
+            title = { Text("Экспорт завершён") },
+            text = { Text("Файл успешно сохранён. Храните его в безопасном месте!") },
+            confirmButton = {
+                TextButton(onClick = { showExportSuccess = false }) { Text("OK") }
+            }
+        )
+    }
+    
+    // ✅ Диалог ошибки экспорта
+    showExportError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { showExportError = null },
+            title = { Text("Ошибка экспорта") },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { showExportError = null }) { Text("Закрыть") }
+            }
+        )
+    }
+    
+    // ✅ Диалог успеха импорта
+    if (showImportSuccess) {
+        AlertDialog(
+            onDismissRequest = { showImportSuccess = false },
+            title = { Text("Импорт завершён") },
+            text = { Text("Записи успешно добавлены в хранилище.") },
+            confirmButton = {
+                TextButton(onClick = { showImportSuccess = false }) { Text("OK") }
+            }
+        )
+    }
+    
+    // ✅ Диалог ошибки импорта
+    showImportError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { showImportError = null },
+            title = { Text("Ошибка импорта") },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { showImportError = null }) { Text("Закрыть") }
+            }
+        )
     }
 }
