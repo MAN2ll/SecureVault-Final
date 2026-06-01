@@ -1,15 +1,22 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-import androidx.compose.ui.graphics.Color  // ✅ Для Color(0xFF2E7D32)
-import androidx.compose.ui.Modifier  // ✅ Для .background()
+
+// ✅ FOUNDATION
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+
+// ✅ MATERIAL3
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+
+// ✅ RUNTIME
 import androidx.compose.runtime.*
+
+// ✅ UI (ТОЛЬКО ПО ОДНОМУ РАЗУ!)
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,12 +24,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+// ✅ HILT
 import androidx.hilt.navigation.compose.hiltViewModel
+
+// ✅ PROJECT
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
+
+// ✅ COROUTINES
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -259,7 +272,7 @@ fun GeneratorScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
-                            .background(MaterialTheme.colorScheme.inverseSurface, MaterialTheme.shapes.small)
+                            .background(color = MaterialTheme.colorScheme.inverseSurface, shape = MaterialTheme.shapes.small)
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
