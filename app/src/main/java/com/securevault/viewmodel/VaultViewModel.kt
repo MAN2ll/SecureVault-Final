@@ -5,19 +5,15 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
-import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
-import com.securevault.utils.PasswordReminderManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
-    private val repository: VaultRepository,
-    private val reminderManager: PasswordReminderManager
+    private val repository: VaultRepository
 ) : ViewModel() {
 
     private val _currentFilter = MutableStateFlow<Profile?>(null)
@@ -42,8 +38,6 @@ class VaultViewModel @Inject constructor(
         }
         flow.collect { list ->
             _entries.value = list
-            // Проверяем напоминания при каждой загрузке списка
-            reminderManager.checkAndNotify(list)
         }
     }
 
@@ -59,15 +53,11 @@ class VaultViewModel @Inject constructor(
         repository.delete(entry)
     }
 
-    // === ЛОГИКА РОТАЦИИ ===
+    // === РОТАЦИЯ ПАРОЛЕЙ ===
 
-    /**
-     * Обновляет один конкретный пароль
-     */
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
         
-        // Генерируем новый сложный пароль
         val newPassword = PasswordGenerator.generate(
             PasswordGenerator.GeneratorOptions(
                 length = 16,
@@ -77,28 +67,20 @@ class VaultViewModel @Inject constructor(
             )
         ).password
 
-        val newEncryptedPassword = CryptoUtils.encrypt(newPassword)
-        
-        // Рассчитываем новую дату следующей ротации (текущее время + период)
+        val newEncryptedPassword = com.securevault.utils.CryptoUtils.encrypt(newPassword)
         val periodMillis = entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000
-        val newNextRotationDate = System.currentTimeMillis() + periodMillis
-
+        
         val updatedEntry = entry.copy(
             encryptedPassword = newEncryptedPassword,
             lastChanged = System.currentTimeMillis(),
-            nextRotationDate = newNextRotationDate,
-            failedAttempts = 0 // Сброс попыток при смене
+            nextRotationDate = System.currentTimeMillis() + periodMillis,
+            failedAttempts = 0
         )
 
         repository.update(updatedEntry)
     }
 
-    /**
-     * Массовое обновление паролей по списку ID
-     */
     fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        ids.forEach { id ->
-            rotatePassword(id)
-        }
+        ids.forEach { id -> rotatePassword(id) }
     }
 }
