@@ -26,9 +26,6 @@ class ExportManager @Inject constructor(
     
     /**
      * Экспортирует список записей в CSV-файл
-     * @param entries Список записей для экспорта
-     * @param outputStream Поток для записи файла
-     * @return true если экспорт успешен
      */
     fun exportToCsv(entries: List<Entry>, outputStream: OutputStream): Boolean {
         return try {
@@ -66,8 +63,6 @@ class ExportManager @Inject constructor(
     
     /**
      * Импортирует записи из CSV-файла
-     * @param uri URI файла для импорта
-     * @return Список успешно импортированных записей
      */
     fun importFromCsv(uri: Uri): List<Entry> {
         val importedEntries = mutableListOf<Entry>()
@@ -79,7 +74,6 @@ class ExportManager @Inject constructor(
                 // Пропускаем заголовок
                 val header = reader.readLine()
                 if (header != CSV_HEADER) {
-                    // Файл не соответствует ожидаемому формату
                     reader.close()
                     return emptyList()
                 }
@@ -90,7 +84,6 @@ class ExportManager @Inject constructor(
                         val entry = parseCsvLine(line!!, header)
                         entry?.let { importedEntries.add(it) }
                     } catch (e: Exception) {
-                        // Пропускаем проблемные строки
                         continue
                     }
                 }
@@ -154,7 +147,7 @@ class ExportManager @Inject constructor(
     }
     
     /**
-     * Экранирует значение для CSV (добавляет кавычки при необходимости)
+     * Экранирует значение для CSV
      */
     private fun escapeCsv(value: String): String {
         if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
@@ -173,9 +166,7 @@ class ExportManager @Inject constructor(
         return value
     }
     
-    /**
-     * Генерирует имя файла для экспорта
-     */
+    // ✅ ВОТ ЭТА ФУНКЦИЯ: Генерирует имя файла для экспорта
     fun generateExportFilename(): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         return "securevault_export_$timestamp.csv"
@@ -185,11 +176,7 @@ class ExportManager @Inject constructor(
      * Фильтрует записи по профилю для экспорта
      */
     fun filterByProfile(entries: List<Entry>, profile: Profile?): List<Entry> {
-        return if (profile == null) {
-            entries
-        } else {
-            entries.filter { it.profile == profile }
-        }
+        return if (profile == null) entries else entries.filter { it.profile == profile }
     }
     
     /**
