@@ -1,6 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 package com.securevault.ui.screens
-
+import androidx.compose.ui.text.input.KeyboardType // ✅ Для KeyboardType
+import com.securevault.utils.PasswordGenerator // ✅ Для генерации пароля
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
