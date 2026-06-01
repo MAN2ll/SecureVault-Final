@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 package com.securevault.ui.screens
-
+import androidx.compose.ui.unit.sp // ✅ Для .sp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
