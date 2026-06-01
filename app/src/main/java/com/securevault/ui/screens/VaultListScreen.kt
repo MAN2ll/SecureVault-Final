@@ -55,6 +55,10 @@ fun VaultListScreen(
                             contentDescription = "Заблокировать"
                         )
                     }
+                     // 🎨 Кнопка смены темы
+                    IconButton(onClick = { /* показать диалог выбора темы */ }) {
+                        Icon(Icons.Default.BrightnessMedium, contentDescription = "Тема")
+                    }
                 }
             )
         },
