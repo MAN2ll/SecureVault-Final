@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack  // ✅ Простой импорт
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,24 +25,17 @@ fun ExpiredPasswordsScreen(
     onEdit: (String) -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val expiredEntries by viewModel.expiredEntries.collectAsState()
+    // ✅ ИСПРАВЛЕНО: используем entries + фильтруем просроченные
+    val allEntries by viewModel.entries.collectAsState()
+    val expiredEntries = allEntries.filter { it.isPasswordExpired() }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Просроченные пароли",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Просроченные пароли", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        // ✅ Используем простую иконку без AutoMirrored
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Назад"
-                        )
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                     }
                 }
             )
@@ -50,25 +43,18 @@ fun ExpiredPasswordsScreen(
     ) { padding ->
         if (expiredEntries.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "Все пароли актуальны!",
-                    modifier = Modifier.padding(16.dp)
-                )
+                Text("Все пароли актуальны!", modifier = Modifier.padding(16.dp))
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
+                // ✅ ИСПРАВЛЕНО: key = { it.id } и передача id в onEdit
                 items(expiredEntries, key = { it.id }) { entry ->
                     ExpiredEntryCard(entry = entry, onClick = { onEdit(entry.id) })
                 }
@@ -82,14 +68,10 @@ fun ExpiredEntryCard(entry: Entry, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
