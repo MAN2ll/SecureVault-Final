@@ -1,39 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- ✅ РАЗРЕШЕНИЯ — ДО тега <application> -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".SecureVaultApp"
-        android:allowBackup="false"
-        android:icon="@android:drawable/ic_lock_lock"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@android:drawable/ic_lock_lock"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SecureVault">
+        android:theme="@style/Theme.SecureVault"
+        tools:targetApi="34">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:theme="@style/Theme.SecureVault">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ✅ BroadcastReceiver — ВНУТРИ <application> -->
         <receiver 
-            android:name=".receiver.ReminderReceiver"
+            android:name=".receiver.PasswordReminderReceiver"
             android:exported="false"
             android:enabled="true">
             <intent-filter>
-                <action android:name="com.securevault.PASSWORD_REMINDER" />
+                <action android:name="com.securevault.action.PASSWORD_REMINDER" />
             </intent-filter>
         </receiver>
-        <!-- Разрешение на установку будильников (для Android 12+) -->
-        <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-        <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     </application>
 </manifest>
