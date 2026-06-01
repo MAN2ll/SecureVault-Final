@@ -4,10 +4,10 @@ package com.securevault.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 
 // === MATERIAL3 ===
 import androidx.compose.material3.MaterialTheme
@@ -38,23 +38,23 @@ fun PasswordStrengthIndicator(
         PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF2E7D32)
     }
     
-    val fillFraction = when (strength) {
-        PasswordGenerator.Strength.WEAK -> 0.25f
-        PasswordGenerator.Strength.MEDIUM -> 0.5f
-        PasswordGenerator.Strength.STRONG -> 0.75f
-        PasswordGenerator.Strength.VERY_STRONG -> 1f
+    val barWidth = when (strength) {
+        PasswordGenerator.Strength.WEAK -> 60.dp
+        PasswordGenerator.Strength.MEDIUM -> 120.dp
+        PasswordGenerator.Strength.STRONG -> 180.dp
+        PasswordGenerator.Strength.VERY_STRONG -> 240.dp
     }
     
     Column(modifier = modifier) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .width(240.dp)
                 .height(6.dp)
                 .background(color = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize(fillFraction)
+                    .width(barWidth)
                     .height(6.dp)
                     .background(color = colorHex)
             )
