@@ -19,68 +19,27 @@ class VaultViewModel @Inject constructor(
     private val _currentFilter = MutableStateFlow<Profile?>(null)
     val currentFilter: StateFlow<Profile?> = _currentFilter.asStateFlow()
 
-    private val _entries = MutableStateFlow<List<Entry>>(emptyList())
-    val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
+    val entries: StateFlow<List<Entry>> = repository.allEntries
+        .map { list ->
+            when (val profile = _currentFilter.value) {
+                null -> list
+                else -> list.filter { it.profile == profile }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    init {
-        loadEntries()
-    }
+    fun setFilter(profile: Profile?) { _currentFilter.value = profile }
 
-    fun setFilter(profile: Profile?) {
-        _currentFilter.value = profile
-        loadEntries()
-    }
+    fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
+    fun update(entry: Entry) = viewModelScope.launch { repository.update(entry) }
+    fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
 
-    private fun loadEntries() = viewModelScope.launch {
-        val flow = when (val profile = _currentFilter.value) {
-            null -> repository.allEntries
-            else -> repository.getEntriesByProfile(profile)
-        }
-        flow.collect { list ->
-            _entries.value = list
-        }
-    }
-
-    fun insert(entry: Entry) = viewModelScope.launch {
-        repository.insert(entry)
-    }
-
-    fun update(entry: Entry) = viewModelScope.launch {
-        repository.update(entry)
-    }
-
-    fun delete(entry: Entry) = viewModelScope.launch {
-        repository.delete(entry)
-    }
-
-    // === РОТАЦИЯ ПАРОЛЕЙ ===
-
-    fun rotatePassword(id: String) = viewModelScope.launch {
+    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
-        
-        val newPassword = PasswordGenerator.generate(
-            PasswordGenerator.GeneratorOptions(
-                length = 16,
-                useUppercase = true,
-                useDigits = true,
-                useSpecial = true
-            )
-        ).password
-
-        val newEncryptedPassword = com.securevault.utils.CryptoUtils.encrypt(newPassword)
-        val periodMillis = entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000
-        
-        val updatedEntry = entry.copy(
-            encryptedPassword = newEncryptedPassword,
+        val updated = entry.copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
             lastChanged = System.currentTimeMillis(),
-            nextRotationDate = System.currentTimeMillis() + periodMillis,
-            failedAttempts = 0
+            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
         )
-
-        repository.update(updatedEntry)
-    }
-
-    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        ids.forEach { id -> rotatePassword(id) }
+        repository.update(updated)
     }
 }
