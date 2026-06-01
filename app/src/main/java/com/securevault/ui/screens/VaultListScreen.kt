@@ -105,13 +105,15 @@ fun VaultListScreen(
     }
 }
 
+// ✅ Просто скопируй и вставь вместо старой функции:
 @Composable
-private fun ProfileFilterChip(
+private fun ProfileFilterChip(  // ← Имя изменено!
     selected: Boolean,
     onClick: () -> Unit,
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // ✅ Явно вызываем стандартный компонент Material3:
     androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
@@ -119,7 +121,6 @@ private fun ProfileFilterChip(
         modifier = modifier
     )
 }
-
 @Composable
 fun EntryCard(entry: Entry, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
