@@ -1,6 +1,5 @@
 package com.securevault.ui.components
 
-// === FOUNDATION ===
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,23 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-
-// === MATERIAL3 ===
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-
-// === RUNTIME ===
 import androidx.compose.runtime.Composable
-
-// === UI ===
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// === PROJECT ===
 import com.securevault.utils.PasswordGenerator
 
 @Composable
@@ -33,7 +24,6 @@ fun AnimatedPasswordStrength(
     strength: PasswordGenerator.Strength,
     modifier: Modifier = Modifier
 ) {
-    // Цвет и ширина в зависимости от надёжности (без анимации)
     val strengthColor = when (strength) {
         PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
         PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
@@ -51,15 +41,12 @@ fun AnimatedPasswordStrength(
     Column(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Надёжность:", fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
-            
-            // Фон шкалы
             Box(
                 modifier = Modifier
                     .width(240.dp)
                     .height(6.dp)
                     .background(color = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                // Заполнение шкалы
                 Box(
                     modifier = Modifier
                         .width(barWidth)
@@ -68,8 +55,6 @@ fun AnimatedPasswordStrength(
                 )
             }
         }
-        
-        // Текст статуса
         Text(
             text = strength.name,
             fontSize = 12.sp,
