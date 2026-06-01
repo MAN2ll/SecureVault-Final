@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ✅ РАЗРЕШЕНИЯ — СТРОГО ДО тега <application> -->
+    <!-- Разрешения — СТРОГО до тега <application> -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -12,17 +12,13 @@
     <application
         android:name=".SecureVaultApp"
         android:allowBackup="true"
-        
-        <!-- ✅ ИСПРАВЛЕНО: Используем системную иконку, так как mipmap/ic_launcher отсутствует -->
         android:icon="@android:drawable/ic_menu_lock"
         android:roundIcon="@android:drawable/ic_menu_lock"
-        
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureVault"
         tools:targetApi="34">
 
-        <!-- Главная активность -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -34,8 +30,8 @@
             </intent-filter>
         </activity>
 
-        <!-- ✅ BroadcastReceiver для напоминаний о паролях (ВНУТРИ application) -->
-        <receiver 
+        <!-- BroadcastReceiver для напоминаний -->
+        <receiver
             android:name=".receiver.PasswordReminderReceiver"
             android:exported="false"
             android:enabled="true">
