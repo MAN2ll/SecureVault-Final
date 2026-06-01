@@ -1,96 +1,61 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+package com.securevault.ui.components
 
-package com.securevault.ui.screens
-
-// === FOUNDATION ===
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-
-// === MATERIAL3 ===
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-
-// === RUNTIME ===
-import androidx.compose.runtime.*
-
-// === UI ===
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// === HILT ===
-import androidx.hilt.navigation.compose.hiltViewModel
-
-// === PROJECT ===
-import com.securevault.data.Entry
 import com.securevault.utils.PasswordGenerator
-import com.securevault.viewmodel.VaultViewModel
 
 @Composable
-fun ReminderScreen(
-    onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+fun PasswordStrengthIndicator(
+    strength: PasswordGenerator.Strength,
+    modifier: Modifier = Modifier
 ) {
-    val all by viewModel.entries.collectAsState()
-    val upcoming = remember(all) {
-        all.filter { e ->
-            e.rotationEnabled && e.nextRotationDate != null &&
-            (e.getDaysUntilRotation() ?: Int.MAX_VALUE) in 0..7
-        }
+    val colorHex = when (strength) {
+        PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
+        PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
+        PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
+        PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF2E7D32)
     }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Напоминания") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
-                }
+    
+    val barWidth = when (strength) {
+        PasswordGenerator.Strength.WEAK -> 60.dp
+        PasswordGenerator.Strength.MEDIUM -> 120.dp
+        PasswordGenerator.Strength.STRONG -> 180.dp
+        PasswordGenerator.Strength.VERY_STRONG -> 240.dp
+    }
+    
+    Column(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .width(240.dp)
+                .height(6.dp)
+                .background(color = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(barWidth)
+                    .height(6.dp)
+                    .background(color = colorHex)
             )
         }
-    ) { padding ->
-        if (upcoming.isEmpty()) {
-            Box(
-                Modifier.fillMaxSize().padding(padding),
-                Alignment.Center
-            ) {
-                Text("Нет предстоящих смен паролей")
-            }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(upcoming, key = { it.id }) { e ->
-                    Card {
-                        Row(
-                            Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(e.service, FontWeight.Bold)
-                                // ✅ ИСПРАВЛЕНО: только именованные параметры
-                                Text(
-                                    text = "Осталось: ${e.getDaysUntilRotation()} д.",
-                                    fontSize = 12.sp
-                                )
-                            }
-                            TextButton({
-                                viewModel.updatePassword(
-                                    e.id,
-                                    PasswordGenerator.generate(12, true, true, true).password
-                                )
-                            }) {
-                                Text("Обновить")
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        Text(
+            text = strength.name,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = colorHex,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
