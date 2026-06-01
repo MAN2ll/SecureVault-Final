@@ -14,15 +14,11 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Включаем отображение контента на весь экран (под статус-бар)
         enableEdgeToEdge()
         
         setContent {
-            // SecureVaultTheme автоматически подстраивается под тему системы
             SecureVaultTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
