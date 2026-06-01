@@ -1,19 +1,19 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-import androidx.compose.foundation.layout.weight  // ✅ ЭТО ИСПРАВЛЯЕТ ОШИБКУ
-// === FOUNDATION ===
+
+// === FOUNDATION — БЕЗ weight() ===
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 
-// === MATERIAL3 — ТОЛЬКО ЭТИ ИМПОРТЫ ===
+// === MATERIAL3 — ЯВНЫЕ ИМПОРТЫ ===
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -84,19 +84,26 @@ fun ReminderScreen(    onBack: () -> Unit,
             ) {
                 items(upcoming, key = { it.id }) { e ->
                     Card {
+                        // ✅ ИСПРАВЛЕНО: Используем Arrangement.SpaceBetween вместо weight()
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = e.service, fontWeight = FontWeight.Bold)
-                                // ✅ ИСПРАВЛЕНО: ЯВНЫЙ ВЫЗОВ ФУНКЦИИ С ПОЛНЫМ ИМЕНЕМ
-                                androidx.compose.material3.Text(
+                            // Левая часть: сервис + дата
+                            Column(
+                                modifier = Modifier.fillMaxWidth(0.7f)
+                            ) {
+                                Text(text = e.service, fontWeight = FontWeight.Bold)                                Text(
                                     text = "Осталось: ${e.getDaysUntilRotation()?.toString() ?: "—"} д.",
                                     fontSize = 12.sp
                                 )
                             }
-                            TextButton(onClick = {                                viewModel.updatePassword(
+                            // Правая часть: кнопка
+                            TextButton(onClick = {
+                                viewModel.updatePassword(
                                     e.id,
                                     PasswordGenerator.generate(12, true, true, true).password
                                 )
