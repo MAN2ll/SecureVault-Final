@@ -28,6 +28,7 @@ fun VaultListScreen(
     onEdit: (String) -> Unit,
     onLock: () -> Unit,
     onExport: () -> Unit,
+    onThemeChange: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
@@ -36,52 +37,29 @@ fun VaultListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "SecureVault",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onThemeChange) {
+                        Icon(Icons.Default.BrightnessMedium, contentDescription = "Тема")
+                    }
                     IconButton(onClick = onExport) {
-                        Icon(
-                            Icons.Default.Share,
-                            contentDescription = "Резервная копия"
-                        )
+                        Icon(Icons.Default.Share, contentDescription = "Экспорт")
                     }
                     IconButton(onClick = onLock) {
-                        Icon(
-                            Icons.Default.Lock,
-                            contentDescription = "Заблокировать"
-                        )
-                    }
-                     // 🎨 Кнопка смены темы
-                    IconButton(onClick = { /* показать диалог выбора темы */ }) {
-                        Icon(Icons.Default.BrightnessMedium, contentDescription = "Тема")
+                        Icon(Icons.Default.Lock, contentDescription = "Замок")
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAdd,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
+            FloatingActionButton(onClick = onAdd) {
                 Icon(Icons.Default.Add, contentDescription = "Добавить")
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // 🔘 ФИЛЬТРЫ: Все / Личные / Рабочие
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(modifier = Modifier.weight(1f)) {
@@ -110,26 +88,13 @@ fun VaultListScreen(
                 }
             }
 
-            // 📋 СПИСОК ЗАПИСЕЙ
             if (entries.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 80.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Нет записей — добавьте первую!",
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box(modifier = Modifier.fillMaxSize().padding(bottom = 80.dp), contentAlignment = Alignment.Center) {
+                    Text("Нет записей — добавьте первую!", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 80.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
@@ -142,9 +107,7 @@ fun VaultListScreen(
     }
 }
 
-// ✅ ИСПРАВЛЕНО: 
-// 1. Функция переименована в ProfileFilterChip (уникальное имя)
-// 2. Внутри используется полное имя компонента: androidx.compose.material3.FilterChip
+// ✅ ИСПРАВЛЕНО: Уникальное имя + явный вызов Material3 компонента
 @Composable
 private fun ProfileFilterChip(
     selected: Boolean,
@@ -173,64 +136,30 @@ fun EntryCard(entry: Entry, onClick: () -> Unit) {
 
     Card(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        modifier = Modifier.fillMaxWidth().border(2.dp, borderColor, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = entry.service,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = entry.username,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Text(text = entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { }) {
-                    Icon(
-                        Icons.Default.ContentCopy,
-                        contentDescription = "Копировать"
-                    )
+                IconButton(onClick = { /* копирование */ }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
                 }
             }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (entry.profile == Profile.WORK) "Работа" else "Личное",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium
-                )
-
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(text = if (entry.profile == Profile.WORK) "Работа" else "Личное", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
                 if (entry.getExpiryStatus() != Entry.ExpiryStatus.OK) {
-                    val statusText = when (entry.getExpiryStatus()) {
-                        Entry.ExpiryStatus.EXPIRED -> "Просрочен"
-                        Entry.ExpiryStatus.CRITICAL -> "$daysUntilExpiry д."
-                        Entry.ExpiryStatus.WARNING -> "$daysUntilExpiry д."
-                        Entry.ExpiryStatus.OK -> ""
-                    }
                     Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = borderColor
+                        text = when (entry.getExpiryStatus()) {
+                            Entry.ExpiryStatus.EXPIRED -> "Просрочен"
+                            Entry.ExpiryStatus.CRITICAL -> "$daysUntilExpiry д."
+                            Entry.ExpiryStatus.WARNING -> "$daysUntilExpiry д."
+                            else -> ""
+                        },
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold, color = borderColor
                     )
                 }
             }
