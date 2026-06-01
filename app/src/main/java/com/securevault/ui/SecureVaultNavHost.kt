@@ -31,14 +31,13 @@ fun SecureVaultNavHost() {
             )
         }
         
-        // ✅ ИСПРАВЛЕНО: Передаём все параметры которые ожидает VaultListScreen
         composable("main") {
             VaultListScreen(
                 onAdd = { navController.navigate("generator") },
                 onEdit = { id -> navController.navigate("generator") },
                 onLock = { navController.navigate("lock") { popUpTo("main") { inclusive = true } } },
                 onExport = { navController.navigate("export") },
-                onThemeChange = { /* показать диалог темы */ }
+                onThemeChange = { /* Показать диалог темы внутри VaultListScreen */ }
             )
         }
         
