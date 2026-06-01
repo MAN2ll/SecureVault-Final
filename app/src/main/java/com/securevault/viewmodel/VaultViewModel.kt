@@ -6,21 +6,23 @@ import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.PasswordGenerator
+import com.securevault.utils.PasswordReminderManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
-    private val repository: VaultRepository
+    private val repository: VaultRepository,
+    private val reminderManager: PasswordReminderManager
 ) : ViewModel() {
 
-    // Текущий фильтр профиля
     private val _currentFilter = MutableStateFlow<Profile?>(null)
     val currentFilter: StateFlow<Profile?> = _currentFilter.asStateFlow()
 
-    // Список записей
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
 
@@ -38,86 +40,65 @@ class VaultViewModel @Inject constructor(
             null -> repository.allEntries
             else -> repository.getEntriesByProfile(profile)
         }
-        flow.collect { _entries.value = it }
-    }
-
-    // Поток записей, требующих ротации
-    val entriesNeedingRotation: StateFlow<List<Entry>> = repository.allEntries
-        .map { entries ->
-            entries.filter { it.rotationEnabled && it.shouldRotateBySchedule() }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Поток просроченных записей
-    val expiredEntries: StateFlow<List<Entry>> = repository.allEntries
-        .map { entries -> entries.filter { it.isPasswordExpired() } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Вставка новой записи
-    fun insert(entry: Entry) = viewModelScope.launch { 
-        repository.insert(entry) 
-    }
-
-    // Обновление записи
-    fun update(entry: Entry) = viewModelScope.launch { 
-        repository.update(entry) 
-    }
-
-    // Удаление записи
-    fun delete(entry: Entry) = viewModelScope.launch { 
-        repository.delete(entry) 
-    }
-
-    fun deleteById(id: String) = viewModelScope.launch { 
-        repository.deleteById(id) 
-    }
-
-    // Массовое обновление паролей (ротация)
-    fun bulkRotatePasswords(
-        entryIds: List<String>,
-        generateNewPassword: (Entry) -> String
-    ) = viewModelScope.launch {
-        entryIds.forEach { id ->
-            val entry = repository.getById(id) ?: return@forEach
-            
-            // Генерируем новый пароль
-            val newPassword = generateNewPassword(entry)
-            
-            // Проверяем уникальность относительно истории
-            if (entry.isPasswordInHistory(newPassword)) {
-                // Если пароль не уникален, можно добавить логику повторной генерации
-                // Здесь для простоты пропускаем или логируем
-                return@forEach
-            }
-            
-            // Хешируем старый пароль для истории
-            val oldHash = java.security.MessageDigest.getInstance("SHA-256")
-                .digest(entry.password.toByteArray())
-                .joinToString("") { "%02x".format(it) }
-            
-            // Шифруем новый пароль
-            val newEncryptedPassword = CryptoUtils.encrypt(newPassword)
-            
-            // Обновляем запись: новый пароль, обновлённая история, новая дата ротации
-            val updatedEntry = entry.copy(
-                encryptedPassword = newEncryptedPassword,
-                lastChanged = System.currentTimeMillis(),
-                failedAttempts = 0
-            ).addToHistory(oldHash)
-            
-            repository.update(updatedEntry)
+        flow.collect { list ->
+            _entries.value = list
+            // Проверяем напоминания при каждой загрузке списка
+            reminderManager.checkAndNotify(list)
         }
     }
-    
-    // Получение записей, истекающих в ближайшие N дней
-    fun getEntriesExpiringSoon(days: Int = 30): StateFlow<List<Entry>> {
-        return repository.allEntries
-            .map { entries ->
-                entries.filter { entry ->
-                    val daysUntilExpiry = entry.getDaysUntilExpiry()
-                    daysUntilExpiry <= days && daysUntilExpiry >= 0
-                }
-            }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun insert(entry: Entry) = viewModelScope.launch {
+        repository.insert(entry)
+    }
+
+    fun update(entry: Entry) = viewModelScope.launch {
+        repository.update(entry)
+    }
+
+    fun delete(entry: Entry) = viewModelScope.launch {
+        repository.delete(entry)
+    }
+
+    // === ЛОГИКА РОТАЦИИ ===
+
+    /**
+     * Обновляет один конкретный пароль
+     */
+    fun rotatePassword(id: String) = viewModelScope.launch {
+        val entry = repository.getById(id) ?: return@launch
+        
+        // Генерируем новый сложный пароль
+        val newPassword = PasswordGenerator.generate(
+            PasswordGenerator.GeneratorOptions(
+                length = 16,
+                useUppercase = true,
+                useDigits = true,
+                useSpecial = true
+            )
+        ).password
+
+        val newEncryptedPassword = CryptoUtils.encrypt(newPassword)
+        
+        // Рассчитываем новую дату следующей ротации (текущее время + период)
+        val periodMillis = entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000
+        val newNextRotationDate = System.currentTimeMillis() + periodMillis
+
+        val updatedEntry = entry.copy(
+            encryptedPassword = newEncryptedPassword,
+            lastChanged = System.currentTimeMillis(),
+            nextRotationDate = newNextRotationDate,
+            failedAttempts = 0 // Сброс попыток при смене
+        )
+
+        repository.update(updatedEntry)
+    }
+
+    /**
+     * Массовое обновление паролей по списку ID
+     */
+    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
+        ids.forEach { id ->
+            rotatePassword(id)
+        }
     }
 }
