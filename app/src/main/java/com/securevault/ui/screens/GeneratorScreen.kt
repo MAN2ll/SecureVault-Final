@@ -1,7 +1,8 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-
+import androidx.compose.ui.graphics.Color  // ✅ Для Color(0xFF2E7D32)
+import androidx.compose.ui.Modifier  // ✅ Для .background()
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -239,7 +240,7 @@ fun GeneratorScreen(
                                         modifier = Modifier
                                             .fillMaxSize(fillFraction)
                                             .height(4.dp)
-                                            .background(strengthColor)
+                                            .background(color = strengthColor)
                                     )
                                 }
                             }
