@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
-import com.securevault.utils.CryptoUtils // ✅ Добавь этот импорт
+import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -33,7 +33,18 @@ class VaultViewModel @Inject constructor(
     fun update(entry: Entry) = viewModelScope.launch { repository.update(entry) }
     fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
 
-    // ✅ Методы для ротации (добавлены)
+    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
+        val entry = repository.getById(id) ?: return@launch
+        val updated = entry.copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
+            lastChanged = System.currentTimeMillis(),
+            nextRotationDate = if (entry.rotationEnabled) {
+                System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+            } else null
+        )
+        repository.update(updated)
+    }
+
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
         val newPassword = PasswordGenerator.generate(
