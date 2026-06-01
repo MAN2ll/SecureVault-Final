@@ -71,7 +71,17 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
-
+    implementation("androidx.compose.ui:ui:1.5.4")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.5.4")
+    implementation("androidx.compose.material3:material3:1.1.2")
+    implementation("androidx.compose.animation:animation:1.5.4")  // ✅ Для animateColorAsState
+    implementation("androidx.compose.foundation:foundation:1.5.4")  // ✅ Для weight(), background()
+    
+    // ✅ COMPOSE NAVIGATION
+    implementation("androidx.navigation:navigation-compose:2.7.5")
+    
+    // ✅ COMPOSE LIFECYCLE
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
 
