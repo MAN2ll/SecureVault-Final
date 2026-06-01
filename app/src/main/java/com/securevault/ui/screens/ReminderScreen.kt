@@ -1,7 +1,8 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-
+import androidx.compose.ui.unit.sp  // ✅ Для .sp
+import com.securevault.utils.PasswordGenerator  // ✅ Для генерации пароля
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
