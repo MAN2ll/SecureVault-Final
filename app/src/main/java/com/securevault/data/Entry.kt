@@ -59,6 +59,14 @@ data class Entry(
         return nextRotationDate != null && System.currentTimeMillis() > nextRotationDate
     }
 
+    // ✅ Добавь этот метод в класс Entry
+    fun getDaysUntilRotation(): Int? {
+        return nextRotationDate?.let {
+            val diffMillis = it - System.currentTimeMillis()
+            (diffMillis / (1000 * 60 * 60 * 24)).toInt()
+        }
+    }
+
     // Фабричный метод
     companion object {
         fun create(
