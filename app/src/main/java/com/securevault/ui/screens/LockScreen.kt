@@ -20,13 +20,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.security.DataWiper
 import com.securevault.viewmodel.AuthViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockScreen(
     onUnlocked: () -> Unit,
-    onBiometricRequest: () -> Unit,
     onSetupRequired: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
@@ -41,25 +39,19 @@ fun LockScreen(
     val failedAttempts by viewModel.failedAttempts.collectAsState()
     val wipeTriggered by viewModel.wipeTriggered.collectAsState()
     
+    // Проверка первого запуска
     LaunchedEffect(Unit) {
         if (!viewModel.isSetupComplete()) {
             onSetupRequired()
         }
     }
     
+    // Реакция на состояние авторизации
     LaunchedEffect(authState) {
         when (val state = authState) {
-            is AuthViewModel.AuthState.Success -> {
-                onUnlocked()
-            }
-            is AuthViewModel.AuthState.Blocked -> {
-                if (state.isWipe) {
-                    showWipeDialog = true
-                }
-            }
-            is AuthViewModel.AuthState.WipeTriggered -> {
-                showWipeDialog = true
-            }
+            is AuthViewModel.AuthState.Success -> onUnlocked()
+            is AuthViewModel.AuthState.Blocked -> if (state.isWipe) showWipeDialog = true
+            is AuthViewModel.AuthState.WipeTriggered -> showWipeDialog = true
             else -> {}
         }
     }
@@ -71,84 +63,33 @@ fun LockScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "SecureVault",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
-        
+        Text(text = "SecureVault", fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(32.dp))
         
         if (wipeTriggered || authState is AuthViewModel.AuthState.WipeTriggered) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Превышено количество попыток",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                    Text(text = "Превышено количество попыток", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Данные будут удалены для защиты.",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                    )
+                    Text(text = "Данные будут удалены для защиты.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f))
                 }
             }
-            
             Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = { showWipeDialog = true },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Удалить данные")
-                }
-                
-                OutlinedButton(
-                    onClick = { 
-                        viewModel.resetSecurity()
-                        showError = false
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Сбросить")
-                }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = { showWipeDialog = true }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Удалить данные") }
+                OutlinedButton(onClick = { viewModel.resetSecurity(); showError = false }, modifier = Modifier.weight(1f)) { Text("Сбросить") }
             }
         } else if (authState is AuthViewModel.AuthState.Blocked) {
             val remaining = (authState as AuthViewModel.AuthState.Blocked).remainingMs
             val formatted = viewModel.formatLockoutTime(remaining)
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Вход заблокирован",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                    Text(text = "Вход заблокирован", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Попробуйте через $formatted",
-                        fontSize = 13.sp
-                    )
+                    Text(text = "Попробуйте через $formatted", fontSize = 13.sp)
                 }
             }
         } else {
@@ -162,44 +103,26 @@ fun LockScreen(
                 modifier = Modifier.fillMaxWidth(),
                 isError = showError,
                 supportingText = {
-                    if (showError) {
-                        Text(
-                            text = when {
-                                failedAttempts >= 7 -> "Осталось ${10 - failedAttempts} попыток"
-                                failedAttempts >= 3 -> "Неверный пароль"
-                                else -> ""
-                            },
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
+                    if (showError) Text(text = when {
+                        failedAttempts >= 7 -> "Осталось ${10 - failedAttempts} попыток"
+                        failedAttempts >= 3 -> "Неверный пароль"
+                        else -> ""
+                    }, color = MaterialTheme.colorScheme.error)
                 }
             )
-            
             Spacer(modifier = Modifier.height(16.dp))
             
+            // ✅ Только кнопка входа (без биометрии)
             Button(
                 onClick = {
                     try {
                         showError = false
-                        if (password.length < 4) {
-                            showError = true
-                            return@Button
-                        }
-                        
+                        if (password.length < 4) { showError = true; return@Button }
                         val isValid = viewModel.verifyPassword(password)
-                        
-                        if (!isValid) {
-                            showError = true
-                        } else {
-                            password = ""
-                        }
+                        if (!isValid) showError = true else password = ""
                     } catch (e: Exception) {
                         showError = true
-                        Toast.makeText(
-                            context,
-                            "Ошибка входа: ${e.message}",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -208,71 +131,33 @@ fun LockScreen(
                 Text("Разблокировать")
             }
             
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            OutlinedButton(
-                onClick = onBiometricRequest,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = authState !is AuthViewModel.AuthState.Blocked
-            ) {
-                Icon(
-                    Icons.Default.Fingerprint,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("Войти по отпечатку")
-            }
-            
             if (failedAttempts > 0 && failedAttempts < 3) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Попыток: $failedAttempts/10",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = "Попыток: $failedAttempts/10", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
     
+    // Диалог подтверждения удаления
     if (showWipeDialog) {
         AlertDialog(
             onDismissRequest = { showWipeDialog = false },
             title = { Text("Подтверждение удаления") },
-            text = {
-                Text("Все данные будут безвозвратно удалены. Это действие нельзя отменить.")
-            },
+            text = { Text("Все данные будут безвозвратно удалены. Это действие нельзя отменить.") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        showWipeDialog = false
-                        scope.launch {
-                            try {
-                                val result = viewModel.triggerWipe()
-                                if (result is DataWiper.WipeResult.Success) {
-                                    onUnlocked()
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    "Ошибка: ${e.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                Button(onClick = {
+                    showWipeDialog = false
+                    scope.launch {
+                        try {
+                            val result = viewModel.triggerWipe()
+                            if (result is DataWiper.WipeResult.Success) onUnlocked()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text("Удалить")
-                }
+                    }
+                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Удалить") }
             },
-            dismissButton = {
-                TextButton(onClick = { showWipeDialog = false }) {
-                    Text("Отмена")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showWipeDialog = false }) { Text("Отмена") } }
         )
     }
 }
