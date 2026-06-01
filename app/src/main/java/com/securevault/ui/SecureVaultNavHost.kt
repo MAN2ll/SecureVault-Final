@@ -14,20 +14,24 @@ fun SecureVaultNavHost() {
 
     NavHost(navController, startDestination = "lock") {
         
-        // Экран блокировки
+        // 🔐 Экран блокировки (вход в приложение)
         composable("lock") {
             LockScreen(
                 onUnlocked = {
-                    navController.navigate("main") { popUpTo("lock") { inclusive = true } }
+                    navController.navigate("main") { 
+                        popUpTo("lock") { inclusive = true } 
+                    }
                 },
-                onBiometricRequest = { },
+                onBiometricRequest = { /* TODO: реализовать биометрию */ },
                 onSetupRequired = {
-                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
+                    navController.navigate("setup") { 
+                        popUpTo("lock") { inclusive = true } 
+                    }
                 }
             )
         }
         
-        // Экран настройки мастер-пароля
+        // ⚙️ Экран первоначальной настройки мастер-пароля
         composable("setup") {
             SetupScreen(
                 onCompleted = {
@@ -38,21 +42,25 @@ fun SecureVaultNavHost() {
             )
         }
         
-        // Главный экран списка паролей
+        // 🏠 Главный экран со списком паролей
         composable("main") {
             VaultListScreen(
-                onAdd = { navController.navigate("mnemonic_generator") },
+                onAdd = { navController.navigate("generator?mode=new") },
                 onEdit = { id -> navController.navigate("generator?mode=edit&id=$id") },
                 onLock = {
-                    navController.navigate("lock") { popUpTo("main") { inclusive = true } }
+                    navController.navigate("lock") { 
+                        popUpTo("main") { inclusive = true } 
+                    }
                 },
-                onExport = { navController.navigate("export") }
+                onExport = { navController.navigate("export") },
+                onThemeChange = { /* TODO: показать диалог выбора темы */ },
+                onRotation = { navController.navigate("rotation") }
             )
         }
         
-        // Стандартный генератор паролей
+        // 🎲 Стандартный генератор паролей (случайный)
         composable(
-            "generator?mode={mode}&id={id}",
+            route = "generator?mode={mode}&id={id}",
             arguments = listOf(
                 navArgument("mode") { defaultValue = "new" },
                 navArgument("id") { nullable = true }
@@ -64,18 +72,42 @@ fun SecureVaultNavHost() {
             )
         }
         
-        // Мнемонический генератор паролей
+        // 🧠 Мнемонический генератор паролей (по фразе)
         composable("mnemonic_generator") {
             MnemonicGeneratorScreen(
                 onBack = { navController.popBackStack() }
             )
         }
         
-        // Экран экспорта/импорта
+        // 📤 Экран экспорта / импорта данных
         composable("export") {
             ExportImportScreen(
                 onBack = { navController.popBackStack() }
             )
+        }
+        
+        // 🔄 Экран управления ротацией паролей
+        composable("rotation") {
+            RotationScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        
+        // 👁️ Экран просмотра деталей пароля (с проверкой мастер-пароля)
+        composable(
+            route = "password_view/{entryId}",
+            arguments = listOf(
+                navArgument("entryId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val entryId = backStackEntry.arguments?.getString("entryId")
+            if (entryId != null) {
+                PasswordViewDialog(
+                    entryId = entryId,
+                    onDismiss = { navController.popBackStack() },
+                    onVerified = { /* пароль показан, можно закрыть диалог */ }
+                )
+            }
         }
     }
 }
