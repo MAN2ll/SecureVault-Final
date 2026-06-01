@@ -1,22 +1,33 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-import androidx.compose.ui.unit.sp  // ✅ Для .sp
-import com.securevault.utils.PasswordGenerator  // ✅ Для генерации пароля
+
+// ✅ FOUNDATION
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+
+// ✅ MATERIAL3
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+
+// ✅ RUNTIME
 import androidx.compose.runtime.*
+
+// ✅ UI
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+// ✅ HILT
 import androidx.hilt.navigation.compose.hiltViewModel
+
+// ✅ PROJECT
 import com.securevault.data.Entry
+import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 
 @Composable
@@ -37,7 +48,7 @@ fun ReminderScreen(
             TopAppBar(
                 title = { Text("Напоминания") },
                 navigationIcon = {
-                    IconButton(onBack) { Icon(Icons.Default.ArrowBack, null) }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
                 }
             )
         }
