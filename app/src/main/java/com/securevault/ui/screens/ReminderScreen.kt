@@ -1,4 +1,5 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -12,26 +13,69 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.utils.ReminderManager
 
 @Composable
-fun ReminderScreen(onBack: () -> Unit, viewModel: VaultViewModel = hiltViewModel(), reminderManager: ReminderManager = ReminderManager()) {
+fun ReminderScreen(
+    onBack: () -> Unit,
+    viewModel: VaultViewModel = hiltViewModel()
+) {
     val all by viewModel.entries.collectAsState()
-    val upcoming = remember(all) { reminderManager.getUpcoming(all) }
+    val upcoming = remember(all) {
+        all.filter { e ->
+            e.rotationEnabled && e.nextRotationDate != null &&
+            (e.getDaysUntilRotation() ?: Int.MAX_VALUE) in 0..7
+        }
+    }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Напоминания") }, navigationIcon = { IconButton(onBack) { Icon(Icons.Default.ArrowBack, null) } }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Напоминания") },
+                navigationIcon = {
+                    IconButton(onBack) { Icon(Icons.Default.ArrowBack, null) }
+                }
+            )
+        }
+    ) { padding ->
         if (upcoming.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { Text("Нет предстоящих смен паролей") }
+            Box(
+                Modifier.fillMaxSize().padding(padding),
+                Alignment.Center
+            ) {
+                Text("Нет предстоящих смен паролей")
+            }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(upcoming, key = { it.id }) { e ->
-                    Card { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text(e.service, FontWeight.Bold); Text(text = "Осталось: ${e.getDaysUntilRotation()} д.", fontSize = 12.sp) }
-                        TextButton({ viewModel.updatePassword(e.id, com.securevault.utils.PasswordGenerator.generate(12, true, true, true).password) }) { Text("Обновить") }
-                    }}
+                    Card {
+                        Row(
+                            Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(e.service, FontWeight.Bold)
+                                Text(
+                                    text = "Осталось: ${e.getDaysUntilRotation()} д.",
+                                    fontSize = 12.sp
+                                )
+                            }
+                            TextButton({
+                                viewModel.updatePassword(
+                                    e.id,
+                                    PasswordGenerator.generate(12, true, true, true).password
+                                )
+                            }) {
+                                Text("Обновить")
+                            }
+                        }
+                    }
                 }
             }
         }
