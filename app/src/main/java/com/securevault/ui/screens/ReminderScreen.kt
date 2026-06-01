@@ -29,7 +29,7 @@ fun ReminderScreen(onBack: () -> Unit, viewModel: VaultViewModel = hiltViewModel
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(upcoming, key = { it.id }) { e ->
                     Card { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text(e.service, FontWeight.Bold); Text("Осталось: ${e.getDaysUntilRotation()} д.") }
+                        Column(Modifier.weight(1f)) { Text(e.service, FontWeight.Bold); Text(text = "Осталось: ${e.getDaysUntilRotation()} д.", fontSize = 12.sp) }
                         TextButton({ viewModel.updatePassword(e.id, com.securevault.utils.PasswordGenerator.generate(12, true, true, true).password) }) { Text("Обновить") }
                     }}
                 }
