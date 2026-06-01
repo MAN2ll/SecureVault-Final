@@ -1,8 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-import androidx.compose.ui.graphics.Color  // ✅ Для Color(0xFF2E7D32)
-import androidx.compose.ui.Modifier  // ✅ Для .background()
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,7 +30,6 @@ fun GeneratorScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // === НАСТРОЙКИ ГЕНЕРАТОРА ===
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var selectedProfile by remember { mutableStateOf<Profile?>(null) }
@@ -40,7 +39,6 @@ fun GeneratorScreen(
     var useDigits by remember { mutableStateOf(true) }
     var useSpecial by remember { mutableStateOf(false) }
     
-    // === РЕЗУЛЬТАТ ===
     var generatedPassword by remember { mutableStateOf("") }
     var passwordStrength by remember { mutableStateOf(PasswordGenerator.Strength.MEDIUM) }
     
@@ -51,7 +49,6 @@ fun GeneratorScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    // ✅ Генерация ТОЛЬКО по кнопке (не автоматически)
     fun generatePassword() {
         if (service.isBlank()) {
             showError = "Введите название сервиса"
@@ -93,7 +90,6 @@ fun GeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // === ПОЛЯ СЕРВИСА И ЛОГИНА ===
             OutlinedTextField(
                 value = service,
                 onValueChange = { service = it },
@@ -113,7 +109,6 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            // === ВЫБОР ПРОФИЛЯ (Личные/Рабочие) ===
             Text("Категория:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -136,12 +131,10 @@ fun GeneratorScreen(
                 Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
             
-            // === НАСТРОЙКИ ПАРОЛЯ ===
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     
-                    // Длина пароля (8-20 символов)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $length", modifier = Modifier.weight(1f), fontSize = 14.sp)
                         Slider(
@@ -153,7 +146,6 @@ fun GeneratorScreen(
                         )
                     }
                     
-                    // Опции символов
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Checkbox(checked = useUppercase, onCheckedChange = { useUppercase = it })
                         Text("Заглавные буквы (A-Z)", modifier = Modifier.padding(start = 8.dp), fontSize = 14.sp)
@@ -169,7 +161,6 @@ fun GeneratorScreen(
                 }
             }
             
-            // === КНОПКА ГЕНЕРАЦИИ ===
             Button(
                 onClick = { generatePassword() },
                 modifier = Modifier.fillMaxWidth(),
@@ -180,7 +171,6 @@ fun GeneratorScreen(
                 Text("Сгенерировать пароль")
             }
             
-            // === ОТОБРАЖЕНИЕ РЕЗУЛЬТАТА ===
             if (generatedPassword.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -201,7 +191,6 @@ fun GeneratorScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(onClick = {
-                                // Копирование в буфер
                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", generatedPassword))
                                 showCopiedHint = true
@@ -214,7 +203,6 @@ fun GeneratorScreen(
                             }
                         }
                         
-                        // Индикатор надёжности
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -235,7 +223,6 @@ fun GeneratorScreen(
                                     .fillMaxWidth()
                                     .padding(end = 8.dp)
                             ) {
-                                // Простая визуализация прочности
                                 val fillFraction = when (passwordStrength) {
                                     PasswordGenerator.Strength.WEAK -> 0.25f
                                     PasswordGenerator.Strength.MEDIUM -> 0.5f
@@ -266,7 +253,6 @@ fun GeneratorScreen(
                     }
                 }
                 
-                // Подсказка о копировании
                 if (showCopiedHint) {
                     Box(
                         modifier = Modifier
@@ -283,7 +269,6 @@ fun GeneratorScreen(
             
             Spacer(Modifier.weight(1f))
             
-            // === КНОПКА СОХРАНЕНИЯ ===
             Button(
                 onClick = {
                     if (generatedPassword.isEmpty()) {
@@ -295,7 +280,6 @@ fun GeneratorScreen(
                         return@Button
                     }
                     
-                    // Создаём и сохраняем запись
                     val newEntry = Entry.create(
                         service = service,
                         username = username.ifBlank { "user" },
@@ -320,7 +304,6 @@ fun GeneratorScreen(
                 Text("Сохранить в хранилище")
             }
             
-            // Ошибка
             if (showError != null && generatedPassword.isEmpty()) {
                 Text(text = showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
