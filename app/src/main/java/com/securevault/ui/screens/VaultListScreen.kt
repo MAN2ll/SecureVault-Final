@@ -26,7 +26,7 @@ fun VaultListScreen(
     onEdit: (String) -> Unit,
     onLock: () -> Unit,
     onExport: () -> Unit,
-    onThemeChange: () -> Unit = {}, // ✅ Сохранили функционал смены темы
+    onThemeChange: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
@@ -35,19 +35,14 @@ fun VaultListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text("SecureVault", fontWeight = FontWeight.Bold)
-                },
+                title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    // ✅ Кнопка смены темы (сохранена)
                     IconButton(onClick = onThemeChange) {
                         Icon(Icons.Default.BrightnessMedium, contentDescription = "Тема")
                     }
-                    // ✅ Кнопка экспорта (сохранена)
                     IconButton(onClick = onExport) {
                         Icon(Icons.Default.Share, contentDescription = "Экспорт")
                     }
-                    // ✅ Кнопка блокировки (сохранена)
                     IconButton(onClick = onLock) {
                         Icon(Icons.Default.Lock, contentDescription = "Замок")
                     }
@@ -61,16 +56,11 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            
-            // === ФИЛЬТРЫ (Функционал сохранен) ===
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    // ✅ Используем безопасное имя ProfileFilterChip
                     ProfileFilterChip(
                         selected = currentFilter == null,
                         onClick = { viewModel.setFilter(null) },
@@ -96,20 +86,13 @@ fun VaultListScreen(
                 }
             }
 
-            // === СПИСОК ЗАПИСЕЙ (Функционал сохранен) ===
             if (entries.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(bottom = 80.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize().padding(bottom = 80.dp), contentAlignment = Alignment.Center) {
                     Text("Нет записей — добавьте первую!", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 80.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
@@ -122,8 +105,6 @@ fun VaultListScreen(
     }
 }
 
-// ✅ ИСПРАВЛЕНИЕ: Функция переименована в ProfileFilterChip, чтобы не вызывать саму себя.
-// Внутри вызывается стандартный компонент Material3.
 @Composable
 private fun ProfileFilterChip(
     selected: Boolean,
@@ -131,7 +112,6 @@ private fun ProfileFilterChip(
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Явно указываем пакет, чтобы вызвать стандартную кнопку, а не нашу функцию
     androidx.compose.material3.FilterChip(
         selected = selected,
         onClick = onClick,
@@ -142,37 +122,14 @@ private fun ProfileFilterChip(
 
 @Composable
 fun EntryCard(entry: Entry, onClick: () -> Unit) {
-    Card(
-        onClick = onClick, // ✅ При клике открываем редактирование/просмотр
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.service,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
-                )
-                Text(
-                    text = entry.username,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = if (entry.profile == Profile.WORK) "Рабочий" else "Личный",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = androidx.compose.ui.Modifier.padding(top = 4.dp)
-                )
+                Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(text = entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = if (entry.profile == Profile.WORK) "Работа" else "Личное", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             }
-            
-            // ✅ Иконка копирования (функционал сохранен)
-            IconButton(onClick = { /* Логика копирования */ }) {
+            IconButton(onClick = { /* копирование */ }) {
                 Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
             }
         }
