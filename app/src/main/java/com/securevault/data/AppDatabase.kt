@@ -18,10 +18,12 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
         
-        fun getDatabase(androidxRoomDatabaseBuilder: androidx.room.RoomDatabase.Builder<AppDatabase>): AppDatabase {
+        fun getDatabase(builder: Builder<AppDatabase>): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = androidxRoomDatabaseBuilder
-                    .fallbackToDestructiveMigration() // ✅ Сброс базы при изменении схемы (для разработки)
+                val instance = builder
+                    // ✅ Для разработки: сброс БД при изменении схемы
+                    // В продакшене нужно писать миграции
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
