@@ -25,7 +25,6 @@ fun ExpiredPasswordsScreen(
     onEdit: (String) -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // ✅ ИСПРАВЛЕНО: используем entries + фильтруем просроченные
     val allEntries by viewModel.entries.collectAsState()
     val expiredEntries = allEntries.filter { it.isPasswordExpired() }
 
@@ -35,7 +34,7 @@ fun ExpiredPasswordsScreen(
                 title = { Text("Просроченные пароли", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                        androidx.compose.material3.Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                     }
                 }
             )
@@ -54,7 +53,6 @@ fun ExpiredPasswordsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                // ✅ ИСПРАВЛЕНО: key = { it.id } и передача id в onEdit
                 items(expiredEntries, key = { it.id }) { entry ->
                     ExpiredEntryCard(entry = entry, onClick = { onEdit(entry.id) })
                 }
@@ -81,8 +79,10 @@ fun ExpiredEntryCard(entry: Entry, onClick: () -> Unit) {
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
+                // ✅ ИСПРАВЛЕНО: безопасная обработка null
+                val days = entry.getDaysUntilRotation() ?: 0
                 Text(
-                    text = "Просрочен ${-entry.getDaysUntilExpiry()} д. назад",
+                    text = "Просрочен на ${-days} д.",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                 )
