@@ -37,8 +37,12 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { onNavigate("settings") }) { Icon(Icons.Default.Settings, "Настройки") }
-                    IconButton(onClick = { onNavigate("rotation") }) { Icon(Icons.Default.Refresh, "Ротация") }
+                    IconButton(onClick = { onNavigate("settings") }) { 
+                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Настройки") 
+                    }
+                    IconButton(onClick = { onNavigate("rotation") }) { 
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Ротация") 
+                    }
                 }
             )
         },
@@ -47,26 +51,26 @@ fun VaultListScreen(
                 NavigationBarItem(
                     selected = !favoritesOnly,
                     onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(Icons.Default.Key, null) },
+                    icon = { Icon(imageVector = Icons.Default.Key, contentDescription = null) },
                     label = { Text("Все", fontSize = 10.sp) }
                 )
                 NavigationBarItem(
                     selected = favoritesOnly,
                     onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(Icons.Default.Star, null) },
+                    icon = { Icon(imageVector = Icons.Default.Star, contentDescription = null) },
                     label = { Text("Избранное", fontSize = 10.sp) }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = { onNavigate("settings") },
-                    icon = { Icon(Icons.Default.Settings, null) },
+                    icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = null) },
                     label = { Text("Настройки", fontSize = 10.sp) }
                 )
             }
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { onNavigate("editor/new") }) {
-                Icon(Icons.Default.Add, "Добавить")
+                Icon(imageVector = Icons.Default.Add, contentDescription = "Добавить")
             }
         }
     ) { padding ->
@@ -114,7 +118,14 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onEdit: () -> Unit, onD
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    if (entry.isFavorite) Icon(Icons.Default.Star, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+                    if (entry.isFavorite) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
                 Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!entry.quickTags.isNullOrBlank()) {
@@ -122,11 +133,19 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onEdit: () -> Unit, onD
                 }
             }
             Row {
-                IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.primary) }
-                IconButton(onClick = onToggleFavorite) { 
-                    Icon(if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star, null, tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) 
+                IconButton(onClick = onEdit) { 
+                    Icon(imageVector = Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) 
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                IconButton(onClick = onToggleFavorite) { 
+                    Icon(
+                        imageVector = if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
+                        contentDescription = null,
+                        tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                }
+                IconButton(onClick = onDelete) { 
+                    Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) 
+                }
             }
         }
     }
