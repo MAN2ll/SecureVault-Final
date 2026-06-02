@@ -23,7 +23,6 @@ class VaultViewModel @Inject constructor(
     private val _favoritesOnly = MutableStateFlow(false)
     val favoritesOnly: StateFlow<Boolean> = _favoritesOnly.asStateFlow()
 
-    // ✅ ИСПРАВЛЕНО: Фильтр теперь работает корректно
     val entries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_profileFilter) { list, profile ->
             if (profile == null) list else list.filter { it.profile == profile }
@@ -54,5 +53,9 @@ class VaultViewModel @Inject constructor(
             nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
         )
         repository.update(updated)
+    }
+
+    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
+        ids.forEach { rotatePassword(it) }
     }
 }
