@@ -24,13 +24,17 @@ data class Entry(
     @ColumnInfo(name = "rotation_period_months") val rotationPeriodMonths: Int = 6,
     @ColumnInfo(name = "next_rotation_date") val nextRotationDate: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis()
+    @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "failed_attempts") val failedAttempts: Int = 0
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
     fun getDaysUntilRotation(): Int? {
         return nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
     }
+
+    // Алиас для совместимости со старыми экранами
+    fun getDaysUntilExpiry(): Int? = getDaysUntilRotation()
 
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
 
@@ -52,7 +56,7 @@ data class Entry(
             url: String? = null, notes: String? = null,
             emojiHint: String? = null, textHint: String? = null, quickTags: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
-            isFavorite: Boolean = false
+            isFavorite: Boolean = false, failedAttempts: Int = 0
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
@@ -66,16 +70,12 @@ data class Entry(
                 emojiHint = emojiHint, textHint = textHint, quickTags = quickTags,
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                 nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
-                isFavorite = isFavorite
+                isFavorite = isFavorite, failedAttempts = failedAttempts
             )
         }
     }
 
     enum class ExpiryStatus { OK, WARNING, CRITICAL, EXPIRED }
-}
-
-enum class Profile(val label: String) {
-    PERSONAL("Личное"), WORK("Работа")
 }
 
 object Categories {
