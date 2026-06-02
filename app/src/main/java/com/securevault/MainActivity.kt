@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             val themeState by ThemeManager.getThemeFlow(this).collectAsStateWithLifecycle(initialValue = AppTheme.SYSTEM)
+            
             val isDarkTheme = when (themeState) {
                 AppTheme.SYSTEM -> isSystemInDarkTheme()
                 AppTheme.LIGHT -> false
