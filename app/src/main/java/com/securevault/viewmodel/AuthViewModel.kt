@@ -21,21 +21,23 @@ class AuthViewModel @Inject constructor() : ViewModel() {
     private val _isSetupRequired = MutableStateFlow(true)
     val isSetupRequired: StateFlow<Boolean> = _isSetupRequired.asStateFlow()
 
-    // В реальном приложении контекст лучше получать через @ApplicationContext, 
-    // но для простоты передадим его через метод инициализации или используем безопасный fallback
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
         if (prefs == null) {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            prefs = EncryptedSharedPreferences.create(
-                "secure_prefs",
-                masterKeyAlias,
-                context,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-            _isSetupRequired.value = prefs!!.getString("master_hash", null) == null
+            try {
+                val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+                prefs = EncryptedSharedPreferences.create(
+                    "secure_prefs",
+                    masterKeyAlias,
+                    context,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                _isSetupRequired.value = prefs!!.getString("master_hash", null) == null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
