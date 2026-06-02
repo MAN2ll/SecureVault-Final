@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.Categories
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.viewmodel.VaultViewModel
@@ -22,82 +23,86 @@ import com.securevault.viewmodel.VaultViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
-    onAdd: () -> Unit,
-    onEdit: (String) -> Unit,
-    onLock: () -> Unit,
-    onExport: () -> Unit,
-    onThemeChange: () -> Unit = {},
+    onNavigate: (String) -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
-    val currentFilter by viewModel.currentFilter.collectAsState()
+    val profileFilter by viewModel.profileFilter.collectAsState()
+    val categoryFilter by viewModel.categoryFilter.collectAsState()
+    val favoritesOnly by viewModel.favoritesOnly.collectAsState()
+    
+    var showFilterMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onThemeChange) {
-                        Icon(Icons.Default.BrightnessMedium, contentDescription = "Тема")
-                    }
-                    IconButton(onClick = onExport) {
-                        Icon(Icons.Default.Share, contentDescription = "Экспорт")
-                    }
-                    IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, contentDescription = "Замок")
-                    }
+                    IconButton(onClick = { onNavigate("settings") }) { Icon(Icons.Default.Settings, "Настройки") }
+                    IconButton(onClick = { onNavigate("rotation") }) { Icon(Icons.Default.Refresh, "Ротация") }
                 }
             )
         },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = !favoritesOnly,
+                    onClick = { viewModel.toggleFavoritesOnly() },
+                    icon = { Icon(Icons.Default.Key, null) },
+                    label = { Text("Пароли", fontSize = 10.sp) }
+                )
+                NavigationBarItem(
+                    selected = favoritesOnly,
+                    onClick = { viewModel.toggleFavoritesOnly() },
+                    icon = { Icon(Icons.Default.Star, null) },
+                    label = { Text("Избранное", fontSize = 10.sp) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { onNavigate("settings") },
+                    icon = { Icon(Icons.Default.Settings, null) },
+                    label = { Text("Настройки", fontSize = 10.sp) }
+                )
+            }
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) {
-                Icon(Icons.Default.Add, contentDescription = "Добавить")
+            FloatingActionButton(onClick = { onNavigate("editor/new") }) {
+                Icon(Icons.Default.Add, "Добавить")
             }
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    ProfileFilterChip(
-                        selected = currentFilter == null,
-                        onClick = { viewModel.setFilter(null) },
-                        label = { Text("Все", fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    ProfileFilterChip(
-                        selected = currentFilter == Profile.PERSONAL,
-                        onClick = { viewModel.setFilter(Profile.PERSONAL) },
-                        label = { Text("Личные", fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    ProfileFilterChip(
-                        selected = currentFilter == Profile.WORK,
-                        onClick = { viewModel.setFilter(Profile.WORK) },
-                        label = { Text("Рабочие", fontSize = 13.sp) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            // Фильтры
+            Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(profileFilter == null, { viewModel.setProfileFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
+                FilterChip(profileFilter == Profile.PERSONAL, { viewModel.setProfileFilter(Profile.PERSONAL) }, label = { Text("Личные") }, modifier = Modifier.weight(1f))
+                FilterChip(profileFilter == Profile.WORK, { viewModel.setProfileFilter(Profile.WORK) }, label = { Text("Работа") }, modifier = Modifier.weight(1f))
+            }
+            
+            if (profileFilter != null) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(categoryFilter == null, { viewModel.setCategoryFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
+                    Categories.getFor(profileFilter!!).take(3).forEach { cat ->
+                        FilterChip(categoryFilter == cat, { viewModel.setCategoryFilter(cat) }, label = { Text(cat) }, modifier = Modifier.weight(1f))
+                    }
                 }
             }
 
-            if (entries.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize().padding(bottom = 80.dp), contentAlignment = Alignment.Center) {
-                    Text("Нет записей — добавьте первую!", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                items(entries, key = { it.id }) { entry ->
+                    EntryCard(entry = entry, onClick = { onNavigate("editor/${entry.id}") }, onDelete = { viewModel.delete(entry) }, onToggleFavorite = { viewModel.toggleFavorite(entry) })
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(entries, key = { it.id }) { entry ->
-                        EntryCard(entry = entry, onClick = { onEdit(entry.id) })
+                
+                if (entries.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Key, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                Spacer(Modifier.height(16.dp))
+                                Text("Нет записей", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Нажмите + чтобы добавить первый пароль", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            }
+                        }
                     }
                 }
             }
@@ -105,33 +110,32 @@ fun VaultListScreen(
     }
 }
 
-// ✅ Просто скопируй и вставь вместо старой функции:
 @Composable
-private fun ProfileFilterChip(  // ← Имя изменено!
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: @Composable () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // ✅ Явно вызываем стандартный компонент Material3:
-    androidx.compose.material3.FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = label,
-        modifier = modifier
-    )
-}
-@Composable
-fun EntryCard(entry: Entry, onClick: () -> Unit) {
+private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, onToggleFavorite: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(text = entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = if (entry.profile == Profile.WORK) "Работа" else "Личное", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    if (entry.isFavorite) Icon(Icons.Default.Star, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+                }
+                Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(entry.category, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                    if (entry.rotationEnabled) {
+                        val days = entry.getDaysUntilRotation()
+                        val color = when {
+                            days == null || days > 7 -> MaterialTheme.colorScheme.onSurfaceVariant
+                            days > 3 -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.error
+                        }
+                        Text("🔄 $days дн.", fontSize = 11.sp, color = color)
+                    }
+                }
             }
-            IconButton(onClick = { /* копирование */ }) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
+            Row {
+                IconButton(onClick = onToggleFavorite) { Icon(if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star, null, tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
             }
         }
     }
