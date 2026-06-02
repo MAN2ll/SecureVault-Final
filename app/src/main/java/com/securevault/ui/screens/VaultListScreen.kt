@@ -12,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,7 +30,6 @@ fun VaultListScreen(
     val profileFilter by viewModel.profileFilter.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
-    // ✅ Добавили состояние для диалога просмотра пароля
     var viewingEntry by remember { mutableStateOf<Entry?>(null) }
 
     Scaffold(
@@ -73,7 +71,6 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Фильтры профилей
             Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(profileFilter == null, { viewModel.setProfileFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
                 FilterChip(profileFilter == Profile.PERSONAL, { viewModel.setProfileFilter(Profile.PERSONAL) }, label = { Text("Личные") }, modifier = Modifier.weight(1f))
@@ -82,7 +79,6 @@ fun VaultListScreen(
 
             LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(entries, key = { it.id }) { entry ->
-                    // ✅ Клик по карточке теперь открывает диалог просмотра, а не редактор
                     EntryCard(
                         entry = entry, 
                         onClick = { viewingEntry = entry }, 
@@ -103,7 +99,6 @@ fun VaultListScreen(
         }
     }
 
-    // ✅ Диалог просмотра пароля
     viewingEntry?.let { entry ->
         PasswordViewDialog(
             entry = entry,
@@ -122,7 +117,6 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onEdit: () -> Unit, onD
                     if (entry.isFavorite) Icon(Icons.Default.Star, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
                 }
                 Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                // ✅ Отображение тегов/смайликов, если они есть
                 if (!entry.quickTags.isNullOrBlank()) {
                     Text(entry.quickTags, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
                 }
