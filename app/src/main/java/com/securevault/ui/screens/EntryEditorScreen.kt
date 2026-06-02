@@ -1,7 +1,11 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
+
 
 package com.securevault.ui.screens
-
+// Добавь эти импорты:
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +29,7 @@ import com.securevault.data.QuickTags
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
