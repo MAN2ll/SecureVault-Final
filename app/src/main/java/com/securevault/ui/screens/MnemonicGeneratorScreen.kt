@@ -1,4 +1,5 @@
 @file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -42,9 +43,16 @@ fun MnemonicGeneratorScreen(
     var quickTags by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
 
+    // ✅ АВТОПЕРЕГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
+    LaunchedEffect(phrase, length, useUpper, useDigits, useSpecial) {
+        if (phrase.isNotBlank()) {
+            generateMnemonicPassword()
+        }
+    }
+
     fun generateMnemonicPassword() {
-        if (phrase.isBlank() || service.isBlank()) {
-            showError = "Заполните фразу и сервис"
+        if (phrase.isBlank()) {
+            generatedPassword = ""
             return
         }
         
@@ -53,17 +61,42 @@ fun MnemonicGeneratorScreen(
             word.firstOrNull()?.uppercaseChar()?.toString() ?: "" 
         }
         
+        // Транслитерация только для русских букв
         base = base.replace("А", "A").replace("В", "B").replace("С", "C").replace("Е", "E")
                    .replace("К", "K").replace("М", "M").replace("Н", "H").replace("О", "O")
-                   .replace("Р", "P").replace("Т", "T").replace("Х", "X").ifEmpty { "Pwd" }
+                   .replace("Р", "P").replace("Т", "T").replace("Х", "X")
         
-        if (!useUpper) base = base.lowercase()
-        if (useDigits) base += (10..99).random().toString()
-        if (useSpecial) base += listOf("!", "@", "#", "$").random()
+        // ✅ ПРИМЕНЕНИЕ ФИЛЬТРОВ
+        if (!useUpper) {
+            base = base.lowercase()
+        }
+        
+        // Если цифры включены - добавляем, иначе нет
+        if (useDigits) {
+            base += (10..99).random().toString()
+        }
+        
+        // Если спецсимволы включены - добавляем, иначе нет
+        if (useSpecial) {
+            base += listOf("!", "@", "#", "$").random()
+        }
         
         val safeLength = length.coerceIn(8, 20)
-        generatedPassword = if (base.length > safeLength) base.take(safeLength) else base.padEnd(safeLength, 'x')
-        showError = null
+        
+        // Подгонка под длину
+        generatedPassword = if (base.length > safeLength) {
+            base.take(safeLength)
+        } else if (base.length < safeLength) {
+            // Дополняем случайными строчными буквами
+            val chars = "abcdefghijklmnopqrstuvwxyz"
+            var result = base
+            while (result.length < safeLength) {
+                result += chars.random()
+            }
+            result
+        } else {
+            base
+        }
     }
 
     Scaffold(
@@ -78,9 +111,24 @@ fun MnemonicGeneratorScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            OutlinedTextField(phrase, { phrase = it }, label = { Text("Ваша фраза (рус/англ)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(service, { service = it }, label = { Text("Сервис") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(username, { username = it }, label = { Text("Логин") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = phrase, 
+                onValueChange = { phrase = it }, 
+                label = { Text("Ваша фраза (рус/англ)") }, 
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = service, 
+                onValueChange = { service = it }, 
+                label = { Text("Сервис") }, 
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = username, 
+                onValueChange = { username = it }, 
+                label = { Text("Логин") }, 
+                modifier = Modifier.fillMaxWidth()
+            )
 
             // Профиль
             var expandedProfile by remember { mutableStateOf(false) }
@@ -136,21 +184,47 @@ fun MnemonicGeneratorScreen(
                     Text("Фильтры генерации", fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) { 
                         Text("Длина: $length", modifier = Modifier.fillMaxWidth(0.3f))
-                        Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 8f..20f, steps = 12, modifier = Modifier.fillMaxWidth(0.7f)) 
+                        Slider(
+                            value = length.toFloat(), 
+                            onValueChange = { length = it.toInt() }, 
+                            valueRange = 8f..20f, 
+                            steps = 12, 
+                            modifier = Modifier.fillMaxWidth(0.7f)
+                        ) 
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useUpper, { useUpper = it }); Text("Заглавные буквы", Modifier.padding(start = 8.dp)) }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useDigits, { useDigits = it }); Text("Цифры", Modifier.padding(start = 8.dp)) }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useSpecial, { useSpecial = it }); Text("Спецсимволы", Modifier.padding(start = 8.dp)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Checkbox(useUpper, { useUpper = it })
+                        Text("Заглавные буквы", Modifier.padding(start = 8.dp)) 
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Checkbox(useDigits, { useDigits = it })
+                        Text("Цифры", Modifier.padding(start = 8.dp)) 
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Checkbox(useSpecial, { useSpecial = it })
+                        Text("Спецсимволы", Modifier.padding(start = 8.dp)) 
+                    }
                 }
             }
 
-            Button(onClick = { generateMnemonicPassword() }, modifier = Modifier.fillMaxWidth()) { Text("Сгенерировать из фразы") }
-
             if (generatedPassword.isNotEmpty()) {
-                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(), 
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(generatedPassword, fontSize = 20.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                        Text("💡 Основа: первые буквы фразы + фильтры", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            generatedPassword, 
+                            fontSize = 20.sp, 
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, 
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "💡 Основа: первые буквы фразы + фильтры", 
+                            fontSize = 12.sp, 
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                 }
             }
@@ -159,17 +233,35 @@ fun MnemonicGeneratorScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Мнемонические подсказки", fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(textHint, { textHint = it }, label = { Text("Текстовая подсказка") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = textHint, 
+                        onValueChange = { textHint = it }, 
+                        label = { Text("Текстовая подсказка") }, 
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(emojiHint, { emojiHint = it }, label = { Text("Ключевые слова → эмодзи") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = emojiHint, 
+                        onValueChange = { emojiHint = it }, 
+                        label = { Text("Ключевые слова → эмодзи") }, 
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text("Быстрые теги:", fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), 
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         QuickTags.TAGS.forEach { tag ->
                             FilterChip(
                                 selected = quickTags.contains(tag), 
-                                onClick = { quickTags = if (quickTags.contains(tag)) quickTags.replace(tag, "").trim() else "$quickTags $tag".trim() }, 
+                                onClick = { 
+                                    quickTags = if (quickTags.contains(tag)) 
+                                        quickTags.replace(tag, "").trim() 
+                                    else 
+                                        "$quickTags $tag".trim() 
+                                }, 
                                 label = { Text(tag) }
                             )
                         }
@@ -177,11 +269,16 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            if (showError != null) Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            if (showError != null) {
+                Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
 
             Button(
                 onClick = {
-                    if (generatedPassword.isEmpty() || service.isBlank()) return@Button
+                    if (generatedPassword.isEmpty() || service.isBlank()) {
+                        showError = "Заполните фразу и сервис"
+                        return@Button
+                    }
                     val entry = Entry.create(
                         service = service, 
                         username = username, 
