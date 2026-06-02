@@ -2,29 +2,25 @@ package com.securevault.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
-import com.securevault.utils.Converters
 
-@Database(
-    entities = [Entry::class],
-    version = 2,
-    exportSchema = false
-)
-@TypeConverters(Converters::class)
+@Database(entities = [Entry::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
-    
     abstract fun entryDao(): EntryDao
-    
+
     companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
-        
-        fun getDatabase(builder: Builder<AppDatabase>): AppDatabase {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: android.content.Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = builder
-                    // ✅ Для разработки: сброс БД при изменении схемы
-                    // В продакшене нужно писать миграции
-                    .fallbackToDestructiveMigration()
-                    .build()
+                val instance = androidx.room.Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "secure_vault_db"
+                )
+                // ✅ Важно: сбрасывает БД при изменении схемы, чтобы избежать крашей
+                .fallbackToDestructiveMigration() 
+                .build()
                 INSTANCE = instance
                 instance
             }
