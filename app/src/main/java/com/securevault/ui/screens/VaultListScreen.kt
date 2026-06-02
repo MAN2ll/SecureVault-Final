@@ -6,12 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +21,6 @@ import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.viewmodel.VaultViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
     onNavigate: (String) -> Unit,
@@ -49,24 +43,9 @@ fun VaultListScreen(
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = !favoritesOnly,
-                    onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(Icons.Default.Key, null) },
-                    label = { Text("Пароли", fontSize = 10.sp) }
-                )
-                NavigationBarItem(
-                    selected = favoritesOnly,
-                    onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(Icons.Default.Star, null) },
-                    label = { Text("Избранное", fontSize = 10.sp) }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { onNavigate("settings") },
-                    icon = { Icon(Icons.Default.Settings, null) },
-                    label = { Text("Настройки", fontSize = 10.sp) }
-                )
+                NavigationBarItem(selected = !favoritesOnly, onClick = { viewModel.toggleFavoritesOnly() }, icon = { Icon(Icons.Default.Key, null) }, label = { Text("Пароли", fontSize = 10.sp) })
+                NavigationBarItem(selected = favoritesOnly, onClick = { viewModel.toggleFavoritesOnly() }, icon = { Icon(Icons.Default.Star, null) }, label = { Text("Избранное", fontSize = 10.sp) })
+                NavigationBarItem(selected = false, onClick = { onNavigate("settings") }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Настройки", fontSize = 10.sp) })
             }
         },
         floatingActionButton = {
@@ -84,7 +63,7 @@ fun VaultListScreen(
             
             if (profileFilter != null) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilterChip(categoryFilter == null, { viewModel.setCategoryFilter(null) }, label = { Text("Все категории") }, modifier = Modifier.weight(1f))
+                    FilterChip(categoryFilter == null, { viewModel.setCategoryFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
                     Categories.getFor(profileFilter!!).take(3).forEach { cat ->
                         FilterChip(categoryFilter == cat, { viewModel.setCategoryFilter(cat) }, label = { Text(cat) }, modifier = Modifier.weight(1f))
                     }
@@ -100,7 +79,13 @@ fun VaultListScreen(
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.Key, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                // ✅ ИСПРАВЛЕНО: строгие именованные параметры
+                                Icon(
+                                    imageVector = Icons.Default.Key,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
                                 Spacer(Modifier.height(16.dp))
                                 Text("Нет записей", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -119,7 +104,14 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, o
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    if (entry.isFavorite) Icon(Icons.Default.Star, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 4.dp))
+                    if (entry.isFavorite) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
                 Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -137,7 +129,12 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, o
             }
             Row {
                 IconButton(onClick = onToggleFavorite) { 
-                    Icon(if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star, null, tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) 
+                    // ✅ ИСПРАВЛЕНО: строгие именованные параметры и полные пути к иконкам
+                    Icon(
+                        imageVector = if (entry.isFavorite) androidx.compose.material.icons.filled.Star else androidx.compose.material.icons.outlined.Star,
+                        contentDescription = null,
+                        tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
                 }
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
             }
