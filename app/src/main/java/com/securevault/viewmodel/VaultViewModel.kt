@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
+import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -34,7 +35,6 @@ class VaultViewModel @Inject constructor(
             filtered
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Действия
     fun setProfileFilter(profile: Profile?) { _profileFilter.value = profile; _categoryFilter.value = null }
     fun setCategoryFilter(category: String?) { _categoryFilter.value = category }
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
@@ -48,12 +48,22 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // Ротация
+    // ✅ ДОБАВЛЕН ЭТОТ МЕТОД
+    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
+        val entry = repository.getById(id) ?: return@launch
+        val updated = entry.copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
+            lastChanged = System.currentTimeMillis(),
+            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+        )
+        repository.update(updated)
+    }
+
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
         val newPwd = PasswordGenerator.generate(16, true, true, true).password
         val updated = entry.copy(
-            encryptedPassword = com.securevault.utils.CryptoUtils.encrypt(newPwd),
+            encryptedPassword = CryptoUtils.encrypt(newPwd),
             lastChanged = System.currentTimeMillis(),
             nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
         )
