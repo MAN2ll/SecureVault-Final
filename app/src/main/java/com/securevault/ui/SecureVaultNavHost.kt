@@ -10,65 +10,14 @@ import com.securevault.ui.screens.*
 fun SecureVaultNavHost() {
     val navController = rememberNavController()
 
-    NavHost(navController, startDestination = "lock") {
-        
-        composable("lock") {
-            LockScreen(
-                onUnlocked = {
-                    navController.navigate("main") { popUpTo("lock") { inclusive = true } }
-                },
-                onSetupRequired = {
-                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
-                }
-            )
+    NavHost(navController, startDestination = "vault") {
+        composable("vault") { VaultListScreen(onNavigate = { route -> navController.navigate(route) }) }
+        composable("editor/{id}") { backStackEntry ->
+            val id = backStackEntry.arguments?.getString("id")
+            EntryEditorScreen(id = id, onBack = { navController.popBackStack() })
         }
-        
-        composable("setup") {
-            SetupScreen(
-                onCompleted = {
-                    navController.navigate("main") { popUpTo("lock") { inclusive = true } }
-                }
-            )
-        }
-        
-        composable("main") {
-            VaultListScreen(
-                onAdd = { navController.navigate("generator") },
-                onEdit = { id -> navController.navigate("generator") },
-                onLock = { navController.navigate("lock") { popUpTo("main") { inclusive = true } } },
-                onExport = { navController.navigate("export") },
-                onThemeChange = { /* Показать диалог темы внутри VaultListScreen */ }
-            )
-        }
-        
-        composable("generator") {
-            GeneratorScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        
-        composable("mnemonic_generator") {
-            MnemonicGeneratorScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        
-        composable("export") {
-            ExportImportScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        
-        composable("rotation") {
-            RotationScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-        
-        composable("reminders") {
-            ReminderScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
+        composable("mnemonic") { MnemonicGeneratorScreen(onBack = { navController.popBackStack() }) }
+        composable("rotation") { RotationScreen(onBack = { navController.popBackStack() }) }
+        composable("settings") { SettingsScreen(onBack = { navController.popBackStack() }) }
     }
 }
