@@ -6,7 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,16 +41,35 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { onNavigate("settings") }) { Icon(Icons.Default.Settings, "Настройки") }
-                    IconButton(onClick = { onNavigate("rotation") }) { Icon(Icons.Default.Refresh, "Ротация") }
+                    IconButton(onClick = { onNavigate("settings") }) { 
+                        Icon(Icons.Default.Settings, "Настройки") 
+                    }
+                    IconButton(onClick = { onNavigate("rotation") }) { 
+                        Icon(Icons.Default.Refresh, "Ротация") 
+                    }
                 }
             )
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(selected = !favoritesOnly, onClick = { viewModel.toggleFavoritesOnly() }, icon = { Icon(Icons.Default.Key, null) }, label = { Text("Пароли", fontSize = 10.sp) })
-                NavigationBarItem(selected = favoritesOnly, onClick = { viewModel.toggleFavoritesOnly() }, icon = { Icon(Icons.Default.Star, null) }, label = { Text("Избранное", fontSize = 10.sp) })
-                NavigationBarItem(selected = false, onClick = { onNavigate("settings") }, icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Настройки", fontSize = 10.sp) })
+                NavigationBarItem(
+                    selected = !favoritesOnly, 
+                    onClick = { viewModel.toggleFavoritesOnly() }, 
+                    icon = { Icon(Icons.Default.Key, null) }, 
+                    label = { Text("Пароли", fontSize = 10.sp) }
+                )
+                NavigationBarItem(
+                    selected = favoritesOnly, 
+                    onClick = { viewModel.toggleFavoritesOnly() }, 
+                    icon = { Icon(Icons.Default.Star, null) }, 
+                    label = { Text("Избранное", fontSize = 10.sp) }
+                )
+                NavigationBarItem(
+                    selected = false, 
+                    onClick = { onNavigate("settings") }, 
+                    icon = { Icon(Icons.Default.Settings, null) }, 
+                    label = { Text("Настройки", fontSize = 10.sp) }
+                )
             }
         },
         floatingActionButton = {
@@ -70,16 +94,24 @@ fun VaultListScreen(
                 }
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), 
+                verticalArrangement = Arrangement.spacedBy(8.dp), 
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
                 items(entries, key = { it.id }) { entry ->
-                    EntryCard(entry = entry, onClick = { onNavigate("editor/${entry.id}") }, onDelete = { viewModel.delete(entry) }, onToggleFavorite = { viewModel.toggleFavorite(entry) })
+                    EntryCard(
+                        entry = entry, 
+                        onClick = { onNavigate("editor/${entry.id}") }, 
+                        onDelete = { viewModel.delete(entry) }, 
+                        onToggleFavorite = { viewModel.toggleFavorite(entry) }
+                    )
                 }
                 
                 if (entries.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                // ✅ ИСПРАВЛЕНО: строгие именованные параметры
                                 Icon(
                                     imageVector = Icons.Default.Key,
                                     contentDescription = null,
@@ -100,16 +132,20 @@ fun VaultListScreen(
 @Composable
 private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, onToggleFavorite: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(), 
+            horizontalArrangement = Arrangement.SpaceBetween, 
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     if (entry.isFavorite) {
                         Icon(
-                            imageVector = Icons.Default.Star,
+                            imageVector = Icons.Filled.Star,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -119,8 +155,8 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, o
                     if (entry.rotationEnabled) {
                         val days = entry.getDaysUntilRotation()
                         val color = when {
-                            days == null || days > 7 -> MaterialTheme.colorScheme.onSurfaceVariant
-                            days > 3 -> MaterialTheme.colorScheme.tertiary
+                            days == null || days!! > 7 -> MaterialTheme.colorScheme.onSurfaceVariant
+                            days!! > 3 -> MaterialTheme.colorScheme.tertiary
                             else -> MaterialTheme.colorScheme.error
                         }
                         Text("🔄 $days дн.", fontSize = 11.sp, color = color)
@@ -129,14 +165,16 @@ private fun EntryCard(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit, o
             }
             Row {
                 IconButton(onClick = onToggleFavorite) { 
-                    // ✅ ИСПРАВЛЕНО: строгие именованные параметры и полные пути к иконкам
                     Icon(
-                        imageVector = if (entry.isFavorite) androidx.compose.material.icons.filled.Star else androidx.compose.material.icons.outlined.Star,
-                        contentDescription = null,
+                        // ✅ ЯВНОЕ использование импортированных классов
+                        imageVector = if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
+                        contentDescription = "Избранное",
                         tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     ) 
                 }
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                IconButton(onClick = onDelete) { 
+                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) 
+                }
             }
         }
     }
