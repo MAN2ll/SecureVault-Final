@@ -49,13 +49,11 @@ fun MnemonicGeneratorScreen(
             return
         }
         
-        // ✅ ИСПРАВЛЕНО: Реальная генерация на основе фразы
         val words = phrase.trim().split(Regex("\\s+"))
         var base = words.joinToString("") { word -> 
             word.firstOrNull()?.uppercaseChar()?.toString() ?: "" 
         }
         
-        // Транслитерация русских букв
         base = base.replace("А", "A").replace("В", "B").replace("С", "C").replace("Е", "E")
                    .replace("К", "K").replace("М", "M").replace("Н", "H").replace("О", "O")
                    .replace("Р", "P").replace("Т", "T").replace("Х", "X").ifEmpty { "Pwd" }
@@ -73,7 +71,7 @@ fun MnemonicGeneratorScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Запоминающийся пароль", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onBack) { androidx.compose.material3.Icon(Icons.Default.ArrowBack, "Назад") } }
+                navigationIcon = { IconButton(onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
     ) { padding ->
@@ -85,22 +83,126 @@ fun MnemonicGeneratorScreen(
             OutlinedTextField(service, { service = it }, label = { Text("Сервис") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(username, { username = it }, label = { Text("Логин") }, modifier = Modifier.fillMaxWidth())
 
+            // Профиль
             var expandedProfile by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(expandedProfile, { expandedProfile = !expandedProfile }) {
-                OutlinedTextField(readOnly = true, value = profile.label, onValueChange = {}, label = { Text("Профиль") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedProfile) }, modifier = Modifier.menuAnchor().fillMaxWidth())
-                ExposedDropdownMenu(expandedProfile, { expandedProfile = false }) { Profile.entries.forEach { p -> androidx.compose.material3.DropdownMenuItem({ Text(p.label) }, { profile = p; category = Categories.getFor(p).first() }) } }
+            ExposedDropdownMenuBox(expanded = expandedProfile, onExpandedChange = { expandedProfile = !expandedProfile }) {
+                OutlinedTextField(
+                    readOnly = true,
+                    value = profile.label,
+                    onValueChange = {},
+                    label = { Text("Профиль") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProfile) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(expanded = expandedProfile, onDismissRequest = { expandedProfile = false }) {
+                    Profile.entries.forEach { p ->
+                        DropdownMenuItem(
+                            text = { Text(p.label) },
+                            onClick = {
+                                profile = p
+                                category = Categories.getFor(p).first()
+                                expandedProfile = false
+                            }
+                        )
+                    }
+                }
             }
 
+            // Категория
             var expandedCategory by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(expandedCategory, { expandedCategory = !expandedCategory }) {
-                OutlinedTextField(readOnly = true, value = category, onValueChange = {}, label = { Text("Категория") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCategory) }, modifier = Modifier.menuAnchor().fillMaxWidth())
-                ExposedDropdownMenu(expandedCategory, { expandedCategory = false }) { Categories.getFor(profile).forEach { c -> androidx.compose.material3.DropdownMenuItem({ Text(c) }, { category = c }) } }
+            ExposedDropdownMenuBox(expanded = expandedCategory, onExpandedChange = { expandedCategory = !expandedCategory }) {
+                OutlinedTextField(
+                    readOnly = true,
+                    value = category,
+                    onValueChange = {},
+                    label = { Text("Категория") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(expanded = expandedCategory, onDismissRequest = { expandedCategory = false }) {
+                    Categories.getFor(profile).forEach { c ->
+                        DropdownMenuItem(
+                            text = { Text(c) },
+                            onClick = {
+                                category = c
+                                expandedCategory = false
+                            }
+                        )
+                    }
+                }
             }
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Фильтры генерации", fontWeight = FontWeight.Bold)
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Длина: $length", modifier = Modifier.fillMaxWidth(0.3f)); Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 8f..20f, steps = 12, modifier = Modifier.fillMaxWidth(0.7f)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { 
+                        Text("Длина: $length", modifier = Modifier.fillMaxWidth(0.3f))
+                        Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 8f..20f, steps = 12, modifier = Modifier.fillMaxWidth(0.7f)) 
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useUpper, { useUpper = it }); Text("Заглавные буквы", Modifier.padding(start = 8.dp)) }
                     Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useDigits, { useDigits = it }); Text("Цифры", Modifier.padding(start = 8.dp)) }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useSpecial, { useSpecial = it }); Text
+                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(useSpecial, { useSpecial = it }); Text("Спецсимволы", Modifier.padding(start = 8.dp)) }
+                }
+            }
+
+            Button(onClick = { generateMnemonicPassword() }, modifier = Modifier.fillMaxWidth()) { Text("Сгенерировать из фразы") }
+
+            if (generatedPassword.isNotEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(generatedPassword, fontSize = 20.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("💡 Основа: первые буквы фразы + фильтры", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Мнемонические подсказки", fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(textHint, { textHint = it }, label = { Text("Текстовая подсказка") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(emojiHint, { emojiHint = it }, label = { Text("Ключевые слова → эмодзи") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(12.dp))
+                    Text("Быстрые теги:", fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        QuickTags.TAGS.forEach { tag ->
+                            FilterChip(
+                                selected = quickTags.contains(tag), 
+                                onClick = { quickTags = if (quickTags.contains(tag)) quickTags.replace(tag, "").trim() else "$quickTags $tag".trim() }, 
+                                label = { Text(tag) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (showError != null) Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+
+            Button(
+                onClick = {
+                    if (generatedPassword.isEmpty() || service.isBlank()) return@Button
+                    val entry = Entry.create(
+                        service = service, 
+                        username = username, 
+                        password = generatedPassword, 
+                        profile = profile, 
+                        category = category, 
+                        emojiHint = emojiHint.ifBlank { null }, 
+                        textHint = textHint.ifBlank { null }, 
+                        quickTags = quickTags.ifBlank { null }
+                    )
+                    viewModel.insert(entry)
+                    onBack()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = generatedPassword.isNotEmpty()
+            ) {
+                Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                Spacer(Modifier.size(4.dp))
+                Text("Сохранить")
+            }
+        }
+    }
+}
