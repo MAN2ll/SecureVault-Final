@@ -20,23 +20,20 @@ class VaultViewModel @Inject constructor(
     private val _profileFilter = MutableStateFlow<Profile?>(null)
     val profileFilter: StateFlow<Profile?> = _profileFilter.asStateFlow()
 
-    private val _categoryFilter = MutableStateFlow<String?>(null)
-    val categoryFilter: StateFlow<String?> = _categoryFilter.asStateFlow()
-
     private val _favoritesOnly = MutableStateFlow(false)
     val favoritesOnly: StateFlow<Boolean> = _favoritesOnly.asStateFlow()
 
+    // ✅ ИСПРАВЛЕНО: Фильтр теперь работает корректно
     val entries: StateFlow<List<Entry>> = repository.allEntries
-        .map { list ->
-            var filtered = list
-            if (_favoritesOnly.value) filtered = filtered.filter { it.isFavorite }
-            _profileFilter.value?.let { p -> filtered = filtered.filter { it.profile == p } }
-            _categoryFilter.value?.let { c -> filtered = filtered.filter { it.category == c } }
-            filtered
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .combine(_profileFilter) { list, profile ->
+            if (profile == null) list else list.filter { it.profile == profile }
+        }
+        .combine(_favoritesOnly) { list, favOnly ->
+            if (favOnly) list.filter { it.isFavorite } else list
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun setProfileFilter(profile: Profile?) { _profileFilter.value = profile; _categoryFilter.value = null }
-    fun setCategoryFilter(category: String?) { _categoryFilter.value = category }
+    fun setProfileFilter(profile: Profile?) { _profileFilter.value = profile }
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
@@ -48,17 +45,6 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ ДОБАВЛЕН ЭТОТ МЕТОД
-    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
-        val entry = repository.getById(id) ?: return@launch
-        val updated = entry.copy(
-            encryptedPassword = CryptoUtils.encrypt(newPassword),
-            lastChanged = System.currentTimeMillis(),
-            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
-        )
-        repository.update(updated)
-    }
-
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
         val newPwd = PasswordGenerator.generate(16, true, true, true).password
@@ -68,9 +54,5 @@ class VaultViewModel @Inject constructor(
             nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
         )
         repository.update(updated)
-    }
-
-    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        ids.forEach { rotatePassword(it) }
     }
 }
