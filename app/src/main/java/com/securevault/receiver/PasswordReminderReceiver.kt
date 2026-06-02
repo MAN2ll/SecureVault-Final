@@ -1,41 +1,43 @@
 package com.securevault.receiver
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.securevault.R // ✅ Добавь этот импорт если есть свои ресурсы
+import com.securevault.R // Убедись, что R импортирован из твоего пакета, либо используй android.R.drawable.ic_lock_idle_lock
+import com.securevault.utils.ReminderManager
 
 class PasswordReminderReceiver : BroadcastReceiver() {
-    
-    // ✅ Константы дублируем здесь, чтобы не зависеть от ReminderManager
-    companion object {
-        const val ACTION_REMINDER = "com.securevault.action.PASSWORD_REMINDER"
-        const val EXTRA_ENTRY_TITLE = "extra_entry_title"
-        const val EXTRA_DAYS_LEFT = "extra_days_left"
-        const val NOTIFICATION_CHANNEL_ID = "password_reminders"
-    }
-    
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == ACTION_REMINDER) {
-            val entryTitle = intent.getStringExtra(EXTRA_ENTRY_TITLE) ?: "пароль"
-            val daysLeft = intent.getIntExtra(EXTRA_DAYS_LEFT, 7)
+        if (intent.action == ReminderManager.ACTION_REMINDER) {
+            createChannel(context)
+            val service = intent.getStringExtra("service") ?: "Сервис"
             
-            showNotification(context, entryTitle, daysLeft)
+            val notification = NotificationCompat.Builder(context, ReminderManager.CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setContentTitle("Напоминание о пароле")
+                .setContentText("Пора сменить пароль для \"$service\"!")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(service.hashCode(), notification)
         }
     }
-    
-    private fun showNotification(context: Context, entryTitle: String, daysLeft: Int) {
-        val notification = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock) // Или R.drawable.ic_notification
-            .setContentTitle("⏰ Пора сменить пароль")
-            .setContentText("Пароль для \"$entryTitle\" истекает через $daysLeft д.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
 
-        NotificationManagerCompat.from(context)
-            .notify(5000 + entryTitle.hashCode(), notification)
+    private fun createChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                ReminderManager.CHANNEL_ID,
+                "Напоминания о паролях",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
     }
 }
