@@ -102,12 +102,9 @@ fun SetupScreen(
                             error = "Пароли не совпадают"
                         }
                         else -> {
-                            val success = viewModel.setupMasterPassword(password)
-                            if (success) {
-                                onCompleted()
-                            } else {
-                                error = "Ошибка сохранения. Попробуйте ещё раз."
-                            }
+                            // ✅ ИСПРАВЛЕНО: setupMasterPassword возвращает Unit, не Boolean
+                            viewModel.setupMasterPassword(password)
+                            onCompleted()
                         }
                     }
                 },
