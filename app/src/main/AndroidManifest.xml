@@ -12,6 +12,7 @@
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureVault">
+        <receiver android:name=".receiver.PasswordReminderReceiver" android:exported="false" />
 
         <activity
             android:name=".MainActivity"
