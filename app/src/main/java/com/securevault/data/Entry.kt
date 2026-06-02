@@ -9,36 +9,34 @@ import java.util.UUID
 @Entity(tableName = "entries")
 data class Entry(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    
     @ColumnInfo(name = "service") val service: String,
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
-    
     @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
+    @ColumnInfo(name = "category") val category: String = "Общее",
+    @ColumnInfo(name = "url") val url: String? = null,
+    @ColumnInfo(name = "notes") val notes: String? = null,
+    @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
     @ColumnInfo(name = "emoji_hint") val emojiHint: String? = null,
-    
-    // Ротация паролей
+    @ColumnInfo(name = "text_hint") val textHint: String? = null,
+    @ColumnInfo(name = "quick_tags") val quickTags: String? = null,
     @ColumnInfo(name = "rotation_enabled") val rotationEnabled: Boolean = false,
     @ColumnInfo(name = "rotation_period_months") val rotationPeriodMonths: Int = 6,
     @ColumnInfo(name = "next_rotation_date") val nextRotationDate: Long? = null,
-    
-    // Временные метки
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
-    
-    // Дополнительные поля функционала
-    @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
-    @ColumnInfo(name = "failed_attempts") val failedAttempts: Int = 0,
-    @ColumnInfo(name = "notes") val notes: String? = null
+    @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis()
 ) {
-    // Расшифрованный пароль (только для чтения)
-    val password: String
-        get() = CryptoUtils.decrypt(encryptedPassword)
+    val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
-    // Статус истечения
+    fun getDaysUntilRotation(): Int? {
+        return nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
+    }
+
+    fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
+
     fun getExpiryStatus(): ExpiryStatus {
         if (!rotationEnabled || nextRotationDate == null) return ExpiryStatus.OK
-        val daysLeft = getDaysUntilExpiry()
+        val daysLeft = getDaysUntilRotation() ?: return ExpiryStatus.OK
         return when {
             daysLeft < 0 -> ExpiryStatus.EXPIRED
             daysLeft <= 3 -> ExpiryStatus.CRITICAL
@@ -47,38 +45,14 @@ data class Entry(
         }
     }
 
-    // Дней до истечения
-    fun getDaysUntilExpiry(): Int {
-        if (nextRotationDate == null) return Int.MAX_VALUE
-        val diffMillis = nextRotationDate - System.currentTimeMillis()
-        return (diffMillis / (1000 * 60 * 60 * 24)).toInt()
-    }
-
-    // Просрочен ли
-    fun isPasswordExpired(): Boolean {
-        return nextRotationDate != null && System.currentTimeMillis() > nextRotationDate
-    }
-
-    // ✅ Добавь этот метод в класс Entry
-    fun getDaysUntilRotation(): Int? {
-        return nextRotationDate?.let {
-            val diffMillis = it - System.currentTimeMillis()
-            (diffMillis / (1000 * 60 * 60 * 24)).toInt()
-        }
-    }
-
-    // Фабричный метод
     companion object {
         fun create(
-            service: String,
-            username: String,
-            password: String,
-            profile: Profile = Profile.PERSONAL,
-            emojiHint: String? = null,
-            rotationEnabled: Boolean = false,
-            rotationPeriodMonths: Int = 6,
-            isFavorite: Boolean = false,
-            notes: String? = null
+            service: String, username: String, password: String,
+            profile: Profile = Profile.PERSONAL, category: String = "Общее",
+            url: String? = null, notes: String? = null,
+            emojiHint: String? = null, textHint: String? = null, quickTags: String? = null,
+            rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            isFavorite: Boolean = false
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
@@ -87,21 +61,33 @@ data class Entry(
             } else null
             
             return Entry(
-                service = service,
-                username = username,
-                encryptedPassword = encryptedPassword,
-                profile = profile,
-                emojiHint = emojiHint,
-                rotationEnabled = rotationEnabled,
-                rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate,
-                createdAt = now,
-                lastChanged = now,
-                isFavorite = isFavorite,
-                notes = notes
+                service = service, username = username, encryptedPassword = encryptedPassword,
+                profile = profile, category = category, url = url, notes = notes,
+                emojiHint = emojiHint, textHint = textHint, quickTags = quickTags,
+                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
+                isFavorite = isFavorite
             )
         }
     }
 
     enum class ExpiryStatus { OK, WARNING, CRITICAL, EXPIRED }
+}
+
+enum class Profile(val label: String) {
+    PERSONAL("Личное"), WORK("Работа")
+}
+
+object Categories {
+    val PERSONAL = listOf("Общее", "Финансы", "Соцсети", "Почта", "Развлечения", "Покупки")
+    val WORK = listOf("Общее", "Корпоративные", "Проекты", "Сервисы", "Документы")
+    fun getFor(profile: Profile) = if (profile == Profile.PERSONAL) PERSONAL else WORK
+}
+
+object QuickTags {
+    val TAGS = listOf(
+        "🐱 кот", "🏠 дом", "💼 работа", "🚗 машина",
+        "🔑 ключ", "⭐ звезда", "❤️ сердце", "🔥 огонь",
+        "📚 книга", "📱 телефон", "💰 деньги", "🏦 банк"
+    )
 }
