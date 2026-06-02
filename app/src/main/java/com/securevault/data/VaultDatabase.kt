@@ -11,7 +11,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-@Database(entities = [Entry::class], version = 1, exportSchema = false)
+// ✅ ИСПРАВЛЕНО: Версия поднята до 3, так как мы добавляли много новых полей в Entry
+@Database(entities = [Entry::class], version = 3, exportSchema = false)
 abstract class VaultDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
 
@@ -24,7 +25,10 @@ abstract class VaultDatabase : RoomDatabase() {
                     context.applicationContext,
                     VaultDatabase::class.java,
                     "vault_db"
-                ).build()
+                )
+                // ✅ КРИТИЧЕСКИ ВАЖНО: Разрешает пересоздать БД при изменении схемы
+                .fallbackToDestructiveMigration() 
+                .build()
                 INSTANCE = instance
                 instance
             }
