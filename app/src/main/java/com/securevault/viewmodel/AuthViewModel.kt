@@ -26,6 +26,7 @@ class AuthViewModel @Inject constructor(
 
     sealed class AuthState {
         object Idle : AuthState()
+        object SetupRequired : AuthState()  // ✅ ДОБАВЛЕНО
         object Success : AuthState()
         data class Failed(val attempts: Int) : AuthState()
         data class Blocked(val remainingMs: Long, val isWipe: Boolean = false) : AuthState()
@@ -46,6 +47,7 @@ class AuthViewModel @Inject constructor(
 
     init {
         initPrefs()
+        checkSetupState()  // ✅ ПРОВЕРКА ПРИ ИНИЦИАЛИЗАЦИИ
     }
 
     private fun initPrefs() {
@@ -63,6 +65,13 @@ class AuthViewModel @Inject constructor(
                 e.printStackTrace()
             }
         }
+    }
+
+    // ✅ ПРОВЕРКА: завершена ли настройка
+    private fun checkSetupState() {
+        initPrefs()
+        val isSetup = prefs?.getString("master_hash", null) != null
+        _authState.value = if (isSetup) AuthState.Idle else AuthState.SetupRequired
     }
 
     fun isSetupComplete(): Boolean {
@@ -102,10 +111,10 @@ class AuthViewModel @Inject constructor(
             if (attempts >= 10) {
                 _authState.value = AuthState.Blocked(0, isWipe = true)
             } else if (attempts >= 7) {
-                lockoutUntil = System.currentTimeMillis() + 60000 // 1 минута
+                lockoutUntil = System.currentTimeMillis() + 60000
                 _authState.value = AuthState.Blocked(60000)
             } else if (attempts >= 5) {
-                lockoutUntil = System.currentTimeMillis() + 30000 // 30 секунд
+                lockoutUntil = System.currentTimeMillis() + 30000
                 _authState.value = AuthState.Blocked(30000)
             } else {
                 _authState.value = AuthState.Failed(attempts)
