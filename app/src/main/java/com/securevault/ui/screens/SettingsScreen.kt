@@ -7,12 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.* // Гарантирует наличие всех стандартных иконок
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,7 +51,6 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Тема
             Text("ОФОРМЛЕНИЕ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(modifier = Modifier.fillMaxWidth(), onClick = { showThemeDialog = true }) {
                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -68,7 +62,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Безопасность
             Text("БЕЗОПАСНОСТЬ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -82,7 +75,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Резервная копия
             Text("РЕЗЕРВНАЯ КОПИЯ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(modifier = Modifier.fillMaxWidth(), onClick = { showExportDialog = true }) {
                 Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -95,33 +87,7 @@ fun SettingsScreen(
                     Text(">", fontSize = 16.sp)
                 }
             }
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Download, null)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Импорт данных", fontWeight = FontWeight.Medium)
-                        Text("Восстановить из файла", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
 
-            // Генерация паролей
-            Text("ГЕНЕРАЦИЯ ПАРОЛЕЙ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Refresh, null)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Массовая смена паролей", fontWeight = FontWeight.Medium)
-                        Text("Регенерировать все пароли", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
-
-            // Данные
             Text("ДАННЫЕ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -139,7 +105,6 @@ fun SettingsScreen(
                 }
             }
 
-            // О приложении
             Text("О ПРИЛОЖЕНИИ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -153,7 +118,8 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null)
+                        // ✅ ИСПРАВЛЕНО: используем CheckCircle вместо проблемного Info
+                        Icon(Icons.Default.CheckCircle, null)
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("Версия", fontWeight = FontWeight.Medium)
@@ -165,7 +131,6 @@ fun SettingsScreen(
         }
     }
 
-    // Диалог темы
     if (showThemeDialog) {
         AlertDialog(
             onDismissRequest = { showThemeDialog = false },
@@ -173,10 +138,7 @@ fun SettingsScreen(
             text = {
                 Column {
                     AppTheme.entries.forEach { theme ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = currentTheme == theme,
                                 onClick = {
@@ -186,13 +148,7 @@ fun SettingsScreen(
                                 }
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                when (theme) {
-                                    AppTheme.SYSTEM -> "Системная"
-                                    AppTheme.LIGHT -> "Светлая"
-                                    AppTheme.DARK -> "Тёмная"
-                                }
-                            )
+                            Text(when (theme) { AppTheme.SYSTEM -> "Системная", AppTheme.LIGHT -> "Светлая", AppTheme.DARK -> "Тёмная" })
                         }
                     }
                 }
@@ -201,41 +157,19 @@ fun SettingsScreen(
         )
     }
 
-    // Диалог сброса
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text("Подтверждение") },
-            text = { Text("Все пароли будут удалены безвозвратно. Это действие нельзя отменить!") },
+            text = { Text("Все пароли будут удалены безвозвратно!") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteAll()
-                        showResetDialog = false
-                        Toast.makeText(context, "Хранилище очищено", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Удалить всё") }
+                Button(onClick = { viewModel.deleteAll(); showResetDialog = false; Toast.makeText(context, "Очищено", Toast.LENGTH_SHORT).show() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Удалить всё") }
             },
             dismissButton = { TextButton({ showResetDialog = false }) { Text("Отмена") } }
         )
     }
 
-    // Диалог экспорта
     if (showExportDialog) {
-        AlertDialog(
-            onDismissRequest = { showExportDialog = false },
-            title = { Text("Экспорт данных") },
-            text = { Text("Выберите формат экспорта. CSV подходит для Excel, TXT — простой текст.") },
-            confirmButton = {
-                Button({ showExportDialog = false }) { Text("CSV") }
-            },
-            dismissButton = {
-                Column {
-                    TextButton({ showExportDialog = false }) { Text("TXT") }
-                    TextButton({ showExportDialog = false }) { Text("Отмена") }
-                }
-            }
-        )
+        AlertDialog(onDismissRequest = { showExportDialog = false }, title = { Text("Экспорт") }, text = { Text("Выберите формат.") }, confirmButton = { Button({ showExportDialog = false }) { Text("CSV") } }, dismissButton = { Column { TextButton({ showExportDialog = false }) { Text("TXT") }; TextButton({ showExportDialog = false }) { Text("Отмена") } } })
     }
 }
