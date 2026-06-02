@@ -6,7 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,11 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.data.Profile
-import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,145 +27,93 @@ fun RotationScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val entries by viewModel.entries.collectAsState()
-    
-    // Фильтруем записи, у которых включена ротация
-    val rotatableEntries = entries.filter { it.rotationEnabled && it.nextRotationDate != null }
-    val personalEntries = rotatableEntries.filter { it.profile == Profile.PERSONAL }
-    val workEntries = rotatableEntries.filter { it.profile == Profile.WORK }
+    val allEntries by viewModel.entries.collectAsState()
+    val rotatableEntries = remember(allEntries) {
+        allEntries.filter { it.rotationEnabled && it.nextRotationDate != null }
+            .sortedBy { it.nextRotationDate }
+    }
 
-    // Диалог подтверждения
-    var showConfirmDialog by remember { mutableStateOf<RotationTarget?>(null) }
+    var showReplaceAllDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Ротация паролей", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
-                    }
-                }
+                navigationIcon = { IconButton(onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            // === КНОПКИ МАССОВОЙ РОТАЦИИ ===
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Массовое обновление", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(Modifier.height(12.dp))
-                    
-                    Button(
-                        onClick = { showConfirmDialog = RotationTarget.ALL_PERSONAL },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = personalEntries.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Person, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Обновить все личные (${personalEntries.size})")
-                    }
-                    
-                    Spacer(Modifier.height(8.dp))
-                    
-                    Button(
-                        onClick = { showConfirmDialog = RotationTarget.ALL_WORK },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = workEntries.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Work, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Обновить все рабочие (${workEntries.size})")
-                    }
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            if (rotatableEntries.isNotEmpty()) {
+                Button(
+                    onClick = { showReplaceAllDialog = true },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Заменить ВСЕ пароли с ротацией")
                 }
             }
 
-            // === СПИСОК ЗАПИСЕЙ ===
-            Text("Отдельные записи", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            
             if (rotatableEntries.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    Text("Нет записей с активной ротацией", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Нет паролей с активной ротацией")
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(rotatableEntries, key = { it.id }) { entry ->
-                        RotationEntryCard(
-                            entry = entry,
-                            onUpdate = { viewModel.rotatePassword(entry.id) }
-                        )
+                        RotationItemCard(entry = entry, onUpdate = { viewModel.rotatePassword(entry.id) })
                     }
                 }
             }
         }
     }
 
-    // === ДИАЛОГ ПОДТВЕРЖДЕНИЯ ===
-    showConfirmDialog?.let { target ->
+    if (showReplaceAllDialog) {
         AlertDialog(
-            onDismissRequest = { showConfirmDialog = null },
+            onDismissRequest = { showReplaceAllDialog = false },
             title = { Text("Подтверждение") },
-            text = {
-                Text(when (target) {
-                    RotationTarget.ALL_PERSONAL -> "Обновить все личные пароли? (Генерация новых случайных паролей)"
-                    RotationTarget.ALL_WORK -> "Обновить все рабочие пароли? (Генерация новых случайных паролей)"
-                    else -> ""
-                })
-            },
+            text = { Text("Вы уверены? Это сгенерирует новые сложные пароли для всех ${rotatableEntries.size} записей и сбросит таймер ротации.") },
             confirmButton = {
                 Button(onClick = {
-                    when (target) {
-                        RotationTarget.ALL_PERSONAL -> viewModel.bulkRotatePasswords(personalEntries.map { it.id })
-                        RotationTarget.ALL_WORK -> viewModel.bulkRotatePasswords(workEntries.map { it.id })
-                        else -> {}
-                    }
-                    showConfirmDialog = null
-                }) {
-                    Text("Обновить")
-                }
+                    viewModel.bulkRotatePasswords(rotatableEntries.map { it.id })
+                    showReplaceAllDialog = false
+                }) { Text("Да, заменить все") }
             },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = null }) { Text("Отмена") }
-            }
+            dismissButton = { TextButton({ showReplaceAllDialog = false }) { Text("Отмена") } }
         )
     }
 }
 
-enum class RotationTarget { ALL_PERSONAL, ALL_WORK }
-
 @Composable
-private fun RotationEntryCard(entry: Entry, onUpdate: () -> Unit) {
+private fun RotationItemCard(entry: Entry, onUpdate: () -> Unit) {
+    val daysLeft = entry.getDaysUntilRotation() ?: 0
+    val isUrgent = daysLeft <= 7
+    val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    val dateStr = entry.nextRotationDate?.let { dateFormat.format(it) } ?: "Н/Д"
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Column(modifier = Modifier.fillMaxWidth(0.7f)) {
+                Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(
-                    text = "След. смена: ${entry.nextRotationDate?.let { formatDate(it) } ?: "—"}",
+                    "След. замена: $dateStr",
+                    fontSize = 13.sp,
+                    color = if (isUrgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Осталось: $daysLeft дн.",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontWeight = FontWeight.Medium,
+                    color = if (isUrgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                 )
             }
-            Button(onClick = onUpdate, colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )) {
-                Text("Обновить")
-            }
+            TextButton(onClick = onUpdate) { Text("Заменить") }
         }
     }
-}
-
-private fun formatDate(timestamp: Long): String {
-    return SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(timestamp))
 }
