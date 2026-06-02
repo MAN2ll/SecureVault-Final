@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.* // Гарантирует наличие всех стандартных иконок
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -118,7 +118,6 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // ✅ ИСПРАВЛЕНО: используем CheckCircle вместо проблемного Info
                         Icon(Icons.Default.CheckCircle, null)
                         Spacer(Modifier.width(12.dp))
                         Column {
@@ -131,6 +130,7 @@ fun SettingsScreen(
         }
     }
 
+    // ✅ Диалог выбора темы с ПРАВИЛЬНЫМ синтаксисом when
     if (showThemeDialog) {
         AlertDialog(
             onDismissRequest = { showThemeDialog = false },
@@ -148,7 +148,14 @@ fun SettingsScreen(
                                 }
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text(when (theme) { AppTheme.SYSTEM -> "Системная", AppTheme.LIGHT -> "Светлая", AppTheme.DARK -> "Тёмная" })
+                            
+                            // ✅ ИСПРАВЛЕНО: многострочный when (Kotlin требует переносов строк)
+                            val themeName = when (theme) {
+                                AppTheme.SYSTEM -> "Системная"
+                                AppTheme.LIGHT -> "Светлая"
+                                AppTheme.DARK -> "Тёмная"
+                            }
+                            Text(themeName)
                         }
                     }
                 }
@@ -157,19 +164,39 @@ fun SettingsScreen(
         )
     }
 
+    // ✅ Диалог сброса данных
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text("Подтверждение") },
             text = { Text("Все пароли будут удалены безвозвратно!") },
             confirmButton = {
-                Button(onClick = { viewModel.deleteAll(); showResetDialog = false; Toast.makeText(context, "Очищено", Toast.LENGTH_SHORT).show() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Удалить всё") }
+                Button(
+                    onClick = { 
+                        viewModel.deleteAll()
+                        showResetDialog = false
+                        Toast.makeText(context, "Очищено", Toast.LENGTH_SHORT).show() 
+                    }, 
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Удалить всё") }
             },
             dismissButton = { TextButton({ showResetDialog = false }) { Text("Отмена") } }
         )
     }
 
+    // ✅ Диалог экспорта
     if (showExportDialog) {
-        AlertDialog(onDismissRequest = { showExportDialog = false }, title = { Text("Экспорт") }, text = { Text("Выберите формат.") }, confirmButton = { Button({ showExportDialog = false }) { Text("CSV") } }, dismissButton = { Column { TextButton({ showExportDialog = false }) { Text("TXT") }; TextButton({ showExportDialog = false }) { Text("Отмена") } } })
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false }, 
+            title = { Text("Экспорт") }, 
+            text = { Text("Выберите формат.") }, 
+            confirmButton = { Button({ showExportDialog = false }) { Text("CSV") } }, 
+            dismissButton = { 
+                Column { 
+                    TextButton({ showExportDialog = false }) { Text("TXT") }
+                    TextButton({ showExportDialog = false }) { Text("Отмена") } 
+                } 
+            }
+        )
     }
 }
