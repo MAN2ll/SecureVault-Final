@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockScreen(
     onUnlocked: () -> Unit,
@@ -28,6 +29,7 @@ fun LockScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val authState by viewModel.authState.collectAsState()
     val failedAttempts by viewModel.failedAttempts.collectAsState()
+    val wipeTriggered by viewModel.wipeTriggered.collectAsState()
 
     LaunchedEffect(authState) {
         when (authState) {
@@ -38,20 +40,44 @@ fun LockScreen(
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("SecureVault", fontWeight = FontWeight.Bold) }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("SecureVault", fontWeight = FontWeight.Bold) }
+            )
+        }
+    ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(24.dp))
-            Text("Введите мастер-пароль", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(24.dp))
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Text(
+                text = "Введите мастер-пароль",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
             
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it; error = null },
+                onValueChange = { 
+                    password = it
+                    error = null
+                },
                 label = { Text("Мастер-пароль") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -60,39 +86,79 @@ fun LockScreen(
                 isError = error != null
             )
             
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+            error?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
             
             when (val state = authState) {
                 is AuthViewModel.AuthState.Blocked -> {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     if (state.isWipe) {
-                        Text("Превышено количество попыток!", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                        LaunchedEffect(Unit) { viewModel.triggerWipe() }
+                        Text(
+                            text = "Превышено количество попыток! Данные будут удалены.",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LaunchedEffect(Unit) {
+                            viewModel.triggerWipe()
+                        }
                     } else {
-                        Text("Подождите ${viewModel.formatLockoutTime(state.remainingMs)}", color = MaterialTheme.colorScheme.error)
+                        Text(
+                            text = "Слишком много попыток. Подождите ${viewModel.formatLockoutTime(state.remainingMs)}",
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
                 is AuthViewModel.AuthState.Failed -> {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Попыток: ${state.attempts}/10", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Неверный пароль. Попыток: ${state.attempts}/10",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp
+                    )
                 }
                 else -> {}
             }
             
-            Spacer(Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             
             Button(
                 onClick = {
-                    if (password.isBlank()) { error = "Введите пароль"; return@Button }
+                    if (password.isBlank()) {
+                        error = "Введите пароль"
+                        return@Button
+                    }
+                    
                     val success = viewModel.verifyPassword(password)
-                    if (!success) error = "Неверный пароль"
+                    if (!success) {
+                        error = "Неверный пароль"
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = authState !is AuthViewModel.AuthState.Blocked
-            ) { Text("Разблокировать") }
+                enabled = when (authState) {
+                    is AuthViewModel.AuthState.Blocked -> false
+                    else -> true
+                }
+            ) {
+                Text("Разблокировать")
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             if (failedAttempts >= 5) {
-                TextButton(onClick = { viewModel.resetSecurity(); password = ""; error = null }) { Text("Сбросить попытки") }
+                TextButton(
+                    onClick = {
+                        viewModel.resetSecurity()
+                        password = ""
+                        error = null
+                    }
+                ) {
+                    Text("Сбросить попытки")
+                }
             }
         }
     }
