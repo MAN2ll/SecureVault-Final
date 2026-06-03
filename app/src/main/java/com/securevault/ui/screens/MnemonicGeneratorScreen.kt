@@ -20,7 +20,9 @@ import com.securevault.data.Categories
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.data.QuickTags
+import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
+import kotlin.random.Random
 
 @Composable
 fun MnemonicGeneratorScreen(
@@ -42,39 +44,116 @@ fun MnemonicGeneratorScreen(
     var quickTags by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
 
-    fun generatePassword() {
-        if (phrase.isBlank()) {
-            generatedPassword = ""
-            return
-        }
-        val words = phrase.trim().split(Regex("\\s+"))
-        var base = words.joinToString("") { it.firstOrNull()?.uppercaseChar()?.toString() ?: "" }
-        base = base.replace("А", "A").replace("В", "B").replace("С", "C").replace("Е", "E")
-                   .replace("К", "K").replace("М", "M").replace("Н", "H").replace("О", "O")
-                   .replace("Р", "P").replace("Т", "T").replace("Х", "X")
-        if (!useUpper) base = base.lowercase()
-        if (useDigits) base += (10..99).random().toString()
-        if (useSpecial) base += listOf("!", "@", "#", "$").random()
-        val safeLength = length.coerceIn(8, 20)
-        generatedPassword = when {
-            base.length > safeLength -> base.take(safeLength)
-            base.length < safeLength -> {
-                var result = base
-                while (result.length < safeLength) result += "abcdefghijklmnopqrstuvwxyz".random()
-                result
+    // ✅ НОВЫЙ АЛГОРИТМ: Умная генерация из подсказки
+    fun generateSmartPassword(hint: String, length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String {
+        // Русские согласные → английские
+        val consonantMap = mapOf(
+            'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'ж' to "zh",
+            'з' to "z", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
+            'н' to "n", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+            'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch",
+            'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Ж' to "Zh",
+            'З' to "Z", 'Й' to "Y", 'К' to "K", 'Л' to "L", 'М' to "M",
+            'Н' to "N", 'П' to "P", 'Р' to "R", 'С' to "S", 'Т' to "T",
+            'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts", 'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sch"
+        )
+        
+        // Английские согласные
+        val enConsonants = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ"
+        
+        // Извлекаем согласные из подсказки
+        val consonants = StringBuilder()
+        for (ch in hint) {
+            if (ch in consonantMap) {
+                consonants.append(consonantMap[ch])
+            } else if (ch in enConsonants) {
+                consonants.append(ch)
             }
-            else -> base
+        }
+        
+        // Если согласных нет — используем все буквы
+        val baseChars = if (consonants.isEmpty()) {
+            hint.filter { it.isLetterOrDigit() }.take(length)
+        } else {
+            consonants.toString().take(length * 2) // берём с запасом
+        }
+        
+        if (baseChars.isEmpty()) return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+        
+        // Формируем пароль длиной length
+        var result = baseChars.take(length)
+        
+        // Дополняем, если не хватает
+        while (result.length < length) {
+            result += enConsonants.random()
+        }
+        result = result.take(length)
+        
+        // Применяем фильтры: заменяем некоторые символы
+        val resultChars = result.toCharArray()
+        
+        // Заглавные (не все, а некоторые — примерно 30%)
+        if (useUpper) {
+            for (i in resultChars.indices) {
+                if (resultChars[i].isLetter() && Random.nextFloat() < 0.3f) {
+                    resultChars[i] = resultChars[i].uppercaseChar()
+                }
+            }
+        } else {
+            // Если заглавные выключены — все в нижний регистр
+            for (i in resultChars.indices) {
+                if (resultChars[i].isLetter()) {
+                    resultChars[i] = resultChars[i].lowercaseChar()
+                }
+            }
+        }
+        
+        // Цифры (заменяем некоторые буквы на похожие цифры — ~20%)
+        if (useDigits) {
+            val digitReplacements = mapOf('a' to '4', 'e' to '3', 'i' to '1', 'o' to '0', 's' to '5', 't' to '7', 'b' to '8')
+            for (i in resultChars.indices) {
+                val lower = resultChars[i].lowercaseChar()
+                if (lower in digitReplacements && Random.nextFloat() < 0.25f) {
+                    resultChars[i] = digitReplacements[lower]!!
+                }
+            }
+        }
+        
+        // Спецсимволы (заменяем некоторые — ~15%)
+        if (useSpecial) {
+            val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '€')
+            for (i in resultChars.indices) {
+                val lower = resultChars[i].lowercaseChar()
+                if (lower in specialReplacements && Random.nextFloat() < 0.2f) {
+                    resultChars[i] = specialReplacements[lower]!!
+                }
+            }
+        }
+        
+        return String(resultChars)
+    }
+
+    // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ: два режима
+    fun generatePassword() {
+        val safeLength = length.coerceIn(8, 20)
+        
+        if (phrase.isBlank()) {
+            // Режим 1: Обычный рандомный генератор
+            generatedPassword = PasswordGenerator.generate(safeLength, useUpper, useDigits, useSpecial).password
+        } else {
+            // Режим 2: Умная генерация из подсказки
+            generatedPassword = generateSmartPassword(phrase, safeLength, useUpper, useDigits, useSpecial)
         }
     }
 
     LaunchedEffect(phrase, length, useUpper, useDigits, useSpecial) {
-        if (phrase.isNotBlank()) generatePassword()
+        generatePassword()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Запоминающийся пароль", fontWeight = FontWeight.Bold) },
+                title = { Text("Генератор паролей", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -91,11 +170,35 @@ fun MnemonicGeneratorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ✅ ПРАВИЛЬНЫЕ ВЫЗОВЫ OutlinedTextField
+            // Подсказка о режиме
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = if (phrase.isBlank()) "🎲 Режим: Случайный пароль" else "🧠 Режим: Мнемо-пароль из подсказки",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        text = if (phrase.isBlank()) 
+                            "Оставьте поле пустым для обычного генератора" 
+                        else 
+                            "Согласные буквы превратятся в английский пароль",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
-                label = { Text("Ваша фраза") },
+                label = { Text("Подсказка-фраза (необязательно)") },
+                placeholder = { Text("например: Мой кот любит молоко") },
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
@@ -178,9 +281,7 @@ fun MnemonicGeneratorScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Фильтры", fontWeight = FontWeight.Bold)
-                    
-                    // ✅ ПРАВИЛЬНЫЙ ВЫЗОВ Slider
+                    Text("Параметры пароля", fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "Длина: $length",
@@ -194,22 +295,22 @@ fun MnemonicGeneratorScreen(
                             modifier = Modifier.fillMaxWidth(0.7f)
                         )
                     }
-                    
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
-                        Text("Заглавные", modifier = Modifier.padding(start = 8.dp))
+                        Text("Заглавные буквы", modifier = Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
-                        Text("Цифры", modifier = Modifier.padding(start = 8.dp))
+                        Text("Цифры (a→4, e→3...)", modifier = Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
-                        Text("Спецсимволы", modifier = Modifier.padding(start = 8.dp))
+                        Text("Спецсимволы (a→@, s→$...)", modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
 
+            // Результат
             if (generatedPassword.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -223,7 +324,7 @@ fun MnemonicGeneratorScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "💡 Первые буквы фразы + фильтры",
+                            text = if (phrase.isBlank()) "💡 Случайный пароль" else "💡 Из подсказки: согласные + фильтры",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
@@ -232,25 +333,26 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
+            // Подсказки
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Подсказки", fontWeight = FontWeight.Medium)
+                    Text("Дополнительные подсказки", fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = textHint,
                         onValueChange = { textHint = it },
-                        label = { Text("Текст") },
+                        label = { Text("Текстовая подсказка") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = emojiHint,
                         onValueChange = { emojiHint = it },
-                        label = { Text("Эмодзи") },
+                        label = { Text("Эмодзи-подсказка") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Теги:", fontSize = 12.sp)
+                    Text("Быстрые теги:", fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -283,7 +385,7 @@ fun MnemonicGeneratorScreen(
             Button(
                 onClick = {
                     if (generatedPassword.isEmpty() || service.isBlank()) {
-                        showError = "Заполните поля"
+                        showError = "Заполните сервис"
                         return@Button
                     }
                     viewModel.insert(
@@ -303,11 +405,7 @@ fun MnemonicGeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = generatedPassword.isNotEmpty()
             ) {
-                Icon(
-                    imageVector = Icons.Default.Save,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(imageVector = Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.size(4.dp))
                 Text("Сохранить")
             }
