@@ -147,4 +147,14 @@ class AuthViewModel @Inject constructor(
     fun lock() {
         _authState.value = AuthState.Idle
     }
+        // ✅ НОВЫЙ МЕТОД: смена мастер-пароля
+    fun changeMasterPassword(oldPassword: String, newPassword: String): Boolean {
+        // Проверяем старый пароль
+        if (!verifyPassword(oldPassword)) {
+            return false
+        }
+        // Сохраняем новый
+        prefs?.edit()?.putString("master_hash", hashPassword(newPassword))?.apply()
+        return true
+    }
 }
