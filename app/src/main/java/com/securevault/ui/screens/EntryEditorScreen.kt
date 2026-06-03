@@ -1,11 +1,7 @@
-@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-
-
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
-// Добавь эти импорты:
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Star
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -29,7 +25,8 @@ import com.securevault.data.QuickTags
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
-
+import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +62,11 @@ fun EntryEditorScreen(
                 navigationIcon = { IconButton(onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
                     IconButton(onClick = { isFavorite = !isFavorite }) { 
-                        Icon(if (isFavorite) Icons.Filled.Star else Icons.Outlined.Star, null, tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) 
+                        Icon(
+                            if (isFavorite) Icons.Filled.Star else Icons.Outlined.Star, 
+                            null, 
+                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        ) 
                     }
                     IconButton(onClick = {
                         if (service.isBlank() || password.isBlank()) {
@@ -120,7 +121,11 @@ fun EntryEditorScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()), 
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()), 
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             if (showError != null) { 
@@ -128,7 +133,6 @@ fun EntryEditorScreen(
                 showError = null 
             }
             
-            // Профиль
             var expandedProfile by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(expandedProfile, { expandedProfile = !expandedProfile }) {
                 OutlinedTextField(
@@ -149,7 +153,6 @@ fun EntryEditorScreen(
                 }
             }
             
-            // Категория
             var expandedCategory by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(expandedCategory, { expandedCategory = !expandedCategory }) {
                 OutlinedTextField(
@@ -173,7 +176,6 @@ fun EntryEditorScreen(
             OutlinedTextField(service, { service = it }, label = { Text("Сервис *") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(username, { username = it }, label = { Text("Логин / Email") }, modifier = Modifier.fillMaxWidth())
             
-            // Пароль с кнопками
             OutlinedTextField(
                 value = password, 
                 onValueChange = { password = it }, 
@@ -195,7 +197,6 @@ fun EntryEditorScreen(
             OutlinedTextField(url, { url = it }, label = { Text("URL (необязательно)") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(notes, { notes = it }, label = { Text("Заметки") }, modifier = Modifier.fillMaxWidth().height(100.dp))
             
-            // Ротация
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
@@ -227,7 +228,6 @@ fun EntryEditorScreen(
                 }
             }
             
-            // Мнемоподсказки
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Мнемонические подсказки", fontWeight = FontWeight.Medium)
@@ -238,7 +238,10 @@ fun EntryEditorScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("Быстрые теги:", fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), 
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         QuickTags.TAGS.forEach { tag ->
                             FilterChip(
                                 selected = quickTags.contains(tag), 
@@ -252,7 +255,6 @@ fun EntryEditorScreen(
         }
     }
     
-    // Диалог генератора
     if (showGeneratorDialog) {
         PasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false }, 
@@ -264,57 +266,183 @@ fun EntryEditorScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PasswordGeneratorDialog(
     onDismiss: () -> Unit, 
     onGenerated: (String) -> Unit
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
-    var useUpper by remember { mutableStateOf(true) }
-    var useDigits by remember { mutableStateOf(true) }
-    var useSpecial by remember { mutableStateOf(true) }
+    
+    // ✅ ИСПРАВЛЕНО: Фильтры ВЫКЛЮЧЕНЫ по умолчанию
+    var useUpper by remember { mutableStateOf(false) }
+    var useDigits by remember { mutableStateOf(false) }
+    var useSpecial by remember { mutableStateOf(false) }
+    
     var generatedPwd by remember { mutableStateOf("") }
+    var mnemonicPhrase by remember { mutableStateOf("") }
+    
+    fun generateSimplePassword(): String {
+        return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+    }
+    
+    fun generateMnemonicPassword(phrase: String): String {
+        if (phrase.isBlank()) return ""
+        
+        val consonantMap = mapOf(
+            'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'ж' to "zh",
+            'з' to "z", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
+            'н' to "n", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
+            'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch",
+            'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Ж' to "Zh",
+            'З' to "Z", 'Й' to "Y", 'К' to "K", 'Л' to "L", 'М' to "M",
+            'Н' to "N", 'П' to "P", 'Р' to "R", 'С' to "S", 'Т' to "T",
+            'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts", 'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sch"
+        )
+        
+        val enConsonants = "bcdfghjklmnpqrstvwxyz"
+        val consonants = StringBuilder()
+        for (ch in phrase) {
+            if (ch in consonantMap) {
+                consonants.append(consonantMap[ch])
+            } else if (ch.lowercaseChar() in enConsonants) {
+                consonants.append(ch.lowercaseChar())
+            }
+        }
+        
+        val baseChars = if (consonants.isEmpty()) {
+            phrase.filter { it.isLetterOrDigit() }.take(length)
+        } else {
+            consonants.toString().take(length * 2)
+        }
+        
+        if (baseChars.isEmpty()) return generateSimplePassword()
+        
+        var result = baseChars.take(length)
+        while (result.length < length) {
+            result += enConsonants.random()
+        }
+        result = result.take(length)
+        
+        val resultChars = result.toCharArray()
+        
+        if (useUpper) {
+            for (i in resultChars.indices) {
+                if (resultChars[i].isLetter() && Random.nextFloat() < 0.3f) {
+                    resultChars[i] = resultChars[i].uppercaseChar()
+                }
+            }
+        }
+        
+        if (useDigits) {
+            val digitReplacements = mapOf('a' to '4', 'e' to '3', 'i' to '1', 'o' to '0', 's' to '5', 't' to '7', 'b' to '8')
+            for (i in resultChars.indices) {
+                val lower = resultChars[i].lowercaseChar()
+                if (lower in digitReplacements && Random.nextFloat() < 0.25f) {
+                    resultChars[i] = digitReplacements[lower]!!
+                }
+            }
+        }
+        
+        if (useSpecial) {
+            val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '3')
+            for (i in resultChars.indices) {
+                val lower = resultChars[i].lowercaseChar()
+                if (lower in specialReplacements && Random.nextFloat() < 0.2f) {
+                    resultChars[i] = specialReplacements[lower]!!
+                }
+            }
+        }
+        
+        return String(resultChars)
+    }
+    
+    // ✅ ПЕРЕГЕНЕРАЦИЯ при ЛЮБОМ изменении
+    LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase) {
+        generatedPwd = if (selectedTab == 0) {
+            generateSimplePassword()
+        } else {
+            generateMnemonicPassword(mnemonicPhrase)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss, 
         title = { Text("Генератор паролей") }, 
         text = { 
-            Column { 
-                if (generatedPwd.isNotEmpty()) { 
+            Column {
+                // ✅ ВКЛАДКИ
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Обычный") }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Мнемонический") }
+                    )
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // ✅ ПОЛЕ ДЛЯ ПОДСКАЗКИ (только во вкладке Мнемонический)
+                if (selectedTab == 1) {
+                    OutlinedTextField(
+                        value = mnemonicPhrase,
+                        onValueChange = { mnemonicPhrase = it },
+                        label = { Text("Подсказка-фраза") },
+                        placeholder = { Text("например: Мой кот любит молоко") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                
+                if (generatedPwd.isNotEmpty()) {
                     Text(
-                        generatedPwd, 
-                        fontSize = 18.sp, 
-                        fontFamily = FontFamily.Monospace, 
+                        text = generatedPwd,
+                        fontSize = 18.sp,
+                        fontFamily = FontFamily.Monospace,
                         modifier = Modifier.padding(vertical = 12.dp)
-                    ) 
-                } 
-                Slider(
-                    value = length.toFloat(), 
-                    onValueChange = { length = it.toInt() }, 
-                    valueRange = 8f..20f, 
-                    steps = 12
-                )
-                Text("Длина: $length")
+                    )
+                }
+                
                 Spacer(Modifier.height(8.dp))
                 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Длина: $length", modifier = Modifier.weight(1f))
+                    Slider(
+                        value = length.toFloat(),
+                        onValueChange = { length = it.toInt() },
+                        valueRange = 8f..20f,
+                        steps = 12,
+                        modifier = Modifier.weight(2f)
+                    )
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // ✅ ЧЕКБОКСЫ (выключены по умолчанию)
                 Row(verticalAlignment = Alignment.CenterVertically) { 
-                    Checkbox(useUpper, { useUpper = it })
-                    Text("Заглавные (A-Z)", Modifier.padding(start = 8.dp)) 
+                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
+                    Text("Заглавные (~30%)", Modifier.padding(start = 8.dp)) 
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { 
-                    Checkbox(useDigits, { useDigits = it })
-                    Text("Цифры (0-9)", Modifier.padding(start = 8.dp)) 
+                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
+                    Text("Цифры (~25%)", Modifier.padding(start = 8.dp)) 
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) { 
-                    Checkbox(useSpecial, { useSpecial = it })
-                    Text("Символы (!@#...)", Modifier.padding(start = 8.dp)) 
+                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
+                    Text("Спецсимволы (~20%)", Modifier.padding(start = 8.dp)) 
                 } 
             } 
         }, 
         confirmButton = { 
             Button(
                 onClick = { 
-                    val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+                    val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else generateSimplePassword()
                     onGenerated(finalPwd) 
                 }
             ) { 
@@ -326,11 +454,4 @@ private fun PasswordGeneratorDialog(
         }, 
         modifier = Modifier.fillMaxWidth(0.9f)
     )
-    
-    // Генерируем пароль при первом открытии или изменении параметров
-    LaunchedEffect(length, useUpper, useDigits, useSpecial) {
-        if (generatedPwd.isEmpty()) {
-            generatedPwd = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
-        }
-    }
 }
