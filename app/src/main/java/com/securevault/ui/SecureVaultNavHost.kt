@@ -22,31 +22,45 @@ fun SecureVaultNavHost() {
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
 
-    NavHost(navController = navController, startDestination = "splash") {
+    NavHost(navController, startDestination = "splash") {
         composable("splash") {
             when (authState) {
                 is AuthViewModel.AuthState.SetupRequired -> {
                     LaunchedEffect(Unit) {
-                        navController.navigate("setup") { popUpTo("splash") { inclusive = true } }
+                        navController.navigate("setup") {
+                            popUpTo("splash") { inclusive = true }
+                        }
                     }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Загрузка...") }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Загрузка...")
+                    }
                 }
                 is AuthViewModel.AuthState.Idle,
                 is AuthViewModel.AuthState.Failed,
                 is AuthViewModel.AuthState.Blocked -> {
                     LaunchedEffect(Unit) {
-                        navController.navigate("lock") { popUpTo("splash") { inclusive = true } }
+                        navController.navigate("lock") {
+                            popUpTo("splash") { inclusive = true }
+                        }
                     }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Загрузка...") }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Загрузка...")
+                    }
                 }
                 is AuthViewModel.AuthState.Success -> {
                     LaunchedEffect(Unit) {
-                        navController.navigate("main") { popUpTo("splash") { inclusive = true } }
+                        navController.navigate("main") {
+                            popUpTo("splash") { inclusive = true }
+                        }
                     }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Загрузка...") }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Загрузка...")
+                    }
                 }
                 else -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Загрузка...") }
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Загрузка...")
+                    }
                 }
             }
         }
@@ -54,15 +68,25 @@ fun SecureVaultNavHost() {
         composable("setup") {
             SetupScreen(
                 onCompleted = {
-                    navController.navigate("main") { popUpTo("setup") { inclusive = true } }
+                    navController.navigate("main") {
+                        popUpTo("setup") { inclusive = true }
+                    }
                 }
             )
         }
 
         composable("lock") {
             LockScreen(
-                onUnlocked = { navController.navigate("main") { popUpTo("lock") { inclusive = true } } },
-                onSetupRequired = { navController.navigate("setup") { popUpTo("lock") { inclusive = true } } }
+                onUnlocked = {
+                    navController.navigate("main") {
+                        popUpTo("lock") { inclusive = true }
+                    }
+                },
+                onSetupRequired = {
+                    navController.navigate("setup") {
+                        popUpTo("lock") { inclusive = true }
+                    }
+                }
             )
         }
 
@@ -71,7 +95,9 @@ fun SecureVaultNavHost() {
                 onNavigate = { route -> navController.navigate(route) },
                 onLock = {
                     authViewModel.lock()
-                    navController.navigate("lock") { popUpTo("main") { inclusive = true } }
+                    navController.navigate("lock") {
+                        popUpTo("main") { inclusive = true }
+                    }
                 }
             )
         }
