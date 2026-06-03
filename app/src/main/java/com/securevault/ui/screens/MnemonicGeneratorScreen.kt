@@ -35,16 +35,19 @@ fun MnemonicGeneratorScreen(
     var profile by remember { mutableStateOf(Profile.PERSONAL) }
     var category by remember { mutableStateOf("Общее") }
     var length by remember { mutableIntStateOf(12) }
-    var useUpper by remember { mutableStateOf(true) }
-    var useDigits by remember { mutableStateOf(true) }
-    var useSpecial by remember { mutableStateOf(true) }
+    
+    // ✅ ИСПРАВЛЕНО: Фильтры по умолчанию ВЫКЛЮЧЕНЫ
+    var useUpper by remember { mutableStateOf(false) }
+    var useDigits by remember { mutableStateOf(false) }
+    var useSpecial by remember { mutableStateOf(false) }
+    
     var generatedPassword by remember { mutableStateOf("") }
     var emojiHint by remember { mutableStateOf("") }
     var textHint by remember { mutableStateOf("") }
     var quickTags by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
 
-    // ✅ НОВЫЙ АЛГОРИТМ: Умная генерация из подсказки
+    // ✅ ИСПРАВЛЕННЫЙ АЛГОРИТМ
     fun generateSmartPassword(hint: String, length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String {
         // Русские согласные → английские
         val consonantMap = mapOf(
@@ -59,15 +62,15 @@ fun MnemonicGeneratorScreen(
         )
         
         // Английские согласные
-        val enConsonants = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ"
+        val enConsonants = "bcdfghjklmnpqrstvwxyz"
         
         // Извлекаем согласные из подсказки
         val consonants = StringBuilder()
         for (ch in hint) {
             if (ch in consonantMap) {
                 consonants.append(consonantMap[ch])
-            } else if (ch in enConsonants) {
-                consonants.append(ch)
+            } else if (ch.lowercaseChar() in enConsonants) {
+                consonants.append(ch.lowercaseChar())
             }
         }
         
@@ -75,7 +78,7 @@ fun MnemonicGeneratorScreen(
         val baseChars = if (consonants.isEmpty()) {
             hint.filter { it.isLetterOrDigit() }.take(length)
         } else {
-            consonants.toString().take(length * 2) // берём с запасом
+            consonants.toString().take(length * 2)
         }
         
         if (baseChars.isEmpty()) return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
@@ -89,26 +92,19 @@ fun MnemonicGeneratorScreen(
         }
         result = result.take(length)
         
-        // Применяем фильтры: заменяем некоторые символы
+        // Применяем фильтры
         val resultChars = result.toCharArray()
         
-        // Заглавные (не все, а некоторые — примерно 30%)
+        // Заглавные (если включено — ~30% букв)
         if (useUpper) {
             for (i in resultChars.indices) {
                 if (resultChars[i].isLetter() && Random.nextFloat() < 0.3f) {
                     resultChars[i] = resultChars[i].uppercaseChar()
                 }
             }
-        } else {
-            // Если заглавные выключены — все в нижний регистр
-            for (i in resultChars.indices) {
-                if (resultChars[i].isLetter()) {
-                    resultChars[i] = resultChars[i].lowercaseChar()
-                }
-            }
         }
         
-        // Цифры (заменяем некоторые буквы на похожие цифры — ~20%)
+        // Цифры (если включено — ~25% букв)
         if (useDigits) {
             val digitReplacements = mapOf('a' to '4', 'e' to '3', 'i' to '1', 'o' to '0', 's' to '5', 't' to '7', 'b' to '8')
             for (i in resultChars.indices) {
@@ -119,9 +115,9 @@ fun MnemonicGeneratorScreen(
             }
         }
         
-        // Спецсимволы (заменяем некоторые — ~15%)
+        // Спецсимволы (если включено — ~20% букв)
         if (useSpecial) {
-            val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '€')
+            val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '3')
             for (i in resultChars.indices) {
                 val lower = resultChars[i].lowercaseChar()
                 if (lower in specialReplacements && Random.nextFloat() < 0.2f) {
@@ -133,7 +129,7 @@ fun MnemonicGeneratorScreen(
         return String(resultChars)
     }
 
-    // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ: два режима
+    // ✅ ОБНОВЛЁННАЯ ФУНКЦИЯ
     fun generatePassword() {
         val safeLength = length.coerceIn(8, 20)
         
@@ -146,6 +142,7 @@ fun MnemonicGeneratorScreen(
         }
     }
 
+    // ✅ Автоматическая перегенерация
     LaunchedEffect(phrase, length, useUpper, useDigits, useSpecial) {
         generatePassword()
     }
@@ -170,12 +167,10 @@ fun MnemonicGeneratorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Подсказка о режиме
+            // Индикатор режима
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -297,15 +292,15 @@ fun MnemonicGeneratorScreen(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
-                        Text("Заглавные буквы", modifier = Modifier.padding(start = 8.dp))
+                        Text("Заглавные буквы (~30%)", modifier = Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
-                        Text("Цифры (a→4, e→3...)", modifier = Modifier.padding(start = 8.dp))
+                        Text("Цифры (~25%: a→4, e→3...)", modifier = Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
-                        Text("Спецсимволы (a→@, s→$...)", modifier = Modifier.padding(start = 8.dp))
+                        Text("Спецсимволы (~20%: a→@, s→$...)", modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
