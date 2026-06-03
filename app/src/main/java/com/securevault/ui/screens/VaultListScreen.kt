@@ -24,6 +24,7 @@ import com.securevault.viewmodel.VaultViewModel
 @Composable
 fun VaultListScreen(
     onNavigate: (String) -> Unit,
+    onLock: () -> Unit = {},  // ✅ ДОБАВЬ ЭТУ СТРОКУ
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
