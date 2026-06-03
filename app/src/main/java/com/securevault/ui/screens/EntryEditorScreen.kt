@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +29,6 @@ import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryEditorScreen(
     id: String?,
@@ -63,8 +63,8 @@ fun EntryEditorScreen(
                 actions = {
                     IconButton(onClick = { isFavorite = !isFavorite }) { 
                         Icon(
-                            if (isFavorite) Icons.Filled.Star else Icons.Outlined.Star, 
-                            null, 
+                            imageVector = if (isFavorite) Icons.Default.Star else Icons.Outlined.Star,
+                            contentDescription = null,
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         ) 
                     }
@@ -238,7 +238,7 @@ fun EntryEditorScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("Быстрые теги:", fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
-                    androidx.compose.foundation.layout.FlowRow(
+                    FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp), 
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -266,7 +266,6 @@ fun EntryEditorScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PasswordGeneratorDialog(
     onDismiss: () -> Unit, 
@@ -275,7 +274,6 @@ private fun PasswordGeneratorDialog(
     var selectedTab by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
     
-    // ✅ ИСПРАВЛЕНО: Фильтры ВЫКЛЮЧЕНЫ по умолчанию
     var useUpper by remember { mutableStateOf(false) }
     var useDigits by remember { mutableStateOf(false) }
     var useSpecial by remember { mutableStateOf(false) }
@@ -358,7 +356,6 @@ private fun PasswordGeneratorDialog(
         return String(resultChars)
     }
     
-    // ✅ ПЕРЕГЕНЕРАЦИЯ при ЛЮБОМ изменении
     LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase) {
         generatedPwd = if (selectedTab == 0) {
             generateSimplePassword()
@@ -372,7 +369,6 @@ private fun PasswordGeneratorDialog(
         title = { Text("Генератор паролей") }, 
         text = { 
             Column {
-                // ✅ ВКЛАДКИ
                 TabRow(selectedTabIndex = selectedTab) {
                     Tab(
                         selected = selectedTab == 0,
@@ -388,7 +384,6 @@ private fun PasswordGeneratorDialog(
                 
                 Spacer(Modifier.height(16.dp))
                 
-                // ✅ ПОЛЕ ДЛЯ ПОДСКАЗКИ (только во вкладке Мнемонический)
                 if (selectedTab == 1) {
                     OutlinedTextField(
                         value = mnemonicPhrase,
@@ -424,7 +419,6 @@ private fun PasswordGeneratorDialog(
                 
                 Spacer(Modifier.height(8.dp))
                 
-                // ✅ ЧЕКБОКСЫ (выключены по умолчанию)
                 Row(verticalAlignment = Alignment.CenterVertically) { 
                     Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
                     Text("Заглавные (~30%)", Modifier.padding(start = 8.dp)) 
