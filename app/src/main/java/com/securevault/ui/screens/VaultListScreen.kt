@@ -24,7 +24,7 @@ import com.securevault.viewmodel.VaultViewModel
 @Composable
 fun VaultListScreen(
     onNavigate: (String) -> Unit,
-    onLock: () -> Unit = {},  // ✅ ДОБАВЬ ЭТУ СТРОКУ
+    onLock: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
@@ -43,6 +43,9 @@ fun VaultListScreen(
                     }
                     IconButton(onClick = { onNavigate("rotation") }) { 
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Ротация") 
+                    }
+                    IconButton(onClick = { onLock() }) { 
+                        Icon(imageVector = Icons.Default.Lock, contentDescription = "Заблокировать") 
                     }
                 }
             )
