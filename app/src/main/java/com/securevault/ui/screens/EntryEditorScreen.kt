@@ -27,10 +27,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.data.Categories
 import com.securevault.data.Entry
 import com.securevault.data.Profile
-import com.securevault.data.QuickTags
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
@@ -45,11 +43,11 @@ enum class CipherMethod(
     val scientificName: String,
     val complexity: Int
 ) {
-    FMP("Фонемно-матричное", "🔬", "Матричная транспозиция + модульный сдвиг", "Phonetic-Matrix Transformation", 75),
-    VMS("Векторный многомерный", "📐", "Полиномиальный сдвиг с квадратичной зависимостью", "Vector Multidimensional Shift", 85),
-    HID("Хэш-инъекция с диффузией", "🔐", "SHA-256 + XOR + диффузия Шеннона", "Hash Injection with Diffusion", 95),
-    PPK("Полиалфавитная подстановка", "", "Шифр Виженера с автоключом", "Polyalphabetic Substitution with Autokey", 80),
-    BPI("Блочное перемешивание", "", "Блочная перестановка + инверсия", "Block Permutation with Inversion", 70)
+    FMP("Фонемно-матричное", "M", "Матричная транспозиция + модульный сдвиг", "Phonetic-Matrix Transformation", 75),
+    VMS("Векторный многомерный", "V", "Полиномиальный сдвиг с квадратичной зависимостью", "Vector Multidimensional Shift", 85),
+    HID("Хэш-инъекция с диффузией", "H", "SHA-256 + XOR + диффузия Шеннона", "Hash Injection with Diffusion", 95),
+    PPK("Полиалфавитная подстановка", "P", "Шифр Виженера с автоключом", "Polyalphabetic Substitution with Autokey", 80),
+    BPI("Блочное перемешивание", "B", "Блочная перестановка + инверсия", "Block Permutation with Inversion", 70)
 }
 
 // ===== КЛАСС ДЛЯ ВИЗУАЛИЗАЦИИ ШАГОВ =====
@@ -73,12 +71,9 @@ fun EntryEditorScreen(
     var username by remember { mutableStateOf(existingEntry?.username ?: "") }
     var password by remember { mutableStateOf("") }
     var profile by remember { mutableStateOf(existingEntry?.profile ?: Profile.PERSONAL) }
-    var category by remember { mutableStateOf(existingEntry?.category ?: "Общее") }
     var url by remember { mutableStateOf(existingEntry?.url ?: "") }
     var notes by remember { mutableStateOf(existingEntry?.notes ?: "") }
-    var emojiHint by remember { mutableStateOf(existingEntry?.emojiHint ?: "") }
     var textHint by remember { mutableStateOf(existingEntry?.textHint ?: "") }
-    var quickTags by remember { mutableStateOf(existingEntry?.quickTags ?: "") }
     var rotationEnabled by remember { mutableStateOf(existingEntry?.rotationEnabled ?: false) }
     var rotationMonths by remember { mutableIntStateOf(existingEntry?.rotationPeriodMonths ?: 6) }
     var isFavorite by remember { mutableStateOf(existingEntry?.isFavorite ?: false) }
@@ -111,20 +106,18 @@ fun EntryEditorScreen(
                         val entry = if (existingEntry != null) {
                             existingEntry.copy(
                                 service = service, username = username, encryptedPassword = encryptedPwd,
-                                profile = profile, category = category,
+                                profile = profile,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
-                                emojiHint = emojiHint.ifBlank { null }, textHint = textHint.ifBlank { null },
-                                quickTags = quickTags.ifBlank { null },
+                                textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
                                 isFavorite = isFavorite, lastChanged = System.currentTimeMillis()
                             )
                         } else {
                             Entry.create(
                                 service = service, username = username, password = password,
-                                profile = profile, category = category,
+                                profile = profile,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
-                                emojiHint = emojiHint.ifBlank { null }, textHint = textHint.ifBlank { null },
-                                quickTags = quickTags.ifBlank { null },
+                                textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
                                 isFavorite = isFavorite
                             )
@@ -152,6 +145,7 @@ fun EntryEditorScreen(
                 showError = null 
             }
             
+            // Профиль (Личное / Работа)
             var expandedProfile by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(expandedProfile, { expandedProfile = !expandedProfile }) {
                 OutlinedTextField(
@@ -162,22 +156,7 @@ fun EntryEditorScreen(
                 )
                 ExposedDropdownMenu(expandedProfile, { expandedProfile = false }) { 
                     Profile.entries.forEach { p -> 
-                        DropdownMenuItem(text = { Text(p.label) }, onClick = { profile = p; category = Categories.getFor(p).first() }) 
-                    } 
-                }
-            }
-            
-            var expandedCategory by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(expandedCategory, { expandedCategory = !expandedCategory }) {
-                OutlinedTextField(
-                    readOnly = true, value = category, onValueChange = {}, 
-                    label = { Text("Категория") }, 
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedCategory) }, 
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(expandedCategory, { expandedCategory = false }) { 
-                    Categories.getFor(profile).forEach { c -> 
-                        DropdownMenuItem(text = { Text(c) }, onClick = { category = c }) 
+                        DropdownMenuItem(text = { Text(p.label) }, onClick = { profile = p }) 
                     } 
                 }
             }
@@ -204,10 +183,13 @@ fun EntryEditorScreen(
             OutlinedTextField(url, { url = it }, label = { Text("URL (необязательно)") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(notes, { notes = it }, label = { Text("Заметки") }, modifier = Modifier.fillMaxWidth().height(100.dp))
             
+            // Ротация
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
-                        Text("Напоминание о смене пароля", fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.Schedule, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Напоминание о смене пароля", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                         Switch(rotationEnabled, { rotationEnabled = it }) 
                     }
                     if (rotationEnabled) {
@@ -230,25 +212,16 @@ fun EntryEditorScreen(
                 }
             }
             
+            // Подсказки
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Мнемонические подсказки", fontWeight = FontWeight.Medium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Lightbulb, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Мнемоническая подсказка", fontWeight = FontWeight.Medium)
+                    }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(textHint, { textHint = it }, label = { Text("Текстовая подсказка") }, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(emojiHint, { emojiHint = it }, label = { Text("Ключевые слова → эмодзи") }, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(12.dp))
-                    Text("Быстрые теги:", fontSize = 12.sp)
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickTags.TAGS.forEach { tag ->
-                            FilterChip(
-                                selected = quickTags.contains(tag), 
-                                onClick = { quickTags = if (quickTags.contains(tag)) quickTags.replace(tag, "").trim() else "$quickTags $tag".trim() }, 
-                                label = { Text(tag) }
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -265,7 +238,7 @@ fun EntryEditorScreen(
     }
 }
 
-// ===== НАУЧНЫЙ ГЕНЕРАТОР С НОВОЙ ЛОГИКОЙ =====
+// ===== НАУЧНЫЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScientificPasswordGeneratorDialog(
@@ -280,7 +253,7 @@ private fun ScientificPasswordGeneratorDialog(
     var useUpper by remember { mutableStateOf(false) }
     var useDigits by remember { mutableStateOf(false) }
     var useSpecial by remember { mutableStateOf(false) }
-    var useTwoParts by remember { mutableStateOf(false) } // ✅ НОВАЯ ОПЦИЯ: две части
+    var useTwoParts by remember { mutableStateOf(false) }
     
     var generatedPwd by remember { mutableStateOf("") }
     var mnemonicPhrase by remember { mutableStateOf("") }
@@ -288,13 +261,10 @@ private fun ScientificPasswordGeneratorDialog(
     var showSteps by remember { mutableStateOf(false) }
     var steps by remember { mutableStateOf<List<TransformationStep>>(emptyList()) }
     var entropyScore by remember { mutableStateOf(0.0) }
-    
-    // ✅ ИСТОРИЯ ПАРОЛЕЙ (последние 10)
     var passwordHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     
-    // ===== БЕЗОПАСНЫЕ ФУНКЦИИ ДЛЯ СТРОК (без joinToString) =====
+    // ===== БЕЗОПАСНЫЕ ФУНКЦИИ ДЛЯ СТРОК =====
     
-    // Безопасное объединение списка строк
     fun safeJoin(strings: List<String>, separator: String = ""): String {
         if (strings.isEmpty()) return ""
         var result = strings[0]
@@ -304,7 +274,6 @@ private fun ScientificPasswordGeneratorDialog(
         return result
     }
     
-    // Безопасное объединение списка символов
     fun safeJoinChars(chars: List<Char>, separator: String = ""): String {
         if (chars.isEmpty()) return ""
         var result = chars[0].toString()
@@ -314,9 +283,8 @@ private fun ScientificPasswordGeneratorDialog(
         return result
     }
     
-    // ===== АВТОРСКИЕ АЛГОРИТМЫ ШИФРОВАНИЯ =====
+    // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
     
-    // Извлечение согласных из фразы
     fun extractConsonants(text: String): String {
         val consonants = "бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxyz"
         val result = StringBuilder()
@@ -328,7 +296,6 @@ private fun ScientificPasswordGeneratorDialog(
         return result.toString()
     }
     
-    // Транслитерация русских согласных в английские
     fun transliterate(text: String): String {
         val map = mapOf(
             'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'ж' to "zh",
@@ -347,7 +314,8 @@ private fun ScientificPasswordGeneratorDialog(
         return result.toString()
     }
     
-    // 1. Фонемно-матричное преобразование (ФМП)
+    // ===== 5 АВТОРСКИХ АЛГОРИТМОВ =====
+    
     fun phoneticMatrixTransform(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -358,11 +326,10 @@ private fun ScientificPasswordGeneratorDialog(
         if (consonants.isEmpty()) return "" to steps
         
         val transliterated = transliterate(consonants)
-        steps.add(TransformationStep(3, "Транслитерация", transliterated, "RU → EN"))
+        steps.add(TransformationStep(3, "Транслитерация", transliterated, "RU -> EN"))
         
         val matrixSize = kotlin.math.sqrt(transliterated.length.toDouble()).toInt().coerceAtLeast(2)
         
-        // Матрица (безопасное объединение)
         val rows = mutableListOf<String>()
         var idx = 0
         while (idx < transliterated.length) {
@@ -371,9 +338,8 @@ private fun ScientificPasswordGeneratorDialog(
             idx = end
         }
         val matrixStr = safeJoin(rows, "\n")
-        steps.add(TransformationStep(4, "Матрица ${matrixSize}×${matrixSize}", matrixStr, "M[i][j]"))
+        steps.add(TransformationStep(4, "Матрица ${matrixSize}x${matrixSize}", matrixStr, "M[i][j]"))
         
-        // Транспонирование
         val transposed = StringBuilder()
         for (col in 0 until matrixSize) {
             for (row in 0 until matrixSize) {
@@ -383,9 +349,8 @@ private fun ScientificPasswordGeneratorDialog(
                 }
             }
         }
-        steps.add(TransformationStep(5, "Транспонирование", transposed.toString(), "M[i][j] → M[j][i]"))
+        steps.add(TransformationStep(5, "Транспонирование", transposed.toString(), "M[i][j] -> M[j][i]"))
         
-        // Модульный сдвиг
         val shifted = StringBuilder()
         for (i in transposed.indices) {
             val ch = transposed[i]
@@ -399,7 +364,6 @@ private fun ScientificPasswordGeneratorDialog(
         return shifted.toString() to steps
     }
     
-    // 2. Векторный многомерный сдвиг (ВМС)
     fun vectorMultidimensionalShift(text: String, key: Int = 3): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -412,7 +376,6 @@ private fun ScientificPasswordGeneratorDialog(
         val transliterated = transliterate(consonants)
         steps.add(TransformationStep(3, "Транслитерация", transliterated))
         
-        // Полиномиальный сдвиг
         val shifted = StringBuilder()
         for (i in transliterated.indices) {
             val ch = transliterated[i]
@@ -422,9 +385,8 @@ private fun ScientificPasswordGeneratorDialog(
             val newCode = (code + shift) % 26
             shifted.append((newCode + 'a'.code).toChar())
         }
-        steps.add(TransformationStep(4, "Полиномиальный сдвиг", shifted.toString(), "C[i] = (P[i] + (i·k)²) mod 26"))
+        steps.add(TransformationStep(4, "Полиномиальный сдвиг", shifted.toString(), "C[i] = (P[i] + (i*k)^2) mod 26"))
         
-        // Инверсия каждого второго
         val inverted = StringBuilder()
         for (i in shifted.indices) {
             val ch = shifted[i]
@@ -439,7 +401,6 @@ private fun ScientificPasswordGeneratorDialog(
         return inverted.toString() to steps
     }
     
-    // 3. Хэш-инъекция с диффузией (ХИД)
     fun hashInjectionWithDiffusion(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -460,7 +421,6 @@ private fun ScientificPasswordGeneratorDialog(
         
         val transliterated = transliterate(consonants)
         
-        // XOR с хэшем
         val xored = StringBuilder()
         for (i in transliterated.indices) {
             val ch = transliterated[i]
@@ -472,7 +432,6 @@ private fun ScientificPasswordGeneratorDialog(
         }
         steps.add(TransformationStep(4, "XOR-инъекция хэша", xored.toString(), "C[i] = P[i] XOR H[i]"))
         
-        // Диффузия
         val diffused = StringBuilder()
         for (i in xored.indices) {
             val prev1 = if (i > 0) xored[i-1].code else 0
@@ -481,12 +440,11 @@ private fun ScientificPasswordGeneratorDialog(
             diffused.append(newCode.toChar())
         }
         val result = diffused.toString().filter { it.isLetterOrDigit() }.take(length)
-        steps.add(TransformationStep(5, "Диффузия Шеннона", result, "D[i] = C[i] ⊕ C[i-1] ⊕ C[i-2]"))
+        steps.add(TransformationStep(5, "Диффузия Шеннона", result, "D[i] = C[i] XOR C[i-1] XOR C[i-2]"))
         
         return result to steps
     }
     
-    // 4. Полиалфавитная подстановка с автоключом (ППК)
     fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -518,7 +476,7 @@ private fun ScientificPasswordGeneratorDialog(
             matrixRows.add(safeJoinChars(row, " "))
         }
         val matrixStr = safeJoin(matrixRows, "\n")
-        steps.add(TransformationStep(4, "Матрица 5×5", matrixStr, "M[5×5]"))
+        steps.add(TransformationStep(4, "Матрица 5x5", matrixStr, "M[5x5]"))
         
         val fullKey = keyWord + transliterated
         val encrypted = StringBuilder()
@@ -538,7 +496,6 @@ private fun ScientificPasswordGeneratorDialog(
         return encrypted.toString() to steps
     }
     
-    // 5. Блочное перемешивание с инверсией (БПИ)
     fun blockPermutationWithInversion(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -550,7 +507,6 @@ private fun ScientificPasswordGeneratorDialog(
         
         val transliterated = transliterate(consonants)
         
-        // Разбиение на блоки по 4
         val blocks = mutableListOf<String>()
         var idx = 0
         while (idx < transliterated.length) {
@@ -561,7 +517,6 @@ private fun ScientificPasswordGeneratorDialog(
         val blocksStr = safeJoin(blocks, " | ")
         steps.add(TransformationStep(3, "Блоки по 4 символа", blocksStr, "B[i] = P[i*4:(i+1)*4]"))
         
-        // Перестановка (2,4,1,3)
         val permuted = mutableListOf<String>()
         for (block in blocks) {
             val perm = when (block.length) {
@@ -573,9 +528,8 @@ private fun ScientificPasswordGeneratorDialog(
             permuted.add(perm)
         }
         val permutedStr = safeJoin(permuted, " | ")
-        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permutedStr, "π = (2,4,1,3)"))
+        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permutedStr, "pi = (2,4,1,3)"))
         
-        // Инверсия регистра каждого второго блока
         val inverted = mutableListOf<String>()
         for (i in permuted.indices) {
             if (i % 2 == 1) {
@@ -587,7 +541,6 @@ private fun ScientificPasswordGeneratorDialog(
         val invertedStr = safeJoin(inverted, " | ")
         steps.add(TransformationStep(5, "Инверсия нечётных блоков", invertedStr, "B[2k+1] = upper()"))
         
-        // Циклический сдвиг
         val result = safeJoin(inverted, "")
         val shifted = if (result.length > 2) {
             result.takeLast(2) + result.dropLast(2)
@@ -597,53 +550,56 @@ private fun ScientificPasswordGeneratorDialog(
         return shifted to steps
     }
     
-    // ✅ НОВАЯ ФУНКЦИЯ: Генерация с двумя частями
+    // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ: Две части пароля
     fun generateTwoPartPassword(base: String): String {
-        if (base.length < 8) return base
+        if (base.length < 4) return base
         
-        val halfLength = base.length / 2
+        val halfLength = (base.length / 2).coerceAtLeast(2)
         val part1 = base.take(halfLength)
-        val part2 = base.drop(halfLength)
+        val part2 = if (base.length > halfLength) base.drop(halfLength) else base.takeLast(halfLength)
         
-        // Гарантированный набор для каждой части: 2 заглавные, 2 цифры, 2 спецсимвола, 2 строчные
-        val guaranteedChars = listOf('A', 'B', '1', '2', '@', '#', 'x', 'y')
+        // Гарантированный набор для каждой части
+        val guaranteedPart1 = listOf('A', '1', '@', 'x')
+        val guaranteedPart2 = listOf('B', '2', '#', 'y')
         
-        // Добавляем гарантированные символы в каждую часть
-        val part1WithGuarantee = StringBuilder(part1)
-        val part2WithGuarantee = StringBuilder(part2)
+        val part1WithGuarantee = StringBuilder()
+        val part2WithGuarantee = StringBuilder()
         
-        for (ch in guaranteedChars) {
-            if (part1WithGuarantee.length < halfLength + 4) {
+        for (ch in part1) {
+            if (part1WithGuarantee.length < 6) part1WithGuarantee.append(ch)
+        }
+        for (ch in part2) {
+            if (part2WithGuarantee.length < 6) part2WithGuarantee.append(ch)
+        }
+        
+        for (ch in guaranteedPart1) {
+            if (!part1WithGuarantee.contains(ch.toString())) {
                 part1WithGuarantee.append(ch)
             }
-            if (part2WithGuarantee.length < halfLength + 4) {
+        }
+        for (ch in guaranteedPart2) {
+            if (!part2WithGuarantee.contains(ch.toString())) {
                 part2WithGuarantee.append(ch)
             }
         }
         
-        // Перемешиваем каждую часть
         val shuffled1 = part1WithGuarantee.toString().toCharArray().apply { 
             for (i in indices) {
-                val j = Random.nextInt(length)
-                val temp = this[i]
-                this[i] = this[j]
-                this[j] = temp
+                val j = Random.nextInt(size)
+                val temp = this[i]; this[i] = this[j]; this[j] = temp
             }
         }.concatToString()
         
         val shuffled2 = part2WithGuarantee.toString().toCharArray().apply { 
             for (i in indices) {
-                val j = Random.nextInt(length)
-                val temp = this[i]
-                this[i] = this[j]
-                this[j] = temp
+                val j = Random.nextInt(size)
+                val temp = this[i]; this[i] = this[j]; this[j] = temp
             }
         }.concatToString()
         
         return "$shuffled1-$shuffled2"
     }
     
-    // ✅ УДАЛЕНИЕ ПОВТОРОВ
     fun removeDuplicates(text: String): String {
         val seen = mutableSetOf<Char>()
         val result = StringBuilder()
@@ -656,7 +612,6 @@ private fun ScientificPasswordGeneratorDialog(
         return result.toString()
     }
     
-    // Применение фильтров
     fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         val chars = text.toCharArray()
@@ -695,7 +650,6 @@ private fun ScientificPasswordGeneratorDialog(
         return String(chars) to steps
     }
     
-    // Главная функция генерации
     fun generateScientificPassword(phrase: String): String {
         if (phrase.isBlank()) return ""
         
@@ -717,10 +671,8 @@ private fun ScientificPasswordGeneratorDialog(
         }
         result = result.take(length)
         
-        // ✅ Удаление повторов
         result = removeDuplicates(result)
         
-        // ✅ Если включены две части — генерируем двухчастный пароль
         if (useTwoParts) {
             result = generateTwoPartPassword(result)
         }
@@ -730,17 +682,14 @@ private fun ScientificPasswordGeneratorDialog(
         steps = baseSteps + filterSteps.map { it.copy(stepNumber = it.stepNumber + baseSteps.size) }
         steps = steps.mapIndexed { idx, step -> step.copy(stepNumber = idx + 1) }
         
-        // ✅ Добавляем шаг с двумя частями, если включено
         if (useTwoParts) {
             steps = steps + TransformationStep(steps.size + 1, "Две части с гарантированным набором", filteredPwd, "Part1-Guaranteed + Part2-Guaranteed")
         }
         
-        // ✅ Сохраняем в историю (если новый пароль отличается от последнего)
         if (passwordHistory.isEmpty() || passwordHistory.first() != filteredPwd) {
             passwordHistory = listOf(filteredPwd) + passwordHistory.take(9)
         }
         
-        // Расчёт энтропии
         val charSetSize = when {
             filteredPwd.any { it.isUpperCase() } && filteredPwd.any { it.isLowerCase() } && 
             filteredPwd.any { it.isDigit() } && filteredPwd.any { !it.isLetterOrDigit() } -> 94.0
@@ -754,7 +703,6 @@ private fun ScientificPasswordGeneratorDialog(
         return filteredPwd
     }
     
-    // Перегенерация
     LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts) {
         generatedPwd = if (selectedTab == 0) {
             PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
@@ -771,7 +719,7 @@ private fun ScientificPasswordGeneratorDialog(
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("Научный генератор", fontWeight = FontWeight.Bold)
-                    Text("Авторские методы + две части", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Авторские методы шифрования", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -826,12 +774,19 @@ private fun ScientificPasswordGeneratorDialog(
                                         onClick = { cipherMethod = method }
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(method.icon, fontSize = 18.sp)
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(method.label, fontWeight = FontWeight.SemiBold)
+                                    // Буква метода в круге
+                                    Surface(
+                                        modifier = Modifier.size(32.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.primary
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(method.icon, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                                         }
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(method.label, fontWeight = FontWeight.SemiBold)
                                         Text(method.scientificName, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                                         Text(method.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text("Сложность: ${method.complexity}/100", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
@@ -841,7 +796,7 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
-                    // ✅ НОВАЯ ОПЦИЯ: Две части пароля
+                    // Опция: Две части пароля
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -852,7 +807,11 @@ private fun ScientificPasswordGeneratorDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("🔗 Две части пароля", fontWeight = FontWeight.Bold)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Link, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Две части пароля", fontWeight = FontWeight.Bold)
+                                }
                                 Text("Каждая часть: 2 заглавные + 2 цифры + 2 спецсимвола + 2 строчные", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                             }
                             Switch(checked = useTwoParts, onCheckedChange = { useTwoParts = it })
@@ -890,21 +849,25 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
-                    // ✅ ИСТОРИЯ ПАРОЛЕЙ
+                    // Пароли на выбор
                     if (passwordHistory.isNotEmpty()) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("История паролей (последние ${passwordHistory.size}):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.History, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Пароли на выбор (${passwordHistory.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 passwordHistory.take(5).forEachIndexed { idx, pwd ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth().clickable {
                                             generatedPwd = pwd
                                             clipboardManager.setText(AnnotatedString(pwd))
-                                            android.widget.Toast.makeText(context, "Скопировано из истории!", android.widget.Toast.LENGTH_SHORT).show()
+                                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
                                         }.padding(vertical = 4.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
@@ -932,7 +895,7 @@ private fun ScientificPasswordGeneratorDialog(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("🔬 Пошаговая трансформация:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("Пошаговая трансформация:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 steps.forEach { step ->
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
