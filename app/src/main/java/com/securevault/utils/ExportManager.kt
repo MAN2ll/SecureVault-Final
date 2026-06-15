@@ -20,7 +20,8 @@ class ExportManager @Inject constructor(
 ) {
     
     companion object {
-        private const val CSV_HEADER = "id,service,username,encrypted_password,profile,emoji_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,is_favorite,failed_attempts,notes"
+        // ✅ ИСПРАВЛЕНО: убраны emoji_hint и failed_attempts
+        private const val CSV_HEADER = "id,service,username,encrypted_password,profile,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json"
         private const val DATE_FORMAT = "yyyy-MM-dd HH:mm:ss"
     }
     
@@ -41,15 +42,16 @@ class ExportManager @Inject constructor(
                 writer.append(escapeCsv(entry.username)).append(",")
                 writer.append(escapeCsv(entry.encryptedPassword)).append(",")
                 writer.append(entry.profile.name).append(",")
-                writer.append(escapeCsv(entry.emojiHint ?: "")).append(",")
+                writer.append(escapeCsv(entry.url ?: "")).append(",")
+                writer.append(escapeCsv(entry.notes ?: "")).append(",")
+                writer.append(if (entry.isFavorite) "1" else "0").append(",")
+                writer.append(escapeCsv(entry.textHint ?: "")).append(",")
                 writer.append(if (entry.rotationEnabled) "1" else "0").append(",")
                 writer.append(entry.rotationPeriodMonths.toString()).append(",")
                 writer.append(entry.nextRotationDate?.toString() ?: "").append(",")
                 writer.append(entry.createdAt.toString()).append(",")
                 writer.append(entry.lastChanged.toString()).append(",")
-                writer.append(if (entry.isFavorite) "1" else "0").append(",")
-                writer.append(entry.failedAttempts.toString()).append(",")
-                writer.append(escapeCsv(entry.notes ?: "")).append("\n")
+                writer.append(escapeCsv(entry.passwordHistoryJson ?: "")).append("\n")
             }
             
             writer.flush()
@@ -101,7 +103,7 @@ class ExportManager @Inject constructor(
      */
     private fun parseCsvLine(line: String, header: String): Entry? {
         val values = parseCsvValues(line)
-        if (values.size < 14) return null
+        if (values.size < 15) return null
         
         return Entry(
             id = values[0],
@@ -109,15 +111,16 @@ class ExportManager @Inject constructor(
             username = values[2],
             encryptedPassword = values[3],
             profile = Profile.valueOf(values[4]),
-            emojiHint = values[5].takeIf { it.isNotEmpty() },
-            rotationEnabled = values[6] == "1",
-            rotationPeriodMonths = values[7].toIntOrNull() ?: 6,
-            nextRotationDate = values[8].toLongOrNull(),
-            createdAt = values[9].toLongOrNull() ?: System.currentTimeMillis(),
-            lastChanged = values[10].toLongOrNull() ?: System.currentTimeMillis(),
-            isFavorite = values[11] == "1",
-            failedAttempts = values[12].toIntOrNull() ?: 0,
-            notes = values[13].takeIf { it.isNotEmpty() }
+            url = values[5].takeIf { it.isNotEmpty() },
+            notes = values[6].takeIf { it.isNotEmpty() },
+            isFavorite = values[7] == "1",
+            textHint = values[8].takeIf { it.isNotEmpty() },
+            rotationEnabled = values[9] == "1",
+            rotationPeriodMonths = values[10].toIntOrNull() ?: 6,
+            nextRotationDate = values[11].toLongOrNull(),
+            createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
+            lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
+            passwordHistoryJson = values[14].takeIf { it.isNotEmpty() }
         )
     }
     
@@ -166,7 +169,9 @@ class ExportManager @Inject constructor(
         return value
     }
     
-    // ✅ ВОТ ЭТА ФУНКЦИЯ: Генерирует имя файла для экспорта
+    /**
+     * Генерирует имя файла для экспорта
+     */
     fun generateExportFilename(): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         return "securevault_export_$timestamp.csv"
