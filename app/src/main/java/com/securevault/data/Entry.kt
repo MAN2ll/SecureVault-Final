@@ -13,27 +13,57 @@ data class Entry(
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
     @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
-    @ColumnInfo(name = "category") val category: String = "Общее",
     @ColumnInfo(name = "url") val url: String? = null,
     @ColumnInfo(name = "notes") val notes: String? = null,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
-    @ColumnInfo(name = "emoji_hint") val emojiHint: String? = null,
     @ColumnInfo(name = "text_hint") val textHint: String? = null,
-    @ColumnInfo(name = "quick_tags") val quickTags: String? = null,
     @ColumnInfo(name = "rotation_enabled") val rotationEnabled: Boolean = false,
     @ColumnInfo(name = "rotation_period_months") val rotationPeriodMonths: Int = 6,
     @ColumnInfo(name = "next_rotation_date") val nextRotationDate: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "failed_attempts") val failedAttempts: Int = 0
+    // ✅ НОВОЕ ПОЛЕ: История паролей (JSON)
+    @ColumnInfo(name = "password_history_json") val passwordHistoryJson: String? = null
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
+
+    // ✅ Парсинг истории паролей
+    fun getPasswordHistory(): List<PasswordHistoryItem> {
+        if (passwordHistoryJson.isNullOrBlank()) return emptyList()
+        return try {
+            val items = mutableListOf<PasswordHistoryItem>()
+            // Простой парсинг JSON без библиотек
+            val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
+            regex.findAll(passwordHistoryJson).forEach { match ->
+                val pwd = match.groupValues[1]
+                val date = match.groupValues[2].toLongOrNull() ?: 0L
+                items.add(PasswordHistoryItem(pwd, date))
+            }
+            items
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // ✅ Добавление пароля в историю
+    fun addToPasswordHistory(oldPassword: String): Entry {
+        val currentHistory = getPasswordHistory().toMutableList()
+        currentHistory.add(0, PasswordHistoryItem(oldPassword, System.currentTimeMillis()))
+        // Оставляем только последние 10 записей
+        val limitedHistory = currentHistory.take(10)
+        
+        // Сериализация в JSON
+        val json = limitedHistory.joinToString(",", "[", "]") { item ->
+            """{"password":"${item.password}","date":${item.date}}"""
+        }
+        
+        return this.copy(passwordHistoryJson = json)
+    }
 
     fun getDaysUntilRotation(): Int? {
         return nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
     }
 
-    // Алиас для совместимости со старыми экранами
     fun getDaysUntilExpiry(): Int? = getDaysUntilRotation()
 
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
@@ -52,11 +82,11 @@ data class Entry(
     companion object {
         fun create(
             service: String, username: String, password: String,
-            profile: Profile = Profile.PERSONAL, category: String = "Общее",
+            profile: Profile = Profile.PERSONAL,
             url: String? = null, notes: String? = null,
-            emojiHint: String? = null, textHint: String? = null, quickTags: String? = null,
+            textHint: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
-            isFavorite: Boolean = false, failedAttempts: Int = 0
+            isFavorite: Boolean = false
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
@@ -66,11 +96,11 @@ data class Entry(
             
             return Entry(
                 service = service, username = username, encryptedPassword = encryptedPassword,
-                profile = profile, category = category, url = url, notes = notes,
-                emojiHint = emojiHint, textHint = textHint, quickTags = quickTags,
+                profile = profile, url = url, notes = notes,
+                textHint = textHint,
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                 nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
-                isFavorite = isFavorite, failedAttempts = failedAttempts
+                isFavorite = isFavorite
             )
         }
     }
@@ -78,16 +108,11 @@ data class Entry(
     enum class ExpiryStatus { OK, WARNING, CRITICAL, EXPIRED }
 }
 
-object Categories {
-    val PERSONAL = listOf("Общее", "Финансы", "Соцсети", "Почта", "Развлечения", "Покупки")
-    val WORK = listOf("Общее", "Корпоративные", "Проекты", "Сервисы", "Документы")
-    fun getFor(profile: Profile) = if (profile == Profile.PERSONAL) PERSONAL else WORK
-}
+data class PasswordHistoryItem(
+    val password: String,
+    val date: Long
+)
 
-object QuickTags {
-    val TAGS = listOf(
-        "🐱 кот", "🏠 дом", "💼 работа", "🚗 машина",
-        "🔑 ключ", "⭐ звезда", "❤️ сердце", "🔥 огонь",
-        "📚 книга", "📱 телефон", "💰 деньги", "🏦 банк"
-    )
+enum class Profile(val label: String) {
+    PERSONAL("Личное"), WORK("Работа")
 }
