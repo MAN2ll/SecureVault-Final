@@ -326,16 +326,15 @@ private fun ScientificPasswordGeneratorDialog(
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
         
-        // Извлечение согласных
         val consonants = text.filter { it.lowercaseChar() in "бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxyz" }
         steps.add(TransformationStep(2, "Извлечение согласных", consonants, "N = ${consonants.length}"))
         
         if (consonants.isEmpty()) return "" to steps
         
-        // Матричное представление
         val matrixSize = kotlin.math.sqrt(consonants.length.toDouble()).toInt().coerceAtLeast(2)
-        steps.add(TransformationStep(3, "Матрица ${matrixSize}×${matrixSize}", 
-            consonants.chunked(matrixSize).joinToString("\n"), "M[i][j]"))
+        val matrixRows = consonants.chunked(matrixSize)
+        val matrixStr = matrixRows.joinToString("\n") { it }
+        steps.add(TransformationStep(3, "Матрица ${matrixSize}×${matrixSize}", matrixStr, "M[i][j]"))
         
         // Транспонирование
         val transposed = StringBuilder()
@@ -374,7 +373,7 @@ private fun ScientificPasswordGeneratorDialog(
         // Полиномиальный сдвиг
         val shifted = consonants.mapIndexed { idx, ch ->
             val position = idx + 1
-            val shift = (position * key * position) % 26 // квадратичная зависимость
+            val shift = (position * key * position) % 26
             val code = ch.lowercaseChar().code - 'a'.code
             val newCode = (code + shift) % 26
             (newCode + 'a'.code).toChar()
@@ -395,7 +394,6 @@ private fun ScientificPasswordGeneratorDialog(
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
         
-        // Вычисление SHA-256
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(text.toByteArray())
         val hashHex = hashBytes.joinToString("") { "%02x".format(it) }
@@ -430,7 +428,7 @@ private fun ScientificPasswordGeneratorDialog(
         return result to steps
     }
     
-    // 4. Полиалфавитная подстановка с автоключом (ППК)
+    // 4. Полиалфавитная подстановка с автоключом (ППК) — ИСПРАВЛЕНО
     fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -440,23 +438,28 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (consonants.isEmpty()) return "" to steps
         
-        // Ключевое слово = первые 5 согласных
         val keyWord = consonants.take(5).joinToString("")
         steps.add(TransformationStep(3, "Ключевое слово", keyWord, "K = ${keyWord.uppercase()}"))
         
-        // Создание матрицы 5×5
-        val alphabet = "abcdefghijkmnpqrstvwxyz" // 21 буква (без l, o, u для простоты)
-        val matrix = alphabet.chunked(5)
-        steps.add(TransformationStep(4, "Матрица 5×5", 
-            matrix.joinToString("\n") { it.joinToString(" ") }, "M[5×5]"))
+        // ✅ ИСПРАВЛЕНО: матрица как List<List<Char>>
+        val alphabet = "abcdefghijkmnpqrstvwxyz"
+        val matrix: List<List<Char>> = alphabet.chunked(5).map { it.toList() }
         
-        // Шифрование с автоключом
-        val fullKey = keyWord + consonants // автоключ
+        val matrixStr = matrix.joinToString("\n") { row -> 
+            row.joinToString(" ") { it.toString() } 
+        }
+        steps.add(TransformationStep(4, "Матрица 5×5", matrixStr, "M[5×5]"))
+        
+        val fullKey = keyWord + consonants
         val encrypted = consonants.mapIndexed { idx, ch ->
             val keyChar = fullKey[idx % fullKey.length]
-            val row = alphabet.indexOf(ch.lowercaseChar()) / 5
-            val col = alphabet.indexOf(keyChar.lowercaseChar()) % 5
-            matrix[row][col]
+            val rowIdx = alphabet.indexOf(ch.lowercaseChar()) / 5
+            val colIdx = alphabet.indexOf(keyChar.lowercaseChar()) % 5
+            if (rowIdx in 0..4 && colIdx in 0..4) {
+                matrix[rowIdx][colIdx]
+            } else {
+                ch.lowercaseChar()
+            }
         }.joinToString("")
         steps.add(TransformationStep(5, "Шифрование с автоключом", encrypted, "C[i] = M[row(P[i])][col(K[i])]"))
         
@@ -473,12 +476,9 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (consonants.isEmpty()) return "" to steps
         
-        // Разбиение на блоки по 4
         val blocks = consonants.chunked(4)
-        steps.add(TransformationStep(3, "Блоки по 4 символа", 
-            blocks.joinToString(" | "), "B[i] = P[i*4:(i+1)*4]"))
+        steps.add(TransformationStep(3, "Блоки по 4 символа", blocks.joinToString(" | "), "B[i] = P[i*4:(i+1)*4]"))
         
-        // Перестановка внутри блоков (2,4,1,3)
         val permuted = blocks.map { block ->
             when (block.length) {
                 4 -> "${block[1]}${block[3]}${block[0]}${block[2]}"
@@ -487,17 +487,13 @@ private fun ScientificPasswordGeneratorDialog(
                 else -> block
             }
         }
-        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", 
-            permuted.joinToString(" | "), "π = (2,4,1,3)"))
+        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permuted.joinToString(" | "), "π = (2,4,1,3)"))
         
-        // Инверсия регистра каждого второго блока
         val inverted = permuted.mapIndexed { idx, block ->
             if (idx % 2 == 1) block.uppercase() else block.lowercase()
         }
-        steps.add(TransformationStep(5, "Инверсия нечётных блоков", 
-            inverted.joinToString(" | "), "B[2k+1] = B[2k+1].upper()"))
+        steps.add(TransformationStep(5, "Инверсия нечётных блоков", inverted.joinToString(" | "), "B[2k+1] = B[2k+1].upper()"))
         
-        // Циклический сдвиг
         val result = inverted.joinToString("")
         val shifted = if (result.length > 2) {
             result.takeLast(2) + result.dropLast(2)
@@ -546,7 +542,7 @@ private fun ScientificPasswordGeneratorDialog(
         return String(chars) to steps
     }
     
-    // Главная функция генерации
+    // Главная функция генерации — ИСПРАВЛЕНО (энтропия встроена)
     fun generateScientificPassword(phrase: String): String {
         if (phrase.isBlank()) return ""
         
@@ -562,40 +558,29 @@ private fun ScientificPasswordGeneratorDialog(
             return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
         }
         
-        // Дополнение до нужной длины
         var result = baseResult
         while (result.length < length) {
             result += "bcdfghjklmnpqrstvwxyz".random()
         }
         result = result.take(length)
         
-        // Применение фильтров
-        val (filteredResult, filterSteps) = applyFilters(result)
+        val (filteredPwd, filterSteps) = applyFilters(result)
         
-        // Объединение шагов
         steps = baseSteps + filterSteps.map { it.copy(stepNumber = it.stepNumber + baseSteps.size) }
         steps = steps.mapIndexed { idx, step -> step.copy(stepNumber = idx + 1) }
         
-        // Расчёт энтропии
-        entropyScore = calculateEntropy(filteredResult)
-        
-        return filteredResult
-    }
-    
-    // Расчёт энтропии Шеннона
-    fun calculateEntropy(password: String): Double {
-        if (password.isEmpty()) return 0.0
-        
+        // ✅ ИСПРАВЛЕНО: расчёт энтропии встроен прямо сюда
         val charSetSize = when {
-            password.any { it.isUpperCase() } && password.any { it.isLowerCase() } && 
-            password.any { it.isDigit() } && password.any { !it.isLetterOrDigit() } -> 94.0
-            password.any { it.isUpperCase() } && password.any { it.isLowerCase() } && 
-            password.any { it.isDigit() } -> 62.0
-            password.any { it.isUpperCase() } || password.any { it.isLowerCase() } -> 26.0
+            filteredPwd.any { it.isUpperCase() } && filteredPwd.any { it.isLowerCase() } && 
+            filteredPwd.any { it.isDigit() } && filteredPwd.any { !it.isLetterOrDigit() } -> 94.0
+            filteredPwd.any { it.isUpperCase() } && filteredPwd.any { it.isLowerCase() } && 
+            filteredPwd.any { it.isDigit() } -> 62.0
+            filteredPwd.any { it.isUpperCase() } || filteredPwd.any { it.isLowerCase() } -> 26.0
             else -> 10.0
         }
+        entropyScore = filteredPwd.length * kotlin.math.log2(charSetSize)
         
-        return password.length * kotlin.math.log2(charSetSize)
+        return filteredPwd
     }
     
     // Перегенерация
@@ -611,7 +596,7 @@ private fun ScientificPasswordGeneratorDialog(
         onDismissRequest = onDismiss,
         title = { 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Science, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("Научный генератор", fontWeight = FontWeight.Bold)
@@ -624,12 +609,11 @@ private fun ScientificPasswordGeneratorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Вкладки
                 TabRow(selectedTabIndex = selectedTab) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0; showSteps = false },
-                        text = { Text("Стандартный") }
+                        text = { Text("🎲 Стандартный") }
                     )
                     Tab(
                         selected = selectedTab == 1,
@@ -647,7 +631,6 @@ private fun ScientificPasswordGeneratorDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                     
-                    // Выбор метода шифрования
                     Text("🧬 Авторский метод шифрования:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -687,7 +670,6 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
-                    // Кнопки визуализации и копирования
                     if (mnemonicPhrase.isNotBlank()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -719,7 +701,6 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
-                    // Пошаговая визуализация
                     AnimatedVisibility(
                         visible = showSteps && steps.isNotEmpty(),
                         enter = expandVertically() + fadeIn(),
@@ -772,7 +753,6 @@ private fun ScientificPasswordGeneratorDialog(
                     }
                 }
                 
-                // Результат
                 if (generatedPwd.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -784,7 +764,7 @@ private fun ScientificPasswordGeneratorDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Сгенерированный пароль:", fontWeight = FontWeight.Bold)
+                                Text("🔑 Сгенерированный пароль:", fontWeight = FontWeight.Bold)
                                 if (selectedTab == 1) {
                                     IconButton(onClick = {
                                         clipboardManager.setText(AnnotatedString(generatedPwd))
@@ -804,7 +784,6 @@ private fun ScientificPasswordGeneratorDialog(
                             )
                             Spacer(Modifier.height(12.dp))
                             
-                            // Индикатор энтропии
                             if (selectedTab == 1) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Энтропия Шеннона: ", fontSize = 12.sp)
@@ -820,8 +799,9 @@ private fun ScientificPasswordGeneratorDialog(
                                     )
                                 }
                                 Spacer(Modifier.height(6.dp))
+                                // ✅ ИСПРАВЛЕНО: старый API LinearProgressIndicator
                                 LinearProgressIndicator(
-                                    progress = { (entropyScore / 128f).coerceIn(0f, 1f) },
+                                    progress = (entropyScore / 128.0).coerceIn(0.0, 1.0).toFloat(),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(8.dp)
@@ -843,7 +823,6 @@ private fun ScientificPasswordGeneratorDialog(
                     }
                 }
                 
-                // Параметры
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("⚙️ Параметры генерации", fontWeight = FontWeight.Bold)
