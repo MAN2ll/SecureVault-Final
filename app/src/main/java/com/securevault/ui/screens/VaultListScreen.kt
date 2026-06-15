@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.securevault.ui.screens
 
@@ -20,7 +20,6 @@ import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.viewmodel.VaultViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
     onNavigate: (String) -> Unit,
@@ -30,7 +29,6 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val profileFilter by viewModel.profileFilter.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
-    
     var viewingEntry by remember { mutableStateOf<Entry?>(null) }
 
     Scaffold(
@@ -39,117 +37,100 @@ fun VaultListScreen(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { onNavigate("settings") }) { 
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = "Настройки") 
+                        Icon(Icons.Default.Settings, "Настройки") 
                     }
                     IconButton(onClick = { onNavigate("rotation") }) { 
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Ротация") 
+                        Icon(Icons.Default.Refresh, "Ротация") 
                     }
-                    IconButton(onClick = { onLock() }) { 
-                        Icon(imageVector = Icons.Default.Lock, contentDescription = "Заблокировать") 
+                    IconButton(onClick = onLock) { 
+                        Icon(Icons.Default.Lock, "Заблокировать") 
                     }
                 }
             )
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = !favoritesOnly,
-                    onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(imageVector = Icons.Default.Key, contentDescription = null) },
-                    label = { Text("Все", fontSize = 10.sp) }
-                )
-                NavigationBarItem(
-                    selected = favoritesOnly,
-                    onClick = { viewModel.toggleFavoritesOnly() },
-                    icon = { Icon(imageVector = Icons.Default.Star, contentDescription = null) },
-                    label = { Text("Избранное", fontSize = 10.sp) }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { onNavigate("settings") },
-                    icon = { Icon(imageVector = Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Настройки", fontSize = 10.sp) }
-                )
+                NavigationBarItem(!favoritesOnly, { viewModel.toggleFavoritesOnly() }, { Icon(Icons.Default.Key, null) }, label = { Text("Все", fontSize = 10.sp) })
+                NavigationBarItem(favoritesOnly, { viewModel.toggleFavoritesOnly() }, { Icon(Icons.Default.Star, null) }, label = { Text("Избранное", fontSize = 10.sp) })
+                NavigationBarItem(false, { onNavigate("settings") }, { Icon(Icons.Default.Settings, null) }, label = { Text("Настройки", fontSize = 10.sp) })
             }
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onNavigate("editor/new") }) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Добавить")
-            }
+        floatingActionButton = { 
+            FloatingActionButton(onClick = { onNavigate("editor/new") }) { 
+                Icon(Icons.Default.Add, "Добавить") 
+            } 
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // ✅ ТОЛЬКО ПРОФИЛИ (без категорий)
+            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(profileFilter == null, { viewModel.setProfileFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
                 FilterChip(profileFilter == Profile.PERSONAL, { viewModel.setProfileFilter(Profile.PERSONAL) }, label = { Text("Личные") }, modifier = Modifier.weight(1f))
                 FilterChip(profileFilter == Profile.WORK, { viewModel.setProfileFilter(Profile.WORK) }, label = { Text("Работа") }, modifier = Modifier.weight(1f))
             }
 
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(entries, key = { it.id }) { entry ->
-                    EntryCard(
-                        entry = entry, 
-                        onClick = { viewingEntry = entry }, 
-                        onEdit = { onNavigate("editor/${entry.id}") },
-                        onDelete = { viewModel.delete(entry) }, 
-                        onToggleFavorite = { viewModel.toggleFavorite(entry) }
-                    )
+                    EntryCard(entry, { viewingEntry = entry }, { onNavigate("editor/${entry.id}") }, { viewModel.delete(entry) }, { viewModel.toggleFavorite(entry) })
                 }
-                
                 if (entries.isEmpty()) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("Нет записей", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    item { 
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { 
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Security, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                Spacer(Modifier.height(16.dp))
+                                Text("Нет записей", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Нажмите + чтобы добавить", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            }
+                        } 
                     }
                 }
             }
         }
     }
 
-    viewingEntry?.let { entry ->
-        PasswordViewDialog(
-            entry = entry,
-            onDismiss = { viewingEntry = null }
-        )
-    }
+    viewingEntry?.let { PasswordViewDialog(it, { viewingEntry = null }) }
 }
 
 @Composable
 private fun EntryCard(entry: Entry, onClick: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onToggleFavorite: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
+        Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (entry.profile == Profile.WORK) Icons.Default.Work else Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     if (entry.isFavorite) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.Star, null, Modifier.size(16.dp).padding(start = 4.dp), tint = MaterialTheme.colorScheme.primary)
                     }
                 }
                 Text(entry.username, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!entry.quickTags.isNullOrBlank()) {
-                    Text(entry.quickTags, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
+                if (entry.rotationEnabled) {
+                    val days = entry.getDaysUntilRotation()
+                    val color = when {
+                        days == null || days > 7 -> MaterialTheme.colorScheme.onSurfaceVariant
+                        days > 3 -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.error
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Default.Schedule, null, Modifier.size(12.dp), tint = color)
+                        Spacer(Modifier.width(4.dp))
+                        Text("${days ?: 0} дн.", fontSize = 11.sp, color = color)
+                    }
                 }
             }
             Row {
-                IconButton(onClick = onEdit) { 
-                    Icon(imageVector = Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) 
-                }
+                IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.primary) }
                 IconButton(onClick = onToggleFavorite) { 
-                    Icon(
-                        imageVector = if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
-                        contentDescription = null,
-                        tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    ) 
+                    Icon(if (entry.isFavorite) Icons.Filled.Star else Icons.Outlined.Star, null, tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) 
                 }
-                IconButton(onClick = onDelete) { 
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) 
-                }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
             }
         }
     }
