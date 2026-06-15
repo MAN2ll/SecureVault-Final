@@ -43,16 +43,16 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) } // ✅ НОВОЕ
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
+ val exportLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.CreateDocument("text/csv")
+) { uri ->
         uri?.let {
             try {
                 context.contentResolver.openOutputStream(it)?.use { outputStream ->
                     val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
-                    writer.write("Service,Username,Password,Category,Profile\n")
+                    writer.write("Service,Username,Password,Profile\n")
                     viewModel.entries.value.forEach { entry ->
-                        writer.write("${entry.service},${entry.username},${entry.password},${entry.category},${entry.profile}\n")
+                        writer.write("${entry.service},${entry.username},${entry.password},${entry.profile}\n")
                     }
                     writer.flush()
                     Toast.makeText(context, "Экспорт успешен!", Toast.LENGTH_SHORT).show()
