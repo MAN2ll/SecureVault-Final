@@ -321,7 +321,7 @@ private fun ScientificPasswordGeneratorDialog(
     
     // ===== АВТОРСКИЕ АЛГОРИТМЫ ШИФРОВАНИЯ =====
     
-    // 1. Фонемно-матричное преобразование (ФМП)
+    // 1. Фонемно-матричное преобразование (ФМП) — ИСПРАВЛЕНО
     fun phoneticMatrixTransform(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -332,8 +332,10 @@ private fun ScientificPasswordGeneratorDialog(
         if (consonants.isEmpty()) return "" to steps
         
         val matrixSize = kotlin.math.sqrt(consonants.length.toDouble()).toInt().coerceAtLeast(2)
-        val matrixRows = consonants.chunked(matrixSize)
-        val matrixStr = matrixRows.joinToString("\n") { it }
+        
+        // ✅ ИСПРАВЛЕНО: явные типы
+        val matrixRows: List<String> = consonants.chunked(matrixSize)
+        val matrixStr: String = matrixRows.joinToString(separator = "\n")
         steps.add(TransformationStep(3, "Матрица ${matrixSize}×${matrixSize}", matrixStr, "M[i][j]"))
         
         // Транспонирование
@@ -428,7 +430,7 @@ private fun ScientificPasswordGeneratorDialog(
         return result to steps
     }
     
-    // 4. Полиалфавитная подстановка с автоключом (ППК) — ИСПРАВЛЕНО
+    // 4. Полиалфавитная подстановка с автоключом (ППК)
     fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -441,12 +443,12 @@ private fun ScientificPasswordGeneratorDialog(
         val keyWord = consonants.take(5).joinToString("")
         steps.add(TransformationStep(3, "Ключевое слово", keyWord, "K = ${keyWord.uppercase()}"))
         
-        // ✅ ИСПРАВЛЕНО: матрица как List<List<Char>>
+        // ✅ Матрица как List<List<Char>>
         val alphabet = "abcdefghijkmnpqrstvwxyz"
         val matrix: List<List<Char>> = alphabet.chunked(5).map { it.toList() }
         
-        val matrixStr = matrix.joinToString("\n") { row -> 
-            row.joinToString(" ") { it.toString() } 
+        val matrixStr: String = matrix.joinToString(separator = "\n") { row: List<Char> -> 
+            row.joinToString(separator = " ") { it.toString() } 
         }
         steps.add(TransformationStep(4, "Матрица 5×5", matrixStr, "M[5×5]"))
         
@@ -476,10 +478,10 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (consonants.isEmpty()) return "" to steps
         
-        val blocks = consonants.chunked(4)
-        steps.add(TransformationStep(3, "Блоки по 4 символа", blocks.joinToString(" | "), "B[i] = P[i*4:(i+1)*4]"))
+        val blocks: List<String> = consonants.chunked(4)
+        steps.add(TransformationStep(3, "Блоки по 4 символа", blocks.joinToString(separator = " | "), "B[i] = P[i*4:(i+1)*4]"))
         
-        val permuted = blocks.map { block ->
+        val permuted: List<String> = blocks.map { block ->
             when (block.length) {
                 4 -> "${block[1]}${block[3]}${block[0]}${block[2]}"
                 3 -> "${block[2]}${block[0]}${block[1]}"
@@ -487,14 +489,14 @@ private fun ScientificPasswordGeneratorDialog(
                 else -> block
             }
         }
-        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permuted.joinToString(" | "), "π = (2,4,1,3)"))
+        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permuted.joinToString(separator = " | "), "π = (2,4,1,3)"))
         
-        val inverted = permuted.mapIndexed { idx, block ->
+        val inverted: List<String> = permuted.mapIndexed { idx, block ->
             if (idx % 2 == 1) block.uppercase() else block.lowercase()
         }
-        steps.add(TransformationStep(5, "Инверсия нечётных блоков", inverted.joinToString(" | "), "B[2k+1] = B[2k+1].upper()"))
+        steps.add(TransformationStep(5, "Инверсия нечётных блоков", inverted.joinToString(separator = " | "), "B[2k+1] = B[2k+1].upper()"))
         
-        val result = inverted.joinToString("")
+        val result = inverted.joinToString(separator = "")
         val shifted = if (result.length > 2) {
             result.takeLast(2) + result.dropLast(2)
         } else result
@@ -542,7 +544,7 @@ private fun ScientificPasswordGeneratorDialog(
         return String(chars) to steps
     }
     
-    // Главная функция генерации — ИСПРАВЛЕНО (энтропия встроена)
+    // Главная функция генерации
     fun generateScientificPassword(phrase: String): String {
         if (phrase.isBlank()) return ""
         
@@ -569,7 +571,7 @@ private fun ScientificPasswordGeneratorDialog(
         steps = baseSteps + filterSteps.map { it.copy(stepNumber = it.stepNumber + baseSteps.size) }
         steps = steps.mapIndexed { idx, step -> step.copy(stepNumber = idx + 1) }
         
-        // ✅ ИСПРАВЛЕНО: расчёт энтропии встроен прямо сюда
+        // Расчёт энтропии
         val charSetSize = when {
             filteredPwd.any { it.isUpperCase() } && filteredPwd.any { it.isLowerCase() } && 
             filteredPwd.any { it.isDigit() } && filteredPwd.any { !it.isLetterOrDigit() } -> 94.0
@@ -799,7 +801,7 @@ private fun ScientificPasswordGeneratorDialog(
                                     )
                                 }
                                 Spacer(Modifier.height(6.dp))
-                                // ✅ ИСПРАВЛЕНО: старый API LinearProgressIndicator
+                                // ✅ Старый API LinearProgressIndicator
                                 LinearProgressIndicator(
                                     progress = (entropyScore / 128.0).coerceIn(0.0, 1.0).toFloat(),
                                     modifier = Modifier
