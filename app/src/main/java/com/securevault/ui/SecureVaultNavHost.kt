@@ -22,71 +22,33 @@ fun SecureVaultNavHost() {
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
 
-    NavHost(navController, startDestination = "splash") {
+    NavHost(navController = navController, startDestination = "splash") {
+        // ✅ НОВЫЙ SPLASH SCREEN
         composable("splash") {
-            when (authState) {
-                is AuthViewModel.AuthState.SetupRequired -> {
-                    LaunchedEffect(Unit) {
-                        navController.navigate("setup") {
-                            popUpTo("splash") { inclusive = true }
+            SplashScreen(
+                onTimeout = {
+                    when (authState) {
+                        is AuthViewModel.AuthState.SetupRequired -> {
+                            navController.navigate("setup") { popUpTo("splash") { inclusive = true } }
                         }
-                    }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Загрузка...")
-                    }
-                }
-                is AuthViewModel.AuthState.Idle,
-                is AuthViewModel.AuthState.Failed,
-                is AuthViewModel.AuthState.Blocked -> {
-                    LaunchedEffect(Unit) {
-                        navController.navigate("lock") {
-                            popUpTo("splash") { inclusive = true }
+                        else -> {
+                            navController.navigate("lock") { popUpTo("splash") { inclusive = true } }
                         }
-                    }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Загрузка...")
-                    }
-                }
-                is AuthViewModel.AuthState.Success -> {
-                    LaunchedEffect(Unit) {
-                        navController.navigate("main") {
-                            popUpTo("splash") { inclusive = true }
-                        }
-                    }
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Загрузка...")
-                    }
-                }
-                else -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Загрузка...")
-                    }
-                }
-            }
-        }
-
-        composable("setup") {
-            SetupScreen(
-                onCompleted = {
-                    navController.navigate("main") {
-                        popUpTo("setup") { inclusive = true }
                     }
                 }
             )
         }
 
+        composable("setup") {
+            SetupScreen(onCompleted = {
+                navController.navigate("main") { popUpTo("setup") { inclusive = true } }
+            })
+        }
+
         composable("lock") {
             LockScreen(
-                onUnlocked = {
-                    navController.navigate("main") {
-                        popUpTo("lock") { inclusive = true }
-                    }
-                },
-                onSetupRequired = {
-                    navController.navigate("setup") {
-                        popUpTo("lock") { inclusive = true }
-                    }
-                }
+                onUnlocked = { navController.navigate("main") { popUpTo("lock") { inclusive = true } } },
+                onSetupRequired = { navController.navigate("setup") { popUpTo("lock") { inclusive = true } } }
             )
         }
 
@@ -95,37 +57,26 @@ fun SecureVaultNavHost() {
                 onNavigate = { route -> navController.navigate(route) },
                 onLock = {
                     authViewModel.lock()
-                    navController.navigate("lock") {
-                        popUpTo("main") { inclusive = true }
-                    }
+                    navController.navigate("lock") { popUpTo("main") { inclusive = true } }
                 }
             )
         }
 
         composable("editor/{id}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
-            EntryEditorScreen(
-                id = id,
-                onBack = { navController.popBackStack() }
-            )
+            EntryEditorScreen(id = id, onBack = { navController.popBackStack() })
         }
 
         composable("mnemonic") {
-            MnemonicGeneratorScreen(
-                onBack = { navController.popBackStack() }
-            )
+            MnemonicGeneratorScreen(onBack = { navController.popBackStack() })
         }
 
         composable("rotation") {
-            RotationScreen(
-                onBack = { navController.popBackStack() }
-            )
+            RotationScreen(onBack = { navController.popBackStack() })
         }
 
         composable("settings") {
-            SettingsScreen(
-                onBack = { navController.popBackStack() }
-            )
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }
