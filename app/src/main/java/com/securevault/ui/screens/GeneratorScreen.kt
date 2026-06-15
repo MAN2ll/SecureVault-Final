@@ -16,7 +16,7 @@ import androidx.compose.material3.*
 // ✅ RUNTIME
 import androidx.compose.runtime.*
 
-// ✅ UI (ТОЛЬКО ПО ОДНОМУ РАЗУ!)
+// ✅ UI
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,7 +31,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 // ✅ PROJECT
 import com.securevault.data.Entry
 import com.securevault.data.Profile
-import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 
@@ -123,7 +122,7 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            Text("Категория:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Text("Профиль:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -294,12 +293,12 @@ fun GeneratorScreen(
                         return@Button
                     }
                     
+                    // ✅ ИСПРАВЛЕНО: убран emojiHint
                     val newEntry = Entry.create(
                         service = service,
                         username = username.ifBlank { "user" },
                         password = generatedPassword,
                         profile = selectedProfile!!,
-                        emojiHint = null,
                         rotationEnabled = false,
                         rotationPeriodMonths = 6
                     )
