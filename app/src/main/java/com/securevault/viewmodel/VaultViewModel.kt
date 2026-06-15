@@ -44,10 +44,15 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ ВОЗВРАЩЁННЫЙ МЕТОД
+    // ✅ ОБНОВЛЕНО: Сохраняем старый пароль в историю
     fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
-        val updated = entry.copy(
+        val oldPassword = entry.password
+        
+        // Добавляем старый пароль в историю
+        val entryWithHistory = entry.addToPasswordHistory(oldPassword)
+        
+        val updated = entryWithHistory.copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
             lastChanged = System.currentTimeMillis(),
             nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
@@ -57,8 +62,13 @@ class VaultViewModel @Inject constructor(
 
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
+        val oldPassword = entry.password
         val newPwd = PasswordGenerator.generate(16, true, true, true).password
-        val updated = entry.copy(
+        
+        // Добавляем старый пароль в историю
+        val entryWithHistory = entry.addToPasswordHistory(oldPassword)
+        
+        val updated = entryWithHistory.copy(
             encryptedPassword = CryptoUtils.encrypt(newPwd),
             lastChanged = System.currentTimeMillis(),
             nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
