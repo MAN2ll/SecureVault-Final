@@ -10,7 +10,6 @@ class VaultRepository @Inject constructor(
     private val customProfileDao: CustomProfileDao
 ) {
     val allEntries: Flow<List<Entry>> = entryDao.getAllEntries()
-
     val allCustomProfiles: Flow<List<CustomProfile>> = customProfileDao.getAllProfiles()
 
     suspend fun insert(entry: Entry) = entryDao.insert(entry)
@@ -19,7 +18,7 @@ class VaultRepository @Inject constructor(
     suspend fun deleteAll() = entryDao.deleteAll()
     suspend fun getById(id: String): Entry? = entryDao.getById(id)
 
-    suspend fun insertProfile(profile: CustomProfile) = customProfileDao.insert(profile)
+    suspend fun insertProfile(profile: CustomProfile): Long = customProfileDao.insert(profile)
     suspend fun deleteProfile(id: Int) = customProfileDao.delete(id)
     suspend fun getProfileById(id: Int): CustomProfile? = customProfileDao.getById(id)
 }
