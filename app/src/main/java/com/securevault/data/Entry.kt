@@ -13,7 +13,6 @@ data class Entry(
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
     @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
-    @ColumnInfo(name = "custom_profile_id") val customProfileId: Int? = null,
     @ColumnInfo(name = "url") val url: String? = null,
     @ColumnInfo(name = "notes") val notes: String? = null,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
@@ -63,4 +62,52 @@ data class Entry(
 
     fun getExpiryStatus(): ExpiryStatus {
         if (!rotationEnabled || nextRotationDate == null) return ExpiryStatus.OK
-        val daysLeft = getDaysUntilRotation
+        val daysLeft = getDaysUntilRotation() ?: return ExpiryStatus.OK
+        return when {
+            daysLeft < 0 -> ExpiryStatus.EXPIRED
+            daysLeft <= 3 -> ExpiryStatus.CRITICAL
+            daysLeft <= 7 -> ExpiryStatus.WARNING
+            else -> ExpiryStatus.OK
+        }
+    }
+
+    companion object {
+        fun create(
+            service: String, username: String, password: String,
+            profile: Profile = Profile.PERSONAL,
+            url: String? = null, notes: String? = null,
+            textHint: String? = null,
+            rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            isFavorite: Boolean = false
+        ): Entry {
+            val encryptedPassword = CryptoUtils.encrypt(password)
+            val now = System.currentTimeMillis()
+            val nextRotationDate = if (rotationEnabled) {
+                now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+            } else null
+            
+            return Entry(
+                service = service, username = username, encryptedPassword = encryptedPassword,
+                profile = profile,
+                url = url, notes = notes,
+                textHint = textHint,
+                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
+                isFavorite = isFavorite
+            )
+        }
+    }
+
+    enum class ExpiryStatus { OK, WARNING, CRITICAL, EXPIRED }
+}
+
+data class PasswordHistoryItem(
+    val password: String,
+    val date: Long
+)
+
+// ✅ ВОЗВРАЩАЕМ enum Profile
+enum class Profile(val label: String) {
+    PERSONAL("Личное"), 
+    WORK("Работа")
+}
