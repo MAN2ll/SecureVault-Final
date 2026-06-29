@@ -13,6 +13,7 @@ data class Entry(
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
     @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
+    @ColumnInfo(name = "custom_profile_id") val customProfileId: Int? = null,
     @ColumnInfo(name = "url") val url: String? = null,
     @ColumnInfo(name = "notes") val notes: String? = null,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
@@ -22,17 +23,14 @@ data class Entry(
     @ColumnInfo(name = "next_rotation_date") val nextRotationDate: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
-    // ✅ НОВОЕ ПОЛЕ: История паролей (JSON)
     @ColumnInfo(name = "password_history_json") val passwordHistoryJson: String? = null
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
-    // ✅ Парсинг истории паролей
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
         return try {
             val items = mutableListOf<PasswordHistoryItem>()
-            // Простой парсинг JSON без библиотек
             val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
             regex.findAll(passwordHistoryJson).forEach { match ->
                 val pwd = match.groupValues[1]
@@ -45,18 +43,13 @@ data class Entry(
         }
     }
 
-    // ✅ Добавление пароля в историю
     fun addToPasswordHistory(oldPassword: String): Entry {
         val currentHistory = getPasswordHistory().toMutableList()
         currentHistory.add(0, PasswordHistoryItem(oldPassword, System.currentTimeMillis()))
-        // Оставляем только последние 10 записей
         val limitedHistory = currentHistory.take(10)
-        
-        // Сериализация в JSON
         val json = limitedHistory.joinToString(",", "[", "]") { item ->
             """{"password":"${item.password}","date":${item.date}}"""
         }
-        
         return this.copy(passwordHistoryJson = json)
     }
 
@@ -83,6 +76,7 @@ data class Entry(
         fun create(
             service: String, username: String, password: String,
             profile: Profile = Profile.PERSONAL,
+            customProfileId: Int? = null,
             url: String? = null, notes: String? = null,
             textHint: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
@@ -96,7 +90,8 @@ data class Entry(
             
             return Entry(
                 service = service, username = username, encryptedPassword = encryptedPassword,
-                profile = profile, url = url, notes = notes,
+                profile = profile, customProfileId = customProfileId,
+                url = url, notes = notes,
                 textHint = textHint,
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                 nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
