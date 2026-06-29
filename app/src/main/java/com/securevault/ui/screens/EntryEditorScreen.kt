@@ -147,25 +147,51 @@ fun EntryEditorScreen(
             
             // Профиль (Личное / Работа)
             var expandedProfile by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(expandedProfile, { expandedProfile = !expandedProfile }) {
+            ExposedDropdownMenuBox(
+                expanded = expandedProfile,
+                onExpandedChange = { expandedProfile = !expandedProfile }
+            ) {
                 OutlinedTextField(
-                    readOnly = true, value = profile.label, onValueChange = {}, 
+                    readOnly = true, 
+                    value = profile.label, 
+                    onValueChange = {}, 
                     label = { Text("Профиль") }, 
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedProfile) }, 
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProfile) }, 
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
-                ExposedDropdownMenu(expandedProfile, { expandedProfile = false }) { 
+                ExposedDropdownMenu(
+                    expanded = expandedProfile,
+                    onDismissRequest = { expandedProfile = false }
+                ) { 
                     Profile.entries.forEach { p -> 
-                        DropdownMenuItem(text = { Text(p.label) }, onClick = { profile = p }) 
+                        DropdownMenuItem(
+                            text = { Text(p.label) }, 
+                            onClick = { 
+                                profile = p
+                                expandedProfile = false  // ✅ ЗАКРЫВАЕМ ПОСЛЕ ВЫБОРА
+                            }
+                        ) 
                     } 
                 }
             }
             
-            OutlinedTextField(service, { service = it }, label = { Text("Сервис *") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(username, { username = it }, label = { Text("Логин / Email") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = service,
+                onValueChange = { service = it },
+                label = { Text("Сервис *") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Логин / Email") },
+                modifier = Modifier.fillMaxWidth()
+            )
             
             OutlinedTextField(
-                value = password, onValueChange = { password = it }, label = { Text("Пароль *") }, 
+                value = password, 
+                onValueChange = { password = it }, 
+                label = { Text("Пароль *") }, 
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(), 
                 trailingIcon = { 
                     Row { 
@@ -180,31 +206,59 @@ fun EntryEditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            OutlinedTextField(url, { url = it }, label = { Text("URL (необязательно)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(notes, { notes = it }, label = { Text("Заметки") }, modifier = Modifier.fillMaxWidth().height(100.dp))
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("URL (необязательно)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Заметки") },
+                modifier = Modifier.fillMaxWidth().height(100.dp)
+            )
             
             // Ротация
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+                    Row(
+                        Modifier.fillMaxWidth(), 
+                        horizontalArrangement = Arrangement.SpaceBetween, 
+                        verticalAlignment = Alignment.CenterVertically
+                    ) { 
                         Icon(Icons.Default.Schedule, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Text("Напоминание о смене пароля", fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Switch(rotationEnabled, { rotationEnabled = it }) 
+                        Switch(checked = rotationEnabled, onCheckedChange = { rotationEnabled = it }) 
                     }
                     if (rotationEnabled) {
                         Spacer(Modifier.height(12.dp))
                         var expandedMonths by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(expandedMonths, { expandedMonths = !expandedMonths }) {
+                        ExposedDropdownMenuBox(
+                            expanded = expandedMonths,
+                            onExpandedChange = { expandedMonths = !expandedMonths }
+                        ) {
                             OutlinedTextField(
-                                readOnly = true, value = "$rotationMonths мес.", onValueChange = {}, 
+                                readOnly = true, 
+                                value = "$rotationMonths мес.", 
+                                onValueChange = {}, 
                                 label = { Text("Менять каждые") }, 
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedMonths) }, 
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedMonths) }, 
                                 modifier = Modifier.menuAnchor().fillMaxWidth()
                             )
-                            ExposedDropdownMenu(expandedMonths, { expandedMonths = false }) { 
+                            ExposedDropdownMenu(
+                                expanded = expandedMonths,
+                                onDismissRequest = { expandedMonths = false }
+                            ) { 
                                 listOf(3, 6, 12).forEach { m -> 
-                                    DropdownMenuItem(text = { Text("$m мес.") }, onClick = { rotationMonths = m }) 
+                                    DropdownMenuItem(
+                                        text = { Text("$m мес.") }, 
+                                        onClick = { 
+                                            rotationMonths = m
+                                            expandedMonths = false  // ✅ ЗАКРЫВАЕМ ПОСЛЕ ВЫБОРА
+                                        }
+                                    ) 
                                 } 
                             }
                         }
@@ -221,7 +275,12 @@ fun EntryEditorScreen(
                         Text("Мнемоническая подсказка", fontWeight = FontWeight.Medium)
                     }
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(textHint, { textHint = it }, label = { Text("Текстовая подсказка") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = textHint,
+                        onValueChange = { textHint = it },
+                        label = { Text("Текстовая подсказка") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -262,6 +321,9 @@ private fun ScientificPasswordGeneratorDialog(
     var steps by remember { mutableStateOf<List<TransformationStep>>(emptyList()) }
     var entropyScore by remember { mutableStateOf(0.0) }
     var passwordHistory by remember { mutableStateOf<List<String>>(emptyList()) }
+    
+    // ✅ СЧЁТЧИК ПЕРЕГЕНЕРАЦИЙ — для получения разных паролей
+    var regenerationCounter by remember { mutableIntStateOf(0) }
     
     // ===== БЕЗОПАСНЫЕ ФУНКЦИИ ДЛЯ СТРОК =====
     
@@ -354,12 +416,13 @@ private fun ScientificPasswordGeneratorDialog(
         val shifted = StringBuilder()
         for (i in transposed.indices) {
             val ch = transposed[i]
-            val shift = (i * 2) % 26
+            // ✅ ДОБАВЛЯЕМ regenerationCounter для разных результатов
+            val shift = ((i * 2) + regenerationCounter) % 26
             val code = ch.code - 'a'.code
             val newCode = (code + shift) % 26
             shifted.append((newCode + 'a'.code).toChar())
         }
-        steps.add(TransformationStep(6, "Модульный сдвиг", shifted.toString(), "C[i] = (P[i] + 2i) mod 26"))
+        steps.add(TransformationStep(6, "Модульный сдвиг", shifted.toString(), "C[i] = (P[i] + 2i + k) mod 26"))
         
         return shifted.toString() to steps
     }
@@ -380,12 +443,12 @@ private fun ScientificPasswordGeneratorDialog(
         for (i in transliterated.indices) {
             val ch = transliterated[i]
             val position = i + 1
-            val shift = (position * key * position) % 26
+            val shift = ((position * key * position) + regenerationCounter) % 26
             val code = ch.code - 'a'.code
             val newCode = (code + shift) % 26
             shifted.append((newCode + 'a'.code).toChar())
         }
-        steps.add(TransformationStep(4, "Полиномиальный сдвиг", shifted.toString(), "C[i] = (P[i] + (i*k)^2) mod 26"))
+        steps.add(TransformationStep(4, "Полиномиальный сдвиг", shifted.toString(), "C[i] = (P[i] + (i*k)^2 + k) mod 26"))
         
         val inverted = StringBuilder()
         for (i in shifted.indices) {
@@ -405,14 +468,16 @@ private fun ScientificPasswordGeneratorDialog(
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
         
+        // ✅ ДОБАВЛЯЕМ counter в хэш для разных результатов
+        val textWithCounter = text + "_$regenerationCounter"
         val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(text.toByteArray())
+        val hashBytes = digest.digest(textWithCounter.toByteArray())
         val hashHex = StringBuilder()
         for (b in hashBytes) {
             hashHex.append("%02x".format(b))
         }
         val hashStr = hashHex.toString()
-        steps.add(TransformationStep(2, "SHA-256 хэш", hashStr.take(32) + "...", "H = SHA256(phrase)"))
+        steps.add(TransformationStep(2, "SHA-256 хэш", hashStr.take(32) + "...", "H = SHA256(phrase + k)"))
         
         val consonants = extractConsonants(text)
         steps.add(TransformationStep(3, "Базовый вектор", consonants))
@@ -482,7 +547,7 @@ private fun ScientificPasswordGeneratorDialog(
         val encrypted = StringBuilder()
         for (i in transliterated.indices) {
             val ch = transliterated[i]
-            val keyChar = fullKey[i % fullKey.length]
+            val keyChar = fullKey[(i + regenerationCounter) % fullKey.length]
             val rowIdx = alphabet.indexOf(ch) / 5
             val colIdx = alphabet.indexOf(keyChar) % 5
             if (rowIdx in 0..4 && colIdx in 0..4 && rowIdx < matrix.size && colIdx < matrix[rowIdx].size) {
@@ -491,7 +556,7 @@ private fun ScientificPasswordGeneratorDialog(
                 encrypted.append(ch)
             }
         }
-        steps.add(TransformationStep(5, "Шифрование с автоключом", encrypted.toString(), "C[i] = M[row(P[i])][col(K[i])]"))
+        steps.add(TransformationStep(5, "Шифрование с автоключом", encrypted.toString(), "C[i] = M[row(P[i])][col(K[i+k])]"))
         
         return encrypted.toString() to steps
     }
@@ -517,10 +582,19 @@ private fun ScientificPasswordGeneratorDialog(
         val blocksStr = safeJoin(blocks, " | ")
         steps.add(TransformationStep(3, "Блоки по 4 символа", blocksStr, "B[i] = P[i*4:(i+1)*4]"))
         
+        // ✅ Циклический сдвиг перестановки на counter
+        val permutations = listOf(
+            listOf(1, 3, 0, 2),
+            listOf(2, 0, 3, 1),
+            listOf(3, 1, 2, 0),
+            listOf(0, 2, 1, 3)
+        )
+        val currentPerm = permutations[regenerationCounter % permutations.size]
+        
         val permuted = mutableListOf<String>()
         for (block in blocks) {
             val perm = when (block.length) {
-                4 -> "${block[1]}${block[3]}${block[0]}${block[2]}"
+                4 -> "${block[currentPerm[0]]}${block[currentPerm[1]]}${block[currentPerm[2]]}${block[currentPerm[3]]}"
                 3 -> "${block[2]}${block[0]}${block[1]}"
                 2 -> "${block[1]}${block[0]}"
                 else -> block
@@ -528,7 +602,7 @@ private fun ScientificPasswordGeneratorDialog(
             permuted.add(perm)
         }
         val permutedStr = safeJoin(permuted, " | ")
-        steps.add(TransformationStep(4, "Перестановка (2,4,1,3)", permutedStr, "pi = (2,4,1,3)"))
+        steps.add(TransformationStep(4, "Перестановка (вариант ${regenerationCounter % 4 + 1})", permutedStr, "pi_k = permutation #$regenerationCounter"))
         
         val inverted = mutableListOf<String>()
         for (i in permuted.indices) {
@@ -542,10 +616,11 @@ private fun ScientificPasswordGeneratorDialog(
         steps.add(TransformationStep(5, "Инверсия нечётных блоков", invertedStr, "B[2k+1] = upper()"))
         
         val result = safeJoin(inverted, "")
+        val shiftAmount = (2 + regenerationCounter) % result.length.coerceAtLeast(1)
         val shifted = if (result.length > 2) {
-            result.takeLast(2) + result.dropLast(2)
+            result.takeLast(shiftAmount) + result.dropLast(shiftAmount)
         } else result
-        steps.add(TransformationStep(6, "Циклический сдвиг вправо на 2", shifted, "R = rotate(P, 2)"))
+        steps.add(TransformationStep(6, "Циклический сдвиг вправо на $shiftAmount", shifted, "R = rotate(P, $shiftAmount)"))
         
         return shifted to steps
     }
@@ -558,7 +633,6 @@ private fun ScientificPasswordGeneratorDialog(
         val part1 = base.take(halfLength)
         val part2 = if (base.length > halfLength) base.drop(halfLength) else base.takeLast(halfLength)
         
-        // Гарантированный набор для каждой части
         val guaranteedPart1 = listOf('A', '1', '@', 'x')
         val guaranteedPart2 = listOf('B', '2', '#', 'y')
         
@@ -703,7 +777,8 @@ private fun ScientificPasswordGeneratorDialog(
         return filteredPwd
     }
     
-    LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts) {
+    // ✅ ОБНОВЛЁННЫЙ LaunchedEffect — реагирует на regenerationCounter
+    LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
         generatedPwd = if (selectedTab == 0) {
             PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
         } else {
@@ -774,7 +849,6 @@ private fun ScientificPasswordGeneratorDialog(
                                         onClick = { cipherMethod = method }
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    // Буква метода в круге
                                     Surface(
                                         modifier = Modifier.size(32.dp),
                                         shape = RoundedCornerShape(16.dp),
@@ -818,11 +892,25 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
-                    if (mnemonicPhrase.isNotBlank()) {
+                    if (mnemonicPhrase.isNotBlank() || selectedTab == 0) {
+                        // ✅ ТРИ КНОПКИ: Ещё раз / Шаги / Копировать
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            // КНОПКА "ЕЩЁ РАЗ" — перегенерировать
+                            OutlinedButton(
+                                onClick = { 
+                                    regenerationCounter++
+                                    android.widget.Toast.makeText(context, "Новый вариант!", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Ещё раз")
+                            }
+                            
                             OutlinedButton(
                                 onClick = { showSteps = !showSteps },
                                 modifier = Modifier.weight(1f)
@@ -830,11 +918,12 @@ private fun ScientificPasswordGeneratorDialog(
                                 Icon(
                                     if (showSteps) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     null,
-                                    Modifier.size(18.dp)
+                                    Modifier.size(16.dp)
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Text(if (showSteps) "Скрыть" else "Шаги")
                             }
+                            
                             Button(
                                 onClick = {
                                     clipboardManager.setText(AnnotatedString(generatedPwd))
@@ -842,7 +931,7 @@ private fun ScientificPasswordGeneratorDialog(
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
+                                Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Копировать")
                             }
@@ -949,13 +1038,11 @@ private fun ScientificPasswordGeneratorDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("Сгенерированный пароль:", fontWeight = FontWeight.Bold)
-                                if (selectedTab == 1) {
-                                    IconButton(onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedPwd))
-                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
-                                    }
+                                IconButton(onClick = {
+                                    clipboardManager.setText(AnnotatedString(generatedPwd))
+                                    android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -968,40 +1055,38 @@ private fun ScientificPasswordGeneratorDialog(
                             )
                             Spacer(Modifier.height(12.dp))
                             
-                            if (selectedTab == 1) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Энтропия Шеннона: ", fontSize = 12.sp)
-                                    Text(
-                                        String.format("%.1f бит", entropyScore),
-                                        fontWeight = FontWeight.Bold,
-                                        color = when {
-                                            entropyScore >= 80 -> Color(0xFF4CAF50)
-                                            entropyScore >= 50 -> Color(0xFFFFC107)
-                                            else -> Color(0xFFF44336)
-                                        },
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                LinearProgressIndicator(
-                                    progress = (entropyScore / 128.0).coerceIn(0.0, 1.0).toFloat(),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(8.dp)
-                                        .clip(RoundedCornerShape(4.dp)),
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Энтропия Шеннона: ", fontSize = 12.sp)
+                                Text(
+                                    String.format("%.1f бит", entropyScore),
+                                    fontWeight = FontWeight.Bold,
                                     color = when {
                                         entropyScore >= 80 -> Color(0xFF4CAF50)
                                         entropyScore >= 50 -> Color(0xFFFFC107)
                                         else -> Color(0xFFF44336)
                                     },
-                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                                Text(
-                                    "Теоретическая стойкость: ${if (entropyScore >= 80) "Высокая" else if (entropyScore >= 50) "Средняя" else "Низкая"}",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    fontSize = 12.sp
                                 )
                             }
+                            Spacer(Modifier.height(6.dp))
+                            LinearProgressIndicator(
+                                progress = (entropyScore / 128.0).coerceIn(0.0, 1.0).toFloat(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = when {
+                                    entropyScore >= 80 -> Color(0xFF4CAF50)
+                                    entropyScore >= 50 -> Color(0xFFFFC107)
+                                    else -> Color(0xFFF44336)
+                                },
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                            Text(
+                                "Теоретическая стойкость: ${if (entropyScore >= 80) "Высокая" else if (entropyScore >= 50) "Средняя" else "Низкая"}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
