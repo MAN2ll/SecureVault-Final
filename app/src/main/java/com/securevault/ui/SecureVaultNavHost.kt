@@ -23,7 +23,6 @@ fun SecureVaultNavHost() {
     val authState by authViewModel.authState.collectAsState()
 
     NavHost(navController = navController, startDestination = "splash") {
-        // ✅ НОВЫЙ SPLASH SCREEN
         composable("splash") {
             SplashScreen(
                 onTimeout = {
@@ -77,6 +76,14 @@ fun SecureVaultNavHost() {
 
         composable("settings") {
             SettingsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("audit") {
+            AuditScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("profiles") {
+            ProfileManagerScreen(onBack = { navController.popBackStack() })
         }
     }
 }
