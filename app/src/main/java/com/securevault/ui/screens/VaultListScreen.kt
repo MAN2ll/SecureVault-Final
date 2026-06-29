@@ -36,6 +36,12 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { onNavigate("audit") }) { 
+                        Icon(Icons.Default.Security, "Аудит") 
+                    }
+                    IconButton(onClick = { onNavigate("profiles") }) { 
+                        Icon(Icons.Default.Folder, "Профили") 
+                    }
                     IconButton(onClick = { onNavigate("settings") }) { 
                         Icon(Icons.Default.Settings, "Настройки") 
                     }
@@ -62,7 +68,6 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // ✅ ТОЛЬКО ПРОФИЛИ (без категорий)
             Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(profileFilter == null, { viewModel.setProfileFilter(null) }, label = { Text("Все") }, modifier = Modifier.weight(1f))
                 FilterChip(profileFilter == Profile.PERSONAL, { viewModel.setProfileFilter(Profile.PERSONAL) }, label = { Text("Личные") }, modifier = Modifier.weight(1f))
