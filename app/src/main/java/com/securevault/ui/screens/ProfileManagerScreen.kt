@@ -27,11 +27,12 @@ fun ProfileManagerScreen(
     val profiles by viewModel.profiles.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var newProfileName by remember { mutableStateOf("") }
+    var showDeleteDialog by remember { mutableStateOf<CustomProfile?>(null) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Управление профилями", fontWeight = FontWeight.Bold) },
+                title = { Text("Профили", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
@@ -53,8 +54,8 @@ fun ProfileManagerScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Folder, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                     Spacer(Modifier.height(16.dp))
-                    Text("Нет кастомных профилей", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Нажмите + чтобы добавить", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    Text("Нет профилей", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Нажмите + чтобы создать", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                 }
             }
         } else {
@@ -62,19 +63,6 @@ fun ProfileManagerScreen(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Стандартные профили:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Spacer(Modifier.height(4.dp))
-                            Text("• Личное", fontSize = 12.sp)
-                            Text("• Работа", fontSize = 12.sp)
-                        }
-                    }
-                }
-                item {
-                    Text("Кастомные профили:", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-                }
                 items(profiles) { profile ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -90,7 +78,7 @@ fun ProfileManagerScreen(
                                     Text("ID: ${profile.id}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                            IconButton(onClick = { viewModel.delete(profile.id) }) {
+                            IconButton(onClick = { showDeleteDialog = profile }) {
                                 Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
                             }
                         }
@@ -109,7 +97,7 @@ fun ProfileManagerScreen(
                     value = newProfileName,
                     onValueChange = { newProfileName = it },
                     label = { Text("Название профиля") },
-                    placeholder = { Text("например: Работа 2, Мама, Банк") },
+                    placeholder = { Text("Введите название") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -122,11 +110,32 @@ fun ProfileManagerScreen(
                         showAddDialog = false
                     }
                 }) {
-                    Text("Добавить")
+                    Text("Создать")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    if (showDeleteDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = null },
+            title = { Text("Удалить профиль?") },
+            text = { Text("Профиль \"${showDeleteDialog?.name}\" будет удалён. Записи останутся.") },
+            confirmButton = {
+                Button(onClick = {
+                    showDeleteDialog?.let { viewModel.delete(it.id) }
+                    showDeleteDialog = null
+                }) {
+                    Text("Удалить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = null }) {
                     Text("Отмена")
                 }
             }
