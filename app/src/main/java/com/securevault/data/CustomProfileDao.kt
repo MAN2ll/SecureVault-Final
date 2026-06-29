@@ -11,7 +11,7 @@ interface CustomProfileDao {
     fun getAllProfiles(): Flow<List<CustomProfile>>
 
     @Insert
-    suspend fun insert(profile: CustomProfile)
+    suspend fun insert(profile: CustomProfile): Long
 
     @Query("DELETE FROM custom_profiles WHERE id = :id")
     suspend fun delete(id: Int)
