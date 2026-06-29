@@ -12,8 +12,7 @@ data class Entry(
     @ColumnInfo(name = "service") val service: String,
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
-    @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
-    @ColumnInfo(name = "custom_profile_id") val customProfileId: Int? = null,
+    @ColumnInfo(name = "profile_id") val profileId: Int = 0,
     @ColumnInfo(name = "url") val url: String? = null,
     @ColumnInfo(name = "notes") val notes: String? = null,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
@@ -75,8 +74,7 @@ data class Entry(
     companion object {
         fun create(
             service: String, username: String, password: String,
-            profile: Profile = Profile.PERSONAL,
-            customProfileId: Int? = null,
+            profileId: Int = 0,
             url: String? = null, notes: String? = null,
             textHint: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
@@ -90,7 +88,7 @@ data class Entry(
             
             return Entry(
                 service = service, username = username, encryptedPassword = encryptedPassword,
-                profile = profile, customProfileId = customProfileId,
+                profileId = profileId,
                 url = url, notes = notes,
                 textHint = textHint,
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
@@ -107,7 +105,3 @@ data class PasswordHistoryItem(
     val password: String,
     val date: Long
 )
-
-enum class Profile(val label: String) {
-    PERSONAL("Личное"), WORK("Работа")
-}
