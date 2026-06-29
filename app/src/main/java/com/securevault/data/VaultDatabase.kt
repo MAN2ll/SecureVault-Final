@@ -11,9 +11,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-@Database(entities = [Entry::class], version = 4, exportSchema = false)
+@Database(
+    entities = [Entry::class, CustomProfile::class],
+    version = 5,
+    exportSchema = false
+)
 abstract class VaultDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
+    abstract fun customProfileDao(): CustomProfileDao
 
     companion object {
         @Volatile private var INSTANCE: VaultDatabase? = null
@@ -47,5 +52,11 @@ object DatabaseModule {
     @Singleton
     fun provideEntryDao(database: VaultDatabase): EntryDao {
         return database.entryDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCustomProfileDao(database: VaultDatabase): CustomProfileDao {
+        return database.customProfileDao()
     }
 }
