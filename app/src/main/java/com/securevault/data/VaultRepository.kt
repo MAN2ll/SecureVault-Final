@@ -6,13 +6,20 @@ import javax.inject.Singleton
 
 @Singleton
 class VaultRepository @Inject constructor(
-    private val dao: EntryDao
+    private val entryDao: EntryDao,
+    private val customProfileDao: CustomProfileDao
 ) {
-    val allEntries: Flow<List<Entry>> = dao.getAll()
+    val allEntries: Flow<List<Entry>> = entryDao.getAllEntries()
 
-    suspend fun getById(id: String): Entry? = dao.getById(id)
-    suspend fun insert(entry: Entry) = dao.insert(entry)
-    suspend fun update(entry: Entry) = dao.update(entry)
-    suspend fun delete(entry: Entry) = dao.delete(entry)
-    suspend fun deleteAll() = dao.deleteAll()
+    val allCustomProfiles: Flow<List<CustomProfile>> = customProfileDao.getAllProfiles()
+
+    suspend fun insert(entry: Entry) = entryDao.insert(entry)
+    suspend fun update(entry: Entry) = entryDao.update(entry)
+    suspend fun delete(entry: Entry) = entryDao.delete(entry)
+    suspend fun deleteAll() = entryDao.deleteAll()
+    suspend fun getById(id: String): Entry? = entryDao.getById(id)
+
+    suspend fun insertProfile(profile: CustomProfile) = customProfileDao.insert(profile)
+    suspend fun deleteProfile(id: Int) = customProfileDao.delete(id)
+    suspend fun getProfileById(id: Int): CustomProfile? = customProfileDao.getById(id)
 }
