@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.securevault.ui.screens
 
@@ -18,13 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.data.Entry
-import com.securevault.data.Profile
 import com.securevault.utils.ExportManager
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -35,21 +32,22 @@ import kotlinx.coroutines.launch
 fun ExportImportScreen(
     onBack: () -> Unit,
     vaultViewModel: VaultViewModel = hiltViewModel(),
-    profileViewModel: ProfileViewModel = hiltViewModel(),
-    exportManager: ExportManager = hiltViewModel()
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
+    val context = LocalContext.current.applicationContext
+    // ✅ Создаём ExportManager через context, а не через hiltViewModel
+    val exportManager = remember { ExportManager(context) }
+    
     val scope = rememberCoroutineScope()
     
     val entries by vaultViewModel.entries.collectAsState()
     val profiles by profileViewModel.profiles.collectAsState()
     val currentProfileId by vaultViewModel.currentProfileId.collectAsState()
     
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Экспорт, 1 = Импорт
+    var selectedTab by remember { mutableIntStateOf(0) }
     var selectedProfileIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importTargetProfileId by remember { mutableIntStateOf(currentProfileId ?: 0) }
-    var showProfilePicker by remember { mutableStateOf(false) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
     // ✅ Лаунчер для экспорта
@@ -152,7 +150,7 @@ fun ExportImportScreen(
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text("Фильтр по профилям:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                 Spacer(Modifier.height(8.dp))
-                                FlowRow(
+                                androidx.compose.foundation.layout.FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
@@ -271,6 +269,7 @@ fun ExportImportScreen(
                                 Text("Импорт из файла", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                             Spacer(Modifier.height(12.dp))
+                            
                             Text(
                                 "Поддерживаемые форматы: CSV",
                                 fontSize = 13.sp,
@@ -372,22 +371,5 @@ fun ExportImportScreen(
                 }
             }
         }
-    }
-}
-
-// FlowRow для чипов
-@Composable
-private fun FlowRow(
-    modifier: Modifier = Modifier,
-    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
-    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    content: @Composable () -> Unit
-) {
-    androidx.compose.foundation.layout.FlowRow(
-        modifier = modifier,
-        horizontalArrangement = horizontalArrangement,
-        verticalArrangement = verticalArrangement
-    ) {
-        content()
     }
 }
