@@ -15,6 +15,9 @@ interface EntryDao {
 
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: String): Entry?
+    
+    @Query("SELECT * FROM entries")
+    suspend fun getAllEntriesSync(): List<Entry>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: Entry)
