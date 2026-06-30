@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.data.Profile
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,10 +26,10 @@ fun MnemonicGeneratorScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
+    val currentProfileId by viewModel.currentProfileId.collectAsState()
     var phrase by remember { mutableStateOf("") }
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
-    var profile by remember { mutableStateOf(Profile.PERSONAL) }
     var length by remember { mutableIntStateOf(12) }
     var useUpper by remember { mutableStateOf(false) }
     var useDigits by remember { mutableStateOf(false) }
@@ -44,7 +43,7 @@ fun MnemonicGeneratorScreen(
             generatedPassword = ""
             return
         }
-
+        
         val consonants = "бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxyz"
         val extracted = StringBuilder()
         for (ch in phrase) {
@@ -52,39 +51,32 @@ fun MnemonicGeneratorScreen(
                 extracted.append(ch.lowercaseChar())
             }
         }
-
+        
         val map = mapOf(
             'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'ж' to "zh",
             'з' to "z", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
             'н' to "n", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t",
             'ф' to "f", 'х' to "h", 'ц' to "c", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch"
         )
-
-        val base = StringBuilder()
+        
+        var base = StringBuilder()
         for (ch in extracted.toString()) {
-            if (ch in map) {
-                base.append(map[ch])
-            } else {
-                base.append(ch)
-            }
+            if (ch in map) base.append(map[ch]) else base.append(ch)
         }
-
-        var result = base.toString()
-        if (!useUpper) result = result.lowercase()
-        if (useDigits) result += (10..99).random().toString()
-        if (useSpecial) result += listOf("!", "@", "#", "$").random()
-
+        
+        if (!useUpper) base = StringBuilder(base.toString().lowercase())
+        if (useDigits) base.append((10..99).random().toString())
+        if (useSpecial) base.append(listOf("!", "@", "#", "$").random())
+        
         val safeLength = length.coerceIn(8, 20)
         generatedPassword = when {
-            result.length > safeLength -> result.take(safeLength)
-            result.length < safeLength -> {
-                var padded = result
-                while (padded.length < safeLength) {
-                    padded += "abcdefghijklmnopqrstuvwxyz".random()
-                }
-                padded
+            base.length > safeLength -> base.toString().take(safeLength)
+            base.length < safeLength -> {
+                var result = base.toString()
+                while (result.length < safeLength) result += "abcdefghijklmnopqrstuvwxyz".random()
+                result
             }
-            else -> result
+            else -> base.toString()
         }
     }
 
@@ -96,14 +88,7 @@ fun MnemonicGeneratorScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Генератор из фразы", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Назад"
-                        )
-                    }
-                }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
     ) { padding ->
@@ -115,7 +100,6 @@ fun MnemonicGeneratorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Поле ввода фразы
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
@@ -123,16 +107,12 @@ fun MnemonicGeneratorScreen(
                 placeholder = { Text("например: Мой кот любит молоко") },
                 modifier = Modifier.fillMaxWidth()
             )
-
-            // Поле сервиса
             OutlinedTextField(
                 value = service,
                 onValueChange = { service = it },
                 label = { Text("Сервис") },
                 modifier = Modifier.fillMaxWidth()
             )
-
-            // Поле логина
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -140,48 +120,11 @@ fun MnemonicGeneratorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Выбор профиля
-            var expandedProfile by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = expandedProfile,
-                onExpandedChange = { expandedProfile = !expandedProfile }
-            ) {
-                OutlinedTextField(
-                    readOnly = true,
-                    value = profile.label,
-                    onValueChange = {},
-                    label = { Text("Профиль") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProfile) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = expandedProfile,
-                    onDismissRequest = { expandedProfile = false }
-                ) {
-                    Profile.entries.forEach { p ->
-                        DropdownMenuItem(
-                            text = { Text(p.label) },
-                            onClick = {
-                                profile = p
-                                expandedProfile = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Параметры генерации
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Параметры", fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Длина: $length",
-                            modifier = Modifier.fillMaxWidth(0.3f)
-                        )
+                        Text("Длина: $length", modifier = Modifier.fillMaxWidth(0.3f))
                         Slider(
                             value = length.toFloat(),
                             onValueChange = { length = it.toInt() },
@@ -191,46 +134,34 @@ fun MnemonicGeneratorScreen(
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useUpper,
-                            onCheckedChange = { useUpper = it }
-                        )
-                        Text("Заглавные", modifier = Modifier.padding(start = 8.dp))
+                        Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
+                        Text("Заглавные", Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useDigits,
-                            onCheckedChange = { useDigits = it }
-                        )
-                        Text("Цифры", modifier = Modifier.padding(start = 8.dp))
+                        Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
+                        Text("Цифры", Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useSpecial,
-                            onCheckedChange = { useSpecial = it }
-                        )
-                        Text("Спецсимволы", modifier = Modifier.padding(start = 8.dp))
+                        Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
+                        Text("Спецсимволы", Modifier.padding(start = 8.dp))
                     }
                 }
             }
 
-            // Результат генерации
             if (generatedPassword.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = generatedPassword,
+                            generatedPassword,
                             fontSize = 20.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Из первых согласных фразы",
+                            "Из первых согласных фразы",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
@@ -239,11 +170,10 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Подсказка
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Подсказка", fontWeight = FontWeight.Medium)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = textHint,
                         onValueChange = { textHint = it },
@@ -253,27 +183,25 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Ошибка
             if (showError != null) {
-                Text(
-                    text = showError!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp
-                )
+                Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
 
-            // Кнопка сохранения
             Button(
                 onClick = {
                     if (generatedPassword.isEmpty() || service.isBlank()) {
                         showError = "Заполните фразу и сервис"
                         return@Button
                     }
+                    if (currentProfileId == null) {
+                        showError = "Профиль не выбран"
+                        return@Button
+                    }
                     val entry = Entry.create(
                         service = service,
                         username = username,
                         password = generatedPassword,
-                        profile = profile,
+                        profileId = currentProfileId!!,
                         textHint = textHint.ifBlank { null }
                     )
                     viewModel.insert(entry)
@@ -282,12 +210,8 @@ fun MnemonicGeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 enabled = generatedPassword.isNotEmpty()
             ) {
-                Icon(
-                    imageVector = Icons.Default.Save,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.size(4.dp))
+                Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                Spacer(Modifier.size(4.dp))
                 Text("Сохранить")
             }
         }
