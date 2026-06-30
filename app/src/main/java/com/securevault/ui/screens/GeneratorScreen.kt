@@ -2,21 +2,14 @@
 
 package com.securevault.ui.screens
 
-// ✅ FOUNDATION
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-
-// ✅ MATERIAL3
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-
-// ✅ RUNTIME
 import androidx.compose.runtime.*
-
-// ✅ UI
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,17 +17,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-// ✅ HILT
 import androidx.hilt.navigation.compose.hiltViewModel
-
-// ✅ PROJECT
 import com.securevault.data.Entry
-import com.securevault.data.Profile
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
-
-// ✅ COROUTINES
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +31,7 @@ fun GeneratorScreen(
 ) {
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
-    var selectedProfile by remember { mutableStateOf<Profile?>(null) }
+    val currentProfileId by viewModel.currentProfileId.collectAsState()
     
     var length by remember { mutableIntStateOf(12) }
     var useUppercase by remember { mutableStateOf(true) }
@@ -67,8 +53,8 @@ fun GeneratorScreen(
             showError = "Введите название сервиса"
             return
         }
-        if (selectedProfile == null) {
-            showError = "Выберите профиль (Личные/Рабочие)"
+        if (currentProfileId == null) {
+            showError = "Профиль не выбран"
             return
         }
         
@@ -122,28 +108,6 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            Text("Профиль:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = selectedProfile == Profile.PERSONAL,
-                    onClick = { selectedProfile = Profile.PERSONAL },
-                    label = { Text("Личные", fontSize = 13.sp) },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = selectedProfile == Profile.WORK,
-                    onClick = { selectedProfile = Profile.WORK },
-                    label = { Text("Рабочие", fontSize = 13.sp) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            if (showError != null && selectedProfile == null) {
-                Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-            }
-            
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -177,7 +141,7 @@ fun GeneratorScreen(
             Button(
                 onClick = { generatePassword() },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = service.isNotBlank() && selectedProfile != null
+                enabled = service.isNotBlank() && currentProfileId != null
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(4.dp))
@@ -187,9 +151,7 @@ fun GeneratorScreen(
             if (generatedPassword.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -217,9 +179,7 @@ fun GeneratorScreen(
                         }
                         
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Надёжность:", fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
@@ -230,11 +190,7 @@ fun GeneratorScreen(
                                 PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF2E7D32)
                             }
                             Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(6.dp)
-                                    .fillMaxWidth()
-                                    .padding(end = 8.dp)
+                                modifier = Modifier.weight(1f).height(6.dp).fillMaxWidth().padding(end = 8.dp)
                             ) {
                                 val fillFraction = when (passwordStrength) {
                                     PasswordGenerator.Strength.WEAK -> 0.25f
@@ -243,16 +199,11 @@ fun GeneratorScreen(
                                     PasswordGenerator.Strength.VERY_STRONG -> 1f
                                 }
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(vertical = 1.dp),
+                                    modifier = Modifier.fillMaxSize().padding(vertical = 1.dp),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
                                     Box(
-                                        modifier = Modifier
-                                            .fillMaxSize(fillFraction)
-                                            .height(4.dp)
-                                            .background(color = strengthColor)
+                                        modifier = Modifier.fillMaxSize(fillFraction).height(4.dp).background(color = strengthColor)
                                     )
                                 }
                             }
@@ -288,29 +239,24 @@ fun GeneratorScreen(
                         showError = "Сначала сгенерируйте пароль"
                         return@Button
                     }
-                    if (service.isBlank() || selectedProfile == null) {
+                    if (service.isBlank() || currentProfileId == null) {
                         showError = "Заполните все поля"
                         return@Button
                     }
                     
-                    // ✅ ИСПРАВЛЕНО: убран emojiHint
                     val newEntry = Entry.create(
                         service = service,
                         username = username.ifBlank { "user" },
                         password = generatedPassword,
-                        profile = selectedProfile!!,
-                        rotationEnabled = false,
-                        rotationPeriodMonths = 6
+                        profileId = currentProfileId!!
                     )
                     
                     viewModel.insert(newEntry)
                     onBack()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = generatedPassword.isNotEmpty() && service.isNotBlank() && selectedProfile != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                enabled = generatedPassword.isNotEmpty() && service.isNotBlank() && currentProfileId != null,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(4.dp))
