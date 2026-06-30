@@ -97,7 +97,10 @@ fun SecureVaultNavHost() {
         }
 
         composable("settings") {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+            onBack = { navController.popBackStack() },
+            onNavigate = { route -> navController.navigate(route) }
+            )
         }
 
         composable("audit") {
