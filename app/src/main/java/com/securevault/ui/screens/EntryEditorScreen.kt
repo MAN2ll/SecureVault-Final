@@ -31,7 +31,6 @@ import com.securevault.data.Entry
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
-import java.security.MessageDigest
 import kotlin.random.Random
 
 enum class CipherMethod(
@@ -60,7 +59,7 @@ data class TransformationStep(
 @Composable
 fun EntryEditorScreen(
     id: String?,
-    profileId: Int? = null,  // ✅ НОВЫЙ ПАРАМЕТР
+    profileId: Int? = null,
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
@@ -72,7 +71,6 @@ fun EntryEditorScreen(
     }
     
     val currentProfileId by viewModel.currentProfileId.collectAsState()
-    // ✅ Используем переданный profileId или из ViewModel
     val effectiveProfileId = profileId ?: currentProfileId
     
     var service by remember { mutableStateOf("") }
@@ -127,7 +125,6 @@ fun EntryEditorScreen(
                             showError = "Заполните обязательные поля"
                             return@IconButton
                         }
-                        // ✅ ПРОВЕРКА: profileId должен быть не null
                         if (effectiveProfileId == null) {
                             showError = "Профиль не выбран. Вернитесь назад и войдите в профиль."
                             return@IconButton
@@ -156,7 +153,6 @@ fun EntryEditorScreen(
                         
                         viewModel.insert(entry)
                         showSuccess = true
-                        kotlinx.coroutines.delay(500)
                         onBack()
                     }) { 
                         Icon(Icons.Default.Check, "Сохранить") 
@@ -206,7 +202,6 @@ fun EntryEditorScreen(
                 showError = null 
             }
             
-            // ✅ ИНФОРМАЦИЯ О ПРОФИЛЕ
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -366,115 +361,89 @@ fun transliterate(text: String): String {
     return result.toString()
 }
 
-// ===== МЯГКИЕ АЛГОРИТМЫ (ЗАПОМИНАЕМЫЕ) =====
+// ===== МЯГКИЕ АЛГОРИТМЫ =====
 
 fun phoneticMatrixTransform(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     var result = shortWords.joinToString("_")
     result = result.split("_").joinToString("_") { word ->
         if (word.isNotEmpty()) word[0].uppercaseChar() + word.substring(1).lowercase() else word
     }
     steps.add(TransformationStep(5, "Заглавные первые буквы", result, "Capitalize"))
-    
     return result to steps
 }
 
 fun vectorMultidimensionalShift(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     var result = shortWords.joinToString("_")
-    
     val words_list = result.split("_")
     val inverted = words_list.mapIndexed { index, word ->
         if (index % 2 == 1) word.uppercase() else word.lowercase()
     }
     result = inverted.joinToString("_")
     steps.add(TransformationStep(5, "Инверсия чётных слов", result, "odd=lower, even=UPPER"))
-    
     return result to steps
 }
 
 fun hashInjectionWithDiffusion(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     var result = shortWords.joinToString("_")
-    
     val chars = result.toCharArray()
     for (i in chars.indices) {
         if (i % 3 == 0) chars[i] = chars[i].uppercaseChar()
     }
     result = String(chars)
     steps.add(TransformationStep(5, "Чередование регистра", result, "every 3rd char = UPPER"))
-    
     return result to steps
 }
 
 fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     var result = shortWords.joinToString("_")
-    
     val replacements = mapOf('o' to '0', 'e' to '3', 'a' to '4', 'i' to '1')
     val chars = result.toCharArray()
     var count = 0
@@ -486,68 +455,53 @@ fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationSt
     }
     result = String(chars)
     steps.add(TransformationStep(5, "Замена букв на цифры", result, "o→0, e→3, a→4, i→1"))
-    
     return result to steps
 }
 
 fun blockPermutationWithInversion(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     val reversed = shortWords.reversed()
     var result = reversed.joinToString("_")
-    
     result = result.split("_").joinToString("_") { word ->
         if (word.isNotEmpty()) word[0].uppercaseChar() + word.substring(1).lowercase() else word
     }
     steps.add(TransformationStep(5, "Обратный порядок слов", result, "reverse order"))
-    
     return result to steps
 }
 
 fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
-    
     val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
-    
     if (words.isEmpty()) return "" to steps
-    
     val transliteratedWords = words.map { word ->
         val consonants = extractConsonants(word)
         transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
     }
     steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
-    
     val shortWords = transliteratedWords.map { it.take(4) }
     steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
-    
     var result = shortWords.joinToString("_")
     result = result.split("_").joinToString("_") { word ->
         if (word.isNotEmpty()) word[0].uppercaseChar() + word.substring(1).lowercase() else word
     }
     steps.add(TransformationStep(5, "Заглавные первые буквы", result, "Capitalize"))
-    
     val softReplacements = mapOf('o' to '0', 'e' to '3', 'a' to '4', 'i' to '1', 's' to '5', 't' to '7')
     val chars = result.toCharArray()
     var replacedCount = 0
     val maxReplacements = (chars.count { it.isLetter() } * 0.3).toInt()
-    
     for (i in chars.indices) {
         if (chars[i].isLetter() && chars[i].lowercaseChar() in softReplacements && replacedCount < maxReplacements && Random.nextFloat() < 0.3f) {
             chars[i] = softReplacements[chars[i].lowercaseChar()]!!
@@ -556,23 +510,19 @@ fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> 
     }
     result = String(chars)
     steps.add(TransformationStep(6, "Мягкие замены (30%)", result, "o→0, e→3, a→4..."))
-    
     val yearSuffix = (20..24).random().toString()
     val specialSuffix = listOf("!", "@", "#", "$").random()
     result = "$result$specialSuffix$yearSuffix"
     steps.add(TransformationStep(7, "Суффикс", result, "+ спецсимвол + год"))
-    
     return result to steps
 }
 
 fun applyMemorableTransformations(baseResult: String, steps: MutableList<TransformationStep>): String {
     var result = baseResult
-    
     val softReplacements = mapOf('o' to '0', 'e' to '3', 'a' to '4', 'i' to '1', 's' to '5', 't' to '7')
     val chars = result.toCharArray()
     var replacedCount = 0
     val maxReplacements = (chars.count { it.isLetter() } * 0.3).toInt()
-    
     for (i in chars.indices) {
         if (chars[i].isLetter() && chars[i].lowercaseChar() in softReplacements && replacedCount < maxReplacements && Random.nextFloat() < 0.3f) {
             chars[i] = softReplacements[chars[i].lowercaseChar()]!!
@@ -581,12 +531,10 @@ fun applyMemorableTransformations(baseResult: String, steps: MutableList<Transfo
     }
     result = String(chars)
     steps.add(TransformationStep(steps.size + 1, "Мягкие замены (30%)", result, "o→0, e→3, a→4..."))
-    
     val yearSuffix = (20..24).random().toString()
     val specialSuffix = listOf("!", "@", "#", "$").random()
     result = "$result$specialSuffix$yearSuffix"
     steps.add(TransformationStep(steps.size + 1, "Суффикс безопасности", result, "+ спецсимвол + год"))
-    
     return result
 }
 
@@ -595,36 +543,6 @@ fun removeDuplicates(text: String): String {
     val result = StringBuilder()
     for (ch in text) if (ch !in seen) { seen.add(ch); result.append(ch) }
     return result.toString()
-}
-
-var useUpper = false
-var useDigits = false
-var useSpecial = false
-
-fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
-    val steps = mutableListOf<TransformationStep>()
-    val chars = text.toCharArray()
-    if (useUpper) {
-        for (i in chars.indices) if (chars[i].isLetter() && Random.nextFloat() < 0.3f) chars[i] = chars[i].uppercaseChar()
-        steps.add(TransformationStep(steps.size + 1, "Заглавные (~30%)", String(chars), "P(upper) = 0.3"))
-    }
-    if (useDigits) {
-        val digitReplacements = mapOf('a' to '4', 'e' to '3', 'i' to '1', 'o' to '0', 's' to '5', 't' to '7', 'b' to '8')
-        for (i in chars.indices) {
-            val lower = chars[i].lowercaseChar()
-            if (lower in digitReplacements && Random.nextFloat() < 0.25f) chars[i] = digitReplacements[lower]!!
-        }
-        steps.add(TransformationStep(steps.size + 1, "Цифровая замена (~25%)", String(chars), "P(digit) = 0.25"))
-    }
-    if (useSpecial) {
-        val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '3')
-        for (i in chars.indices) {
-            val lower = chars[i].lowercaseChar()
-            if (lower in specialReplacements && Random.nextFloat() < 0.2f) chars[i] = specialReplacements[lower]!!
-        }
-        steps.add(TransformationStep(steps.size + 1, "Спецсимволы (~20%)", String(chars), "P(special) = 0.2"))
-    }
-    return String(chars) to steps
 }
 
 fun generateTwoPartPassword(base: String): String {
@@ -661,9 +579,9 @@ private fun ScientificPasswordGeneratorDialog(
     
     var selectedTab by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
-    var useUpperLocal by remember { mutableStateOf(false) }
-    var useDigitsLocal by remember { mutableStateOf(false) }
-    var useSpecialLocal by remember { mutableStateOf(false) }
+    var useUpper by remember { mutableStateOf(false) }
+    var useDigits by remember { mutableStateOf(false) }
+    var useSpecial by remember { mutableStateOf(false) }
     var useTwoParts by remember { mutableStateOf(false) }
     
     var generatedPwd by remember { mutableStateOf("") }
@@ -675,10 +593,31 @@ private fun ScientificPasswordGeneratorDialog(
     var passwordHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var regenerationCounter by remember { mutableIntStateOf(0) }
     
-    // Обновляем глобальные переменные
-    useUpper = useUpperLocal
-    useDigits = useDigitsLocal
-    useSpecial = useSpecialLocal
+    fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
+        val steps = mutableListOf<TransformationStep>()
+        val chars = text.toCharArray()
+        if (useUpper) {
+            for (i in chars.indices) if (chars[i].isLetter() && Random.nextFloat() < 0.3f) chars[i] = chars[i].uppercaseChar()
+            steps.add(TransformationStep(steps.size + 1, "Заглавные (~30%)", String(chars), "P(upper) = 0.3"))
+        }
+        if (useDigits) {
+            val digitReplacements = mapOf('a' to '4', 'e' to '3', 'i' to '1', 'o' to '0', 's' to '5', 't' to '7', 'b' to '8')
+            for (i in chars.indices) {
+                val lower = chars[i].lowercaseChar()
+                if (lower in digitReplacements && Random.nextFloat() < 0.25f) chars[i] = digitReplacements[lower]!!
+            }
+            steps.add(TransformationStep(steps.size + 1, "Цифровая замена (~25%)", String(chars), "P(digit) = 0.25"))
+        }
+        if (useSpecial) {
+            val specialReplacements = mapOf('a' to '@', 's' to '$', 'o' to '0', 'i' to '!', 'e' to '3')
+            for (i in chars.indices) {
+                val lower = chars[i].lowercaseChar()
+                if (lower in specialReplacements && Random.nextFloat() < 0.2f) chars[i] = specialReplacements[lower]!!
+            }
+            steps.add(TransformationStep(steps.size + 1, "Спецсимволы (~20%)", String(chars), "P(special) = 0.2"))
+        }
+        return String(chars) to steps
+    }
     
     fun generateScientificPassword(phrase: String): String {
         if (phrase.isBlank()) return ""
@@ -692,7 +631,7 @@ private fun ScientificPasswordGeneratorDialog(
             CipherMethod.BPI -> blockPermutationWithInversion(phrase)
         }
         
-        if (baseResult.isEmpty()) return PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
+        if (baseResult.isEmpty()) return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
         
         val allSteps = baseSteps.toMutableList()
         var result = applyMemorableTransformations(baseResult, allSteps)
@@ -728,9 +667,9 @@ private fun ScientificPasswordGeneratorDialog(
         return filteredPwd
     }
     
-    LaunchedEffect(selectedTab, length, useUpperLocal, useDigitsLocal, useSpecialLocal, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
+    LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
         generatedPwd = if (selectedTab == 0) {
-            PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
+            PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
         } else {
             generateScientificPassword(mnemonicPhrase)
         }
@@ -1011,27 +950,22 @@ private fun ScientificPasswordGeneratorDialog(
                             Text("Длина: $length", modifier = Modifier.weight(1f))
                             Slider(
                                 value = length.toFloat(),
-                                onValueChange = { 
-                                    length = it.toInt()
-                                    useUpperLocal = useUpperLocal
-                                    useDigitsLocal = useDigitsLocal
-                                    useSpecialLocal = useSpecialLocal
-                                },
+                                onValueChange = { length = it.toInt() },
                                 valueRange = 8f..20f,
                                 steps = 12,
                                 modifier = Modifier.weight(2f)
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useUpperLocal, onCheckedChange = { useUpperLocal = it })
+                            Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
                             Text("Заглавные буквы (~30%)", Modifier.padding(start = 8.dp)) 
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useDigitsLocal, onCheckedChange = { useDigitsLocal = it })
+                            Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
                             Text("Цифровая замена (~25%)", Modifier.padding(start = 8.dp)) 
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useSpecialLocal, onCheckedChange = { useSpecialLocal = it })
+                            Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
                             Text("Спецсимволы (~20%)", Modifier.padding(start = 8.dp)) 
                         }
                     }
@@ -1040,7 +974,7 @@ private fun ScientificPasswordGeneratorDialog(
         },
         confirmButton = { 
             Button(onClick = { 
-                val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
+                val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
                 onGenerated(finalPwd) 
             }) { 
                 Icon(Icons.Default.Check, null, Modifier.size(18.dp))
