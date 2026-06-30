@@ -154,9 +154,6 @@ fun EntryEditorScreen(
                         }
                         
                         viewModel.insert(entry)
-                        showSuccess = true
-                        // Небольшая задержка перед возвратом
-                        kotlinx.coroutines.delay(500)
                         onBack()
                     }) { 
                         Icon(Icons.Default.Check, "Сохранить") 
@@ -610,7 +607,12 @@ fun removeDuplicates(text: String): String {
     return result.toString()
 }
 
-fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
+fun applyFilters(
+    text: String, 
+    useUpper: Boolean, 
+    useDigits: Boolean, 
+    useSpecial: Boolean
+): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     val chars = text.toCharArray()
     if (useUpper) {
@@ -705,7 +707,7 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (useTwoParts) result = generateTwoPartPassword(result)
         
-        val (filteredPwd, filterSteps) = applyFilters(result)
+        val (filteredPwd, filterSteps) = applyFilters(result, useUpper, useDigits, useSpecial)
         
         allSteps.addAll(filterSteps.map { it.copy(stepNumber = it.stepNumber + allSteps.size) })
         
