@@ -60,17 +60,20 @@ data class TransformationStep(
 @Composable
 fun EntryEditorScreen(
     id: String?,
+    profileId: Int? = null,  // ✅ НОВЫЙ ПАРАМЕТР
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // ✅ ИСПРАВЛЕНИЕ: правильно определяем режим (создание или редактирование)
     val isNewEntry = id == null || id == "new"
     
     val allEntries by viewModel.entries.collectAsState()
     val existingEntry = remember(id, allEntries) {
         if (isNewEntry) null else allEntries.find { e -> e.id == id }
     }
+    
     val currentProfileId by viewModel.currentProfileId.collectAsState()
+    // ✅ Используем переданный profileId или из ViewModel
+    val effectiveProfileId = profileId ?: currentProfileId
     
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -87,7 +90,6 @@ fun EntryEditorScreen(
     var showError by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
 
-    // ✅ Загружаем данные существующей записи
     LaunchedEffect(existingEntry) {
         existingEntry?.let { entry ->
             service = entry.service
@@ -105,7 +107,6 @@ fun EntryEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                // ✅ ИСПРАВЛЕНИЕ: правильный заголовок
                 title = { 
                     Text(
                         if (isNewEntry) "Новая запись" else "Редактировать", 
@@ -122,12 +123,12 @@ fun EntryEditorScreen(
                         ) 
                     }
                     IconButton(onClick = {
-                        // ✅ ИСПРАВЛЕНИЕ: проверка профиля
                         if (service.isBlank() || password.isBlank()) {
                             showError = "Заполните обязательные поля"
                             return@IconButton
                         }
-                        if (currentProfileId == null) {
+                        // ✅ ПРОВЕРКА: profileId должен быть не null
+                        if (effectiveProfileId == null) {
                             showError = "Профиль не выбран. Вернитесь назад и войдите в профиль."
                             return@IconButton
                         }
@@ -145,7 +146,7 @@ fun EntryEditorScreen(
                         } else {
                             Entry.create(
                                 service = service, username = username, password = password,
-                                profileId = currentProfileId!!,
+                                profileId = effectiveProfileId!!,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
@@ -154,6 +155,8 @@ fun EntryEditorScreen(
                         }
                         
                         viewModel.insert(entry)
+                        showSuccess = true
+                        kotlinx.coroutines.delay(500)
                         onBack()
                     }) { 
                         Icon(Icons.Default.Check, "Сохранить") 
@@ -170,7 +173,6 @@ fun EntryEditorScreen(
                 .verticalScroll(rememberScrollState()), 
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ✅ Уведомление об успехе
             if (showSuccess) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -204,7 +206,7 @@ fun EntryEditorScreen(
                 showError = null 
             }
             
-            // Информация о профиле
+            // ✅ ИНФОРМАЦИЯ О ПРОФИЛЕ
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -216,7 +218,7 @@ fun EntryEditorScreen(
                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (currentProfileId != null) "Профиль ID: $currentProfileId" else "⚠️ Профиль не выбран",
+                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "⚠️ Профиль не выбран",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -343,7 +345,7 @@ fun EntryEditorScreen(
     }
 }
 
-// ===== МЯГКИЕ АЛГОРИТМЫ (ЗАПОМИНАЕМЫЕ) =====
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 
 fun extractConsonants(text: String): String {
     val consonants = "бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxyz"
@@ -364,14 +366,8 @@ fun transliterate(text: String): String {
     return result.toString()
 }
 
-fun safeJoin(strings: List<String>, separator: String = ""): String {
-    if (strings.isEmpty()) return ""
-    var result = strings[0]
-    for (i in 1 until strings.size) result += separator + strings[i]
-    return result
-}
+// ===== МЯГКИЕ АЛГОРИТМЫ (ЗАПОМИНАЕМЫЕ) =====
 
-// ✅ 1. ФМП — матрица и транспонирование
 fun phoneticMatrixTransform(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -399,7 +395,6 @@ fun phoneticMatrixTransform(text: String): Pair<String, List<TransformationStep>
     return result to steps
 }
 
-// ✅ 2. ВМС — инверсия чётных слов
 fun vectorMultidimensionalShift(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -430,7 +425,6 @@ fun vectorMultidimensionalShift(text: String): Pair<String, List<TransformationS
     return result to steps
 }
 
-// ✅ 3. ХИД — чередование регистра
 fun hashInjectionWithDiffusion(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -461,7 +455,6 @@ fun hashInjectionWithDiffusion(text: String): Pair<String, List<TransformationSt
     return result to steps
 }
 
-// ✅ 4. ППК — замена букв на цифры
 fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -497,7 +490,6 @@ fun polyalphabeticSubstitution(text: String): Pair<String, List<TransformationSt
     return result to steps
 }
 
-// ✅ 5. БПИ — обратный порядок слов
 fun blockPermutationWithInversion(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -527,7 +519,6 @@ fun blockPermutationWithInversion(text: String): Pair<String, List<Transformatio
     return result to steps
 }
 
-// ✅ 6. SOFT — мягкий метод
 fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -574,7 +565,6 @@ fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> 
     return result to steps
 }
 
-// ✅ УНИВЕРСАЛЬНАЯ ПОСТОБРАБОТКА
 fun applyMemorableTransformations(baseResult: String, steps: MutableList<TransformationStep>): String {
     var result = baseResult
     
@@ -607,12 +597,11 @@ fun removeDuplicates(text: String): String {
     return result.toString()
 }
 
-fun applyFilters(
-    text: String, 
-    useUpper: Boolean, 
-    useDigits: Boolean, 
-    useSpecial: Boolean
-): Pair<String, List<TransformationStep>> {
+var useUpper = false
+var useDigits = false
+var useSpecial = false
+
+fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
     val steps = mutableListOf<TransformationStep>()
     val chars = text.toCharArray()
     if (useUpper) {
@@ -672,9 +661,9 @@ private fun ScientificPasswordGeneratorDialog(
     
     var selectedTab by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
-    var useUpper by remember { mutableStateOf(false) }
-    var useDigits by remember { mutableStateOf(false) }
-    var useSpecial by remember { mutableStateOf(false) }
+    var useUpperLocal by remember { mutableStateOf(false) }
+    var useDigitsLocal by remember { mutableStateOf(false) }
+    var useSpecialLocal by remember { mutableStateOf(false) }
     var useTwoParts by remember { mutableStateOf(false) }
     
     var generatedPwd by remember { mutableStateOf("") }
@@ -685,6 +674,11 @@ private fun ScientificPasswordGeneratorDialog(
     var entropyScore by remember { mutableStateOf(0.0) }
     var passwordHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var regenerationCounter by remember { mutableIntStateOf(0) }
+    
+    // Обновляем глобальные переменные
+    useUpper = useUpperLocal
+    useDigits = useDigitsLocal
+    useSpecial = useSpecialLocal
     
     fun generateScientificPassword(phrase: String): String {
         if (phrase.isBlank()) return ""
@@ -698,7 +692,7 @@ private fun ScientificPasswordGeneratorDialog(
             CipherMethod.BPI -> blockPermutationWithInversion(phrase)
         }
         
-        if (baseResult.isEmpty()) return PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+        if (baseResult.isEmpty()) return PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
         
         val allSteps = baseSteps.toMutableList()
         var result = applyMemorableTransformations(baseResult, allSteps)
@@ -707,7 +701,7 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (useTwoParts) result = generateTwoPartPassword(result)
         
-        val (filteredPwd, filterSteps) = applyFilters(result, useUpper, useDigits, useSpecial)
+        val (filteredPwd, filterSteps) = applyFilters(result)
         
         allSteps.addAll(filterSteps.map { it.copy(stepNumber = it.stepNumber + allSteps.size) })
         
@@ -734,9 +728,9 @@ private fun ScientificPasswordGeneratorDialog(
         return filteredPwd
     }
     
-    LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
+    LaunchedEffect(selectedTab, length, useUpperLocal, useDigitsLocal, useSpecialLocal, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
         generatedPwd = if (selectedTab == 0) {
-            PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+            PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
         } else {
             generateScientificPassword(mnemonicPhrase)
         }
@@ -1017,22 +1011,27 @@ private fun ScientificPasswordGeneratorDialog(
                             Text("Длина: $length", modifier = Modifier.weight(1f))
                             Slider(
                                 value = length.toFloat(),
-                                onValueChange = { length = it.toInt() },
+                                onValueChange = { 
+                                    length = it.toInt()
+                                    useUpperLocal = useUpperLocal
+                                    useDigitsLocal = useDigitsLocal
+                                    useSpecialLocal = useSpecialLocal
+                                },
                                 valueRange = 8f..20f,
                                 steps = 12,
                                 modifier = Modifier.weight(2f)
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
+                            Checkbox(checked = useUpperLocal, onCheckedChange = { useUpperLocal = it })
                             Text("Заглавные буквы (~30%)", Modifier.padding(start = 8.dp)) 
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
+                            Checkbox(checked = useDigitsLocal, onCheckedChange = { useDigitsLocal = it })
                             Text("Цифровая замена (~25%)", Modifier.padding(start = 8.dp)) 
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) { 
-                            Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
+                            Checkbox(checked = useSpecialLocal, onCheckedChange = { useSpecialLocal = it })
                             Text("Спецсимволы (~20%)", Modifier.padding(start = 8.dp)) 
                         }
                     }
@@ -1041,7 +1040,7 @@ private fun ScientificPasswordGeneratorDialog(
         },
         confirmButton = { 
             Button(onClick = { 
-                val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else PasswordGenerator.generate(length, useUpper, useDigits, useSpecial).password
+                val finalPwd = if (generatedPwd.isNotEmpty()) generatedPwd else PasswordGenerator.generate(length, useUpperLocal, useDigitsLocal, useSpecialLocal).password
                 onGenerated(finalPwd) 
             }) { 
                 Icon(Icons.Default.Check, null, Modifier.size(18.dp))
