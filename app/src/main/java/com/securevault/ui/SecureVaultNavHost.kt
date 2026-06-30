@@ -2,19 +2,16 @@ package com.securevault.ui
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.securevault.ui.screens.*
-import com.securevault.utils.AutoLockManager
 import com.securevault.viewmodel.AuthViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -22,40 +19,6 @@ fun SecureVaultNavHost() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
-    
-    // ✅ АВТОБЛОКИРОВКА
-    val isLocked by AutoLockManager.isLocked.collectAsState()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
-    
-    // Отслеживаем активность пользователя
-    LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                AutoLockManager.recordUserActivity()
-                delay(1000) // Проверяем каждую секунду
-            }
-        }
-    }
-    
-    // Проверяем таймаут
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(5000) // Проверяем каждые 5 секунд
-            if (AutoLockManager.checkTimeout()) {
-                navController.navigate("lock") {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
-                }
-            }
-        }
-    }
-    
-    // Блокируем при сворачивании
-    LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.CREATED) {
-            AutoLockManager.lock()
-        }
-    }
 
     NavHost(
         navController = navController, 
@@ -89,10 +52,11 @@ fun SecureVaultNavHost() {
         composable("lock") {
             LockScreen(
                 onUnlocked = { 
-                    AutoLockManager.unlock()
                     navController.navigate("profiles") { popUpTo("lock") { inclusive = true } } 
                 },
-                onSetupRequired = { navController.navigate("setup") { popUpTo("lock") { inclusive = true } } }
+                onSetupRequired = { 
+                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } } 
+                }
             )
         }
 
@@ -106,7 +70,6 @@ fun SecureVaultNavHost() {
                 },
                 onLock = {
                     authViewModel.lock()
-                    AutoLockManager.lock()
                     navController.navigate("lock") { popUpTo("profiles") { inclusive = true } }
                 }
             )
@@ -120,7 +83,6 @@ fun SecureVaultNavHost() {
                 onBack = { navController.popBackStack() },
                 onLock = {
                     authViewModel.lock()
-                    AutoLockManager.lock()
                     navController.navigate("lock") { popUpTo("profiles") { inclusive = true } }
                 }
             )
@@ -128,7 +90,15 @@ fun SecureVaultNavHost() {
 
         composable("editor/{id}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
-            EntryEditorScreen(id = id, onBack = { navController.popBackStack() })
+            // ✅ Получаем profileId из back stack
+            val parentEntry = backStackEntry.parent?.parent
+            val profileId = parentEntry?.arguments?.getString("profileId")?.toIntOrNull()
+            
+            EntryEditorScreen(
+                id = id, 
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable("mnemonic") {
