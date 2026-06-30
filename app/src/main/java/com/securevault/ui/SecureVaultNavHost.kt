@@ -1,14 +1,8 @@
 package com.securevault.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -40,23 +34,43 @@ fun SecureVaultNavHost() {
 
         composable("setup") {
             SetupScreen(onCompleted = {
-                navController.navigate("main") { popUpTo("setup") { inclusive = true } }
+                navController.navigate("profiles") { popUpTo("setup") { inclusive = true } }
             })
         }
 
         composable("lock") {
             LockScreen(
-                onUnlocked = { navController.navigate("main") { popUpTo("lock") { inclusive = true } } },
+                onUnlocked = { navController.navigate("profiles") { popUpTo("lock") { inclusive = true } } },
                 onSetupRequired = { navController.navigate("setup") { popUpTo("lock") { inclusive = true } } }
             )
         }
 
-        composable("main") {
-            VaultListScreen(
-                onNavigate = { route -> navController.navigate(route) },
+        // ✅ НОВЫЙ ГЛАВНЫЙ ЭКРАН: Профили
+        composable("profiles") {
+            ProfileListScreen(
+                onProfileSelected = { profileId ->
+                    navController.navigate("vault/$profileId") {
+                        popUpTo("profiles") { saveState = true }
+                        launchSingleTop = true
+                    }
+                },
                 onLock = {
                     authViewModel.lock()
-                    navController.navigate("lock") { popUpTo("main") { inclusive = true } }
+                    navController.navigate("lock") { popUpTo("profiles") { inclusive = true } }
+                }
+            )
+        }
+
+        // ✅ ЭКРАН ВНУТРИ ПРОФИЛЯ
+        composable("vault/{profileId}") { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            VaultListScreen(
+                profileId = profileId,
+                onNavigate = { route -> navController.navigate(route) },
+                onBack = { navController.popBackStack() },
+                onLock = {
+                    authViewModel.lock()
+                    navController.navigate("lock") { popUpTo("profiles") { inclusive = true } }
                 }
             )
         }
@@ -80,10 +94,6 @@ fun SecureVaultNavHost() {
 
         composable("audit") {
             AuditScreen(onBack = { navController.popBackStack() })
-        }
-
-        composable("profiles") {
-            ProfileManagerScreen(onBack = { navController.popBackStack() })
         }
     }
 }
