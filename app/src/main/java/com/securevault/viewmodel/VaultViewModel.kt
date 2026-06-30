@@ -3,7 +3,6 @@ package com.securevault.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
-import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordGenerator
@@ -17,22 +16,24 @@ class VaultViewModel @Inject constructor(
     private val repository: VaultRepository
 ) : ViewModel() {
 
-    private val _profileFilter = MutableStateFlow<Profile?>(null)
-    val profileFilter: StateFlow<Profile?> = _profileFilter.asStateFlow()
+    // ✅ Текущий выбранный профиль
+    private val _currentProfileId = MutableStateFlow<Int?>(null)
+    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
     private val _favoritesOnly = MutableStateFlow(false)
     val favoritesOnly: StateFlow<Boolean> = _favoritesOnly.asStateFlow()
 
+    // ✅ Фильтруем записи по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
-        .combine(_profileFilter) { list, profile ->
-            if (profile == null) list else list.filter { it.profile == profile }
+        .combine(_currentProfileId) { list, profileId ->
+            if (profileId == null) list else list.filter { it.profileId == profileId }
         }
         .combine(_favoritesOnly) { list, favOnly ->
             if (favOnly) list.filter { it.isFavorite } else list
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun setProfileFilter(profile: Profile?) { _profileFilter.value = profile }
+    fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
@@ -44,39 +45,22 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ ОБНОВЛЕНО: Сохраняем старый пароль в историю
     fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
-        val oldPassword = entry.password
-        
-        // Добавляем старый пароль в историю
-        val entryWithHistory = entry.addToPasswordHistory(oldPassword)
-        
-        val updated = entryWithHistory.copy(
+        val updated = entry.addToPasswordHistory(entry.password).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
-            lastChanged = System.currentTimeMillis(),
-            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+            lastChanged = System.currentTimeMillis()
         )
         repository.update(updated)
     }
 
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
-        val oldPassword = entry.password
         val newPwd = PasswordGenerator.generate(16, true, true, true).password
-        
-        // Добавляем старый пароль в историю
-        val entryWithHistory = entry.addToPasswordHistory(oldPassword)
-        
-        val updated = entryWithHistory.copy(
+        val updated = entry.addToPasswordHistory(entry.password).copy(
             encryptedPassword = CryptoUtils.encrypt(newPwd),
-            lastChanged = System.currentTimeMillis(),
-            nextRotationDate = if (entry.rotationEnabled) System.currentTimeMillis() + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+            lastChanged = System.currentTimeMillis()
         )
         repository.update(updated)
-    }
-
-    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        ids.forEach { rotatePassword(it) }
     }
 }
