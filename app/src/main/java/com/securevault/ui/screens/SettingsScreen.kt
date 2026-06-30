@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.utils.AutoLockManager
 import com.securevault.utils.ThemeManager
 import com.securevault.utils.ThemeManager.AppTheme
 import com.securevault.viewmodel.AuthViewModel
@@ -33,7 +34,7 @@ import java.io.OutputStreamWriter
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigate: (String) -> Unit,  // ✅ ДОБАВЛЕНО
+    onNavigate: (String) -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
@@ -130,6 +131,80 @@ fun SettingsScreen(
                         }
                     }
                     Text(">", fontSize = 16.sp)
+                }
+            }
+
+            // ✅ АВТОБЛОКИРОВКА
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Timer, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Автоблокировка", fontWeight = FontWeight.Medium)
+                                Text("Блокировать при неактивности", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        var autoLockEnabled by remember { mutableStateOf(AutoLockManager.isEnabled()) }
+                        Switch(
+                            checked = autoLockEnabled,
+                            onCheckedChange = {
+                                autoLockEnabled = it
+                                AutoLockManager.setEnabled(it)
+                            }
+                        )
+                    }
+
+                    if (autoLockEnabled) {
+                        Spacer(Modifier.height(16.dp))
+
+                        var timeoutMinutes by remember { mutableIntStateOf(AutoLockManager.getTimeoutMinutes()) }
+                        var expanded by remember { mutableStateOf(false) }
+
+                        ExposedDropdownMenuBox(
+                            expanded = expanded,
+                            onExpandedChange = { expanded = !expanded }
+                        ) {
+                            OutlinedTextField(
+                                readOnly = true,
+                                value = "$timeoutMinutes мин.",
+                                onValueChange = {},
+                                label = { Text("Время неактивности") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                listOf(1, 2, 5, 10, 15, 30).forEach { minutes ->
+                                    DropdownMenuItem(
+                                        text = { Text("$minutes мин.") },
+                                        onClick = {
+                                            timeoutMinutes = minutes
+                                            AutoLockManager.setTimeoutMinutes(minutes)
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Приложение заблокируется после $timeoutMinutes мин. неактивности",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
