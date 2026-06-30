@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -90,9 +89,9 @@ fun SecureVaultNavHost() {
 
         composable("editor/{id}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
-            // ✅ Получаем profileId из back stack
-            val parentEntry = backStackEntry.parent?.parent
-            val profileId = parentEntry?.arguments?.getString("profileId")?.toIntOrNull()
+            // ✅ ПРАВИЛЬНОЕ получение profileId
+            val vaultEntry = navController.getBackStackEntry("vault/{profileId}")
+            val profileId = vaultEntry.arguments?.getString("profileId")?.toIntOrNull()
             
             EntryEditorScreen(
                 id = id, 
