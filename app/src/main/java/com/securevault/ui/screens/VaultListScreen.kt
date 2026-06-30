@@ -2,6 +2,7 @@
 
 package com.securevault.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,11 +40,9 @@ fun VaultListScreen(
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     var viewingEntry by remember { mutableStateOf<Entry?>(null) }
     
-    // ✅ ПОИСК
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     
-    // ✅ СОРТИРОВКА
     var sortOption by remember { mutableStateOf(SortOption.DATE_CREATED_DESC) }
     var showSortMenu by remember { mutableStateOf(false) }
 
@@ -51,7 +50,6 @@ fun VaultListScreen(
         viewModel.setCurrentProfile(profileId)
     }
 
-    // ✅ Фильтрация + сортировка
     val filteredAndSortedEntries = remember(entries, searchQuery, favoritesOnly, sortOption) {
         val filtered = entries.filter { entry ->
             val matchesSearch = searchQuery.isBlank() || 
@@ -133,7 +131,6 @@ fun VaultListScreen(
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(Icons.Default.Search, "Поиск")
                         }
-                        // ✅ КНОПКА СОРТИРОВКИ
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
                                 Icon(Icons.Default.Sort, "Сортировка")
