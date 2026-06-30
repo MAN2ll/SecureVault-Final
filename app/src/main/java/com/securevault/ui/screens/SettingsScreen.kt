@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.AutoLockManager
+import com.securevault.utils.NotificationHelper
+import com.securevault.utils.ReminderScheduler
 import com.securevault.utils.ThemeManager
 import com.securevault.utils.ThemeManager.AppTheme
 import com.securevault.viewmodel.AuthViewModel
@@ -45,7 +47,6 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
 
-    // ✅ Экспорт в CSV (быстрый — все записи)
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -134,7 +135,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ✅ АВТОБЛОКИРОВКА
+            // Автоблокировка
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -201,6 +202,51 @@ fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             "Приложение заблокируется после $timeoutMinutes мин. неактивности",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // ✅ УВЕДОМЛЕНИЯ
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Notifications, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Уведомления", fontWeight = FontWeight.Medium)
+                                Text("Напоминания об истечении паролей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        var notificationsEnabled by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
+                        Switch(
+                            checked = notificationsEnabled,
+                            onCheckedChange = {
+                                notificationsEnabled = it
+                                NotificationHelper.setEnabled(context, it)
+                                if (it) {
+                                    ReminderScheduler.scheduleReminder(context)
+                                } else {
+                                    ReminderScheduler.cancelReminder(context)
+                                }
+                            }
+                        )
+                    }
+
+                    if (notificationsEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "• За 7 дней до истечения — обычное уведомление\n• За 1 день — критическое уведомление\n• В день истечения — срочное уведомление",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
