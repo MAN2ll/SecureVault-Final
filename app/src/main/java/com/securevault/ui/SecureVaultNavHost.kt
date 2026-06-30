@@ -1,5 +1,7 @@
 package com.securevault.ui
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -10,13 +12,21 @@ import androidx.navigation.compose.rememberNavController
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun SecureVaultNavHost() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
 
-    NavHost(navController = navController, startDestination = "splash") {
+    NavHost(
+        navController = navController, 
+        startDestination = "splash",
+        enterTransition = { slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(300)) },
+        exitTransition = { slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(animationSpec = tween(300)) },
+        popEnterTransition = { slideInHorizontally(initialOffsetX = { -it }) + fadeIn(animationSpec = tween(300)) },
+        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }) + fadeOut(animationSpec = tween(300)) }
+    ) {
         composable("splash") {
             SplashScreen(
                 onTimeout = {
@@ -45,7 +55,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // ✅ НОВЫЙ ГЛАВНЫЙ ЭКРАН: Профили
         composable("profiles") {
             ProfileListScreen(
                 onProfileSelected = { profileId ->
@@ -61,7 +70,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // ✅ ЭКРАН ВНУТРИ ПРОФИЛЯ
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             VaultListScreen(
@@ -94,6 +102,10 @@ fun SecureVaultNavHost() {
 
         composable("audit") {
             AuditScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("export") {
+            ExportImportScreen(onBack = { navController.popBackStack() })
         }
     }
 }
