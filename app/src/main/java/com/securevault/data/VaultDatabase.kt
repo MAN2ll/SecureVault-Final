@@ -11,14 +11,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-@Database(
-    entities = [Entry::class, CustomProfile::class],
-    version = 5,
-    exportSchema = false
-)
+@Database(entities = [Entry::class, Profile::class], version = 6, exportSchema = false)
 abstract class VaultDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
-    abstract fun customProfileDao(): CustomProfileDao
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         @Volatile private var INSTANCE: VaultDatabase? = null
@@ -26,12 +22,8 @@ abstract class VaultDatabase : RoomDatabase() {
         fun getDatabase(context: Context): VaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    VaultDatabase::class.java,
-                    "vault_db"
-                )
-                .fallbackToDestructiveMigration()
-                .build()
+                    context.applicationContext, VaultDatabase::class.java, "vault_db"
+                ).fallbackToDestructiveMigration().build()
                 INSTANCE = instance
                 instance
             }
@@ -42,21 +34,12 @@ abstract class VaultDatabase : RoomDatabase() {
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
-    @Provides
-    @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): VaultDatabase {
-        return VaultDatabase.getDatabase(context)
-    }
+    @Provides @Singleton
+    fun provideDatabase(@ApplicationContext context: Context) = VaultDatabase.getDatabase(context)
 
-    @Provides
-    @Singleton
-    fun provideEntryDao(database: VaultDatabase): EntryDao {
-        return database.entryDao()
-    }
+    @Provides @Singleton
+    fun provideEntryDao(db: VaultDatabase) = db.entryDao()
 
-    @Provides
-    @Singleton
-    fun provideCustomProfileDao(database: VaultDatabase): CustomProfileDao {
-        return database.customProfileDao()
-    }
+    @Provides @Singleton
+    fun provideProfileDao(db: VaultDatabase) = db.profileDao()
 }
