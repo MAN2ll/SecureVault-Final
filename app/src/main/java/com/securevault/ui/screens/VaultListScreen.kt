@@ -19,6 +19,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
 
+enum class SortOption(val label: String) {
+    NAME_ASC("По имени (А-Я)"),
+    NAME_DESC("По имени (Я-А)"),
+    DATE_CREATED_DESC("Сначала новые"),
+    DATE_CREATED_ASC("Сначала старые"),
+    DATE_CHANGED_DESC("Недавно изменённые")
+}
+
 @Composable
 fun VaultListScreen(
     profileId: Int?,
@@ -34,14 +42,18 @@ fun VaultListScreen(
     // ✅ ПОИСК
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    
+    // ✅ СОРТИРОВКА
+    var sortOption by remember { mutableStateOf(SortOption.DATE_CREATED_DESC) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(profileId) {
         viewModel.setCurrentProfile(profileId)
     }
 
-    // ✅ Фильтрация по поиску
-    val filteredEntries = remember(entries, searchQuery, favoritesOnly) {
-        entries.filter { entry ->
+    // ✅ Фильтрация + сортировка
+    val filteredAndSortedEntries = remember(entries, searchQuery, favoritesOnly, sortOption) {
+        val filtered = entries.filter { entry ->
             val matchesSearch = searchQuery.isBlank() || 
                 entry.service.contains(searchQuery, ignoreCase = true) ||
                 entry.username.contains(searchQuery, ignoreCase = true) ||
@@ -49,12 +61,19 @@ fun VaultListScreen(
             val matchesFavorite = !favoritesOnly || entry.isFavorite
             matchesSearch && matchesFavorite
         }
+        
+        when (sortOption) {
+            SortOption.NAME_ASC -> filtered.sortedBy { it.service.lowercase() }
+            SortOption.NAME_DESC -> filtered.sortedByDescending { it.service.lowercase() }
+            SortOption.DATE_CREATED_DESC -> filtered.sortedByDescending { it.createdAt }
+            SortOption.DATE_CREATED_ASC -> filtered.sortedBy { it.createdAt }
+            SortOption.DATE_CHANGED_DESC -> filtered.sortedByDescending { it.lastChanged }
+        }
     }
 
     Scaffold(
         topBar = {
             if (isSearchActive) {
-                // ✅ РЕЖИМ ПОИСКА
                 SearchBar(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
@@ -76,10 +95,9 @@ fun VaultListScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Результаты поиска
-                    if (searchQuery.isNotBlank() && filteredEntries.isNotEmpty()) {
+                    if (searchQuery.isNotBlank() && filteredAndSortedEntries.isNotEmpty()) {
                         LazyColumn {
-                            items(filteredEntries) { entry ->
+                            items(filteredAndSortedEntries) { entry ->
                                 ListItem(
                                     headlineContent = { Text(entry.service) },
                                     supportingContent = { Text(entry.username) },
@@ -104,7 +122,6 @@ fun VaultListScreen(
                     }
                 }
             } else {
-                // ✅ ОБЫЧНЫЙ TOPBAR
                 TopAppBar(
                     title = { Text("Пароли", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
@@ -115,6 +132,31 @@ fun VaultListScreen(
                     actions = {
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(Icons.Default.Search, "Поиск")
+                        }
+                        // ✅ КНОПКА СОРТИРОВКИ
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Default.Sort, "Сортировка")
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                SortOption.entries.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.label) },
+                                        onClick = {
+                                            sortOption = option
+                                            showSortMenu = false
+                                        },
+                                        leadingIcon = {
+                                            if (sortOption == option) {
+                                                Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+                                            }
+                                        }
+                                    )
+                                }
+                            }
                         }
                         IconButton(onClick = { onNavigate("audit") }) {
                             Icon(Icons.Default.Security, "Аудит")
@@ -158,10 +200,9 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // Счётчик записей
             if (searchQuery.isNotBlank()) {
                 Text(
-                    "Найдено: ${filteredEntries.size}",
+                    "Найдено: ${filteredAndSortedEntries.size}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -173,7 +214,7 @@ fun VaultListScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(filteredEntries, key = { it.id }) { entry ->
+                items(filteredAndSortedEntries, key = { it.id }) { entry ->
                     EntryCard(
                         entry,
                         { viewingEntry = entry },
@@ -182,7 +223,7 @@ fun VaultListScreen(
                         { viewModel.toggleFavorite(entry) }
                     )
                 }
-                if (filteredEntries.isEmpty() && !isSearchActive) {
+                if (filteredAndSortedEntries.isEmpty() && !isSearchActive) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
