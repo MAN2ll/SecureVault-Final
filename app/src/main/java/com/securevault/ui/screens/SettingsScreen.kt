@@ -33,6 +33,7 @@ import java.io.OutputStreamWriter
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigate: (String) -> Unit,  // ✅ ДОБАВЛЕНО
     viewModel: VaultViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
@@ -134,7 +135,7 @@ fun SettingsScreen(
 
             // Данные
             Text("ДАННЫЕ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { onBack() }) {
+            Card(modifier = Modifier.fillMaxWidth(), onClick = { onNavigate("export") }) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
