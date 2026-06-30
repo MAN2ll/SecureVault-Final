@@ -1,7 +1,6 @@
 package com.securevault
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -18,8 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.securevault.ui.SecureVaultNavHost
 import com.securevault.ui.theme.SecureVaultTheme
-import com.securevault.utils.AutoLockManager
-import com.securevault.utils.NotificationHelper
 import com.securevault.utils.ReminderScheduler
 import com.securevault.utils.ThemeManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -38,12 +35,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // ✅ Инициализация AutoLockManager
-        AutoLockManager.init(applicationContext)
-        
-        // ✅ Создание канала уведомлений
-        NotificationHelper.createNotificationChannel(this)
-        
         // ✅ Запрос разрешения на уведомления (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -59,7 +50,6 @@ class MainActivity : ComponentActivity() {
         }
         
         setContent {
-            // ✅ Получаем текущую тему через Flow
             val currentTheme by ThemeManager.getThemeFlow(this).collectAsState(initial = ThemeManager.AppTheme.SYSTEM)
             
             SecureVaultTheme(
@@ -67,7 +57,7 @@ class MainActivity : ComponentActivity() {
                     ThemeManager.AppTheme.LIGHT -> false
                     ThemeManager.AppTheme.DARK -> true
                     ThemeManager.AppTheme.SYSTEM -> isSystemInDarkTheme()
-                    else -> isSystemInDarkTheme() // ✅ Добавлена else ветка
+                    else -> isSystemInDarkTheme()
                 }
             ) {
                 Surface(
