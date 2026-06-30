@@ -1,15 +1,19 @@
 package com.securevault
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.securevault.ui.SecureVaultNavHost
@@ -55,14 +59,15 @@ class MainActivity : ComponentActivity() {
         }
         
         setContent {
-            // ✅ Получаем текущую тему
-            val currentTheme = ThemeManager.getTheme(this)
+            // ✅ Получаем текущую тему через Flow
+            val currentTheme by ThemeManager.getThemeFlow(this).collectAsState(initial = ThemeManager.AppTheme.SYSTEM)
             
             SecureVaultTheme(
                 darkTheme = when (currentTheme) {
                     ThemeManager.AppTheme.LIGHT -> false
                     ThemeManager.AppTheme.DARK -> true
-                    ThemeManager.AppTheme.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                    ThemeManager.AppTheme.SYSTEM -> isSystemInDarkTheme()
+                    else -> isSystemInDarkTheme() // ✅ Добавлена else ветка
                 }
             ) {
                 Surface(
