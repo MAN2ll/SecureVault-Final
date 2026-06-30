@@ -30,35 +30,110 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     var viewingEntry by remember { mutableStateOf<Entry?>(null) }
+    
+    // ✅ ПОИСК
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(profileId) {
         viewModel.setCurrentProfile(profileId)
     }
 
+    // ✅ Фильтрация по поиску
+    val filteredEntries = remember(entries, searchQuery, favoritesOnly) {
+        entries.filter { entry ->
+            val matchesSearch = searchQuery.isBlank() || 
+                entry.service.contains(searchQuery, ignoreCase = true) ||
+                entry.username.contains(searchQuery, ignoreCase = true) ||
+                (entry.notes?.contains(searchQuery, ignoreCase = true) == true)
+            val matchesFavorite = !favoritesOnly || entry.isFavorite
+            matchesSearch && matchesFavorite
+        }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Пароли", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onNavigate("audit") }) {
-                        Icon(Icons.Default.Security, "Аудит")
-                    }
-                    IconButton(onClick = { onNavigate("settings") }) {
-                        Icon(Icons.Default.Settings, "Настройки")
-                    }
-                    IconButton(onClick = { onNavigate("rotation") }) {
-                        Icon(Icons.Default.Refresh, "Ротация")
-                    }
-                    IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, "Заблокировать")
+            if (isSearchActive) {
+                // ✅ РЕЖИМ ПОИСКА
+                SearchBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onSearch = { isSearchActive = false },
+                    active = true,
+                    onActiveChange = { isSearchActive = it },
+                    placeholder = { Text("Поиск по сервису или логину") },
+                    leadingIcon = { 
+                        IconButton(onClick = { isSearchActive = false; searchQuery = "" }) {
+                            Icon(Icons.Default.ArrowBack, "Закрыть поиск")
+                        }
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, "Очистить")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Результаты поиска
+                    if (searchQuery.isNotBlank() && filteredEntries.isNotEmpty()) {
+                        LazyColumn {
+                            items(filteredEntries) { entry ->
+                                ListItem(
+                                    headlineContent = { Text(entry.service) },
+                                    supportingContent = { Text(entry.username) },
+                                    leadingContent = {
+                                        Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary)
+                                    },
+                                    modifier = Modifier.clickable {
+                                        viewingEntry = entry
+                                        isSearchActive = false
+                                        searchQuery = ""
+                                    }
+                                )
+                            }
+                        }
+                    } else if (searchQuery.isNotBlank()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Ничего не найдено", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
-            )
+            } else {
+                // ✅ ОБЫЧНЫЙ TOPBAR
+                TopAppBar(
+                    title = { Text("Пароли", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, "Назад")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(Icons.Default.Search, "Поиск")
+                        }
+                        IconButton(onClick = { onNavigate("audit") }) {
+                            Icon(Icons.Default.Security, "Аудит")
+                        }
+                        IconButton(onClick = { onNavigate("export") }) {
+                            Icon(Icons.Default.SwapHoriz, "Экспорт/Импорт")
+                        }
+                        IconButton(onClick = { onNavigate("settings") }) {
+                            Icon(Icons.Default.Settings, "Настройки")
+                        }
+                        IconButton(onClick = { onNavigate("rotation") }) {
+                            Icon(Icons.Default.Refresh, "Ротация")
+                        }
+                        IconButton(onClick = onLock) {
+                            Icon(Icons.Default.Lock, "Заблокировать")
+                        }
+                    }
+                )
+            }
         },
         bottomBar = {
             NavigationBar {
@@ -83,21 +158,31 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // Счётчик записей
+            if (searchQuery.isNotBlank()) {
+                Text(
+                    "Найдено: ${filteredEntries.size}",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
             LazyColumn(
-                Modifier.fillMaxSize().padding(horizontal = 16.dp), 
-                verticalArrangement = Arrangement.spacedBy(8.dp), 
+                Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(entries, key = { it.id }) { entry ->
+                items(filteredEntries, key = { it.id }) { entry ->
                     EntryCard(
-                        entry, 
-                        { viewingEntry = entry }, 
-                        { onNavigate("editor/${entry.id}") }, 
-                        { viewModel.delete(entry) }, 
+                        entry,
+                        { viewingEntry = entry },
+                        { onNavigate("editor/${entry.id}") },
+                        { viewModel.delete(entry) },
                         { viewModel.toggleFavorite(entry) }
                     )
                 }
-                if (entries.isEmpty()) {
+                if (filteredEntries.isEmpty() && !isSearchActive) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
