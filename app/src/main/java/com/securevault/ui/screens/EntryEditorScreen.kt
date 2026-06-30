@@ -776,6 +776,61 @@ private fun ScientificPasswordGeneratorDialog(
         
         return filteredPwd
     }
+    // ✅ НОВЫЙ МЯГКИЙ МЕТОД: "Транслит-Плюс"
+// ✅ НОВЫЙ МЯГКИЙ МЕТОД: "Транслит-Плюс"
+fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> {
+    val steps = mutableListOf<TransformationStep>()
+    steps.add(TransformationStep(1, "Исходная фраза", text))
+    
+    // Разбиваем на слова
+    val words = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    steps.add(TransformationStep(2, "Разбиение на слова", words.joinToString(" | "), "${words.size} слов"))
+    
+    if (words.isEmpty()) return "" to steps
+    
+    // Транслитерация каждого слова
+    val transliteratedWords = words.map { word ->
+        val consonants = extractConsonants(word)
+        transliterate(consonants.ifEmpty { word.filter { it.isLetter() } })
+    }
+    steps.add(TransformationStep(3, "Транслитерация", transliteratedWords.joinToString(" "), "RU → EN"))
+    
+    // Берём первые 3-4 буквы каждого слова (или всё если короткое)
+    val shortWords = transliteratedWords.map { it.take(4) }
+    steps.add(TransformationStep(4, "Сокращение", shortWords.joinToString(" "), "max 4 буквы"))
+    
+    // Соединяем через _
+    var result = shortWords.joinToString("_")
+    
+    // Делаем первую букву каждого слова заглавной
+    result = result.split("_").joinToString("_") { word ->
+        if (word.isNotEmpty()) word[0].uppercaseChar() + word.substring(1).lowercase() else word
+    }
+    steps.add(TransformationStep(5, "Заглавные первые буквы", result, "Capitalize"))
+    
+    // Мягкие замены: 30% гласных → цифры (созвучные)
+    val softReplacements = mapOf('o' to '0', 'e' to '3', 'a' to '4', 'i' to '1', 's' to '5', 't' to '7')
+    val chars = result.toCharArray()
+    var replacedCount = 0
+    val maxReplacements = (chars.count { it.isLetter() } * 0.3).toInt()
+    
+    for (i in chars.indices) {
+        if (chars[i].isLetter() && chars[i].lowercaseChar() in softReplacements && replacedCount < maxReplacements && Random.nextFloat() < 0.3f) {
+            chars[i] = softReplacements[chars[i].lowercaseChar()]!!
+            replacedCount++
+        }
+    }
+    result = String(chars)
+    steps.add(TransformationStep(6, "Мягкие замены (30%)", result, "o→0, e→3, a→4..."))
+    
+    // Добавляем в конец 2 цифры и 1 спецсимвол
+    val yearSuffix = (20..24).random().toString()
+    val specialSuffix = listOf("!", "@", "#", "$").random()
+    result = "$result$specialSuffix$yearSuffix"
+    steps.add(TransformationStep(7, "Суффикс", result, "+ спецсимвол + год"))
+    
+    return result to steps
+}
     
     // ✅ ОБНОВЛЁННЫЙ LaunchedEffect — реагирует на regenerationCounter
     LaunchedEffect(selectedTab, length, useUpper, useDigits, useSpecial, mnemonicPhrase, cipherMethod, useTwoParts, regenerationCounter) {
