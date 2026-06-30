@@ -63,22 +63,42 @@ fun EntryEditorScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val existingEntry = remember { id?.let { viewModel.entries.value.find { e -> e.id == it } } }
+    // ✅ ИСПРАВЛЕНИЕ БАГА: используем collectAsState для реактивной загрузки
+    val allEntries by viewModel.entries.collectAsState()
+    val existingEntry = remember(id, allEntries) {
+        id?.let { entryId -> allEntries.find { e -> e.id == entryId } }
+    }
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     
-    var service by remember { mutableStateOf(existingEntry?.service ?: "") }
-    var username by remember { mutableStateOf(existingEntry?.username ?: "") }
+    // ✅ ИСПРАВЛЕНИЕ БАГА: поля инициализируются пустыми, потом заполняются через LaunchedEffect
+    var service by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf(existingEntry?.url ?: "") }
-    var notes by remember { mutableStateOf(existingEntry?.notes ?: "") }
-    var textHint by remember { mutableStateOf(existingEntry?.textHint ?: "") }
-    var rotationEnabled by remember { mutableStateOf(existingEntry?.rotationEnabled ?: false) }
-    var rotationMonths by remember { mutableIntStateOf(existingEntry?.rotationPeriodMonths ?: 6) }
-    var isFavorite by remember { mutableStateOf(existingEntry?.isFavorite ?: false) }
+    var url by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var textHint by remember { mutableStateOf("") }
+    var rotationEnabled by remember { mutableStateOf(false) }
+    var rotationMonths by remember { mutableIntStateOf(6) }
+    var isFavorite by remember { mutableStateOf(false) }
     
     var showPassword by remember { mutableStateOf(false) }
     var showGeneratorDialog by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
+
+    // ✅ ИСПРАВЛЕНИЕ БАГА: подгружаем данные существующей записи
+    LaunchedEffect(existingEntry) {
+        existingEntry?.let { entry ->
+            service = entry.service
+            username = entry.username
+            password = entry.password
+            url = entry.url ?: ""
+            notes = entry.notes ?: ""
+            textHint = entry.textHint ?: ""
+            rotationEnabled = entry.rotationEnabled
+            rotationMonths = entry.rotationPeriodMonths
+            isFavorite = entry.isFavorite
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -266,7 +286,7 @@ fun EntryEditorScreen(
     }
 }
 
-// ===== НАУЧНЫЙ ГЕНЕРАТОР =====
+// ===== НАУЧНЫЙ ГЕНЕРАТОР С КРАСИВЫМИ КНОПКАМИ =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScientificPasswordGeneratorDialog(
@@ -285,7 +305,7 @@ private fun ScientificPasswordGeneratorDialog(
     
     var generatedPwd by remember { mutableStateOf("") }
     var mnemonicPhrase by remember { mutableStateOf("") }
-    var cipherMethod by remember { mutableStateOf(CipherMethod.SOFT) } // По умолчанию мягкий
+    var cipherMethod by remember { mutableStateOf(CipherMethod.SOFT) }
     var showSteps by remember { mutableStateOf(false) }
     var steps by remember { mutableStateOf<List<TransformationStep>>(emptyList()) }
     var entropyScore by remember { mutableStateOf(0.0) }
@@ -325,7 +345,6 @@ private fun ScientificPasswordGeneratorDialog(
         return result.toString()
     }
     
-    // ✅ НОВЫЙ МЯГКИЙ МЕТОД: читаемый пароль
     fun softTranslitTransform(text: String): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         steps.add(TransformationStep(1, "Исходная фраза", text))
@@ -741,37 +760,60 @@ private fun ScientificPasswordGeneratorDialog(
                         }
                     }
                     
+                    // ✅ КРАСИВЫЕ КНОПКИ: 2 ряда по 2 кнопки
                     if (mnemonicPhrase.isNotBlank() || selectedTab == 0) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            // Ряд 1: Ещё раз + Копировать
                             OutlinedButton(
                                 onClick = { regenerationCounter++; android.widget.Toast.makeText(context, "Новый вариант!", android.widget.Toast.LENGTH_SHORT).show() },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).height(48.dp)
                             ) {
-                                Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Ещё раз")
-                            }
-                            OutlinedButton(
-                                onClick = { showSteps = !showSteps },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(if (showSteps) Icons.Default.VisibilityOff else Icons.Default.Visibility, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (showSteps) "Скрыть" else "Шаги")
+                                Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Ещё раз", fontWeight = FontWeight.Medium)
                             }
                             Button(
                                 onClick = {
                                     clipboardManager.setText(AnnotatedString(generatedPwd))
                                     android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).height(48.dp)
                             ) {
-                                Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Копировать")
+                                Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Копировать", fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        
+                        Spacer(Modifier.height(8.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Ряд 2: Шаги + Закрыть
+                            OutlinedButton(
+                                onClick = { showSteps = !showSteps },
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) {
+                                Icon(
+                                    if (showSteps) Icons.Default.VisibilityOff else Icons.Default.Visibility, 
+                                    null, 
+                                    Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (showSteps) "Скрыть шаги" else "Показать шаги", fontWeight = FontWeight.Medium)
+                            }
+                            TextButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) {
+                                Icon(Icons.Default.Close, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Закрыть", fontWeight = FontWeight.Medium)
                             }
                         }
                     }
