@@ -46,6 +46,10 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
+    
+    // ✅ ВЫНЕСЕНО: переменные для переключателей на верхний уровень
+    var autoLockEnabled by remember { mutableStateOf(AutoLockManager.isEnabled()) }
+    var notificationsEnabled by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -105,6 +109,7 @@ fun SettingsScreen(
                                     AppTheme.SYSTEM -> "Системная"
                                     AppTheme.LIGHT -> "Светлая"
                                     AppTheme.DARK -> "Тёмная"
+                                    else -> "Системная"
                                 },
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -135,7 +140,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Автоблокировка
+            // ✅ АВТОБЛОКИРОВКА (исправлено)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -154,7 +159,6 @@ fun SettingsScreen(
                                 Text("Блокировать при неактивности", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        var autoLockEnabled by remember { mutableStateOf(AutoLockManager.isEnabled()) }
                         Switch(
                             checked = autoLockEnabled,
                             onCheckedChange = {
@@ -209,7 +213,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ✅ УВЕДОМЛЕНИЯ
+            // ✅ УВЕДОМЛЕНИЯ (исправлено)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -228,7 +232,6 @@ fun SettingsScreen(
                                 Text("Напоминания об истечении паролей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        var notificationsEnabled by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
                         Switch(
                             checked = notificationsEnabled,
                             onCheckedChange = {
@@ -373,6 +376,7 @@ fun SettingsScreen(
                                     AppTheme.SYSTEM -> "Системная"
                                     AppTheme.LIGHT -> "Светлая"
                                     AppTheme.DARK -> "Тёмная"
+                                    else -> "Системная"
                                 }
                             )
                         }
