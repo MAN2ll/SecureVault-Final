@@ -16,14 +16,12 @@ class VaultViewModel @Inject constructor(
     private val repository: VaultRepository
 ) : ViewModel() {
 
-    // ✅ Текущий выбранный профиль
     private val _currentProfileId = MutableStateFlow<Int?>(null)
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
     private val _favoritesOnly = MutableStateFlow(false)
     val favoritesOnly: StateFlow<Boolean> = _favoritesOnly.asStateFlow()
 
-    // ✅ Фильтруем записи по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { list, profileId ->
             if (profileId == null) list else list.filter { it.profileId == profileId }
@@ -62,5 +60,10 @@ class VaultViewModel @Inject constructor(
             lastChanged = System.currentTimeMillis()
         )
         repository.update(updated)
+    }
+
+    // ✅ НОВЫЙ МЕТОД: массовая ротация
+    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
+        ids.forEach { rotatePassword(it) }
     }
 }
