@@ -12,7 +12,7 @@ data class Entry(
     @ColumnInfo(name = "service") val service: String,
     @ColumnInfo(name = "username") val username: String,
     @ColumnInfo(name = "encrypted_password") val encryptedPassword: String,
-    @ColumnInfo(name = "profile") val profile: Profile = Profile.PERSONAL,
+    @ColumnInfo(name = "profile_id") val profileId: Int, // ✅ Теперь ID профиля
     @ColumnInfo(name = "url") val url: String? = null,
     @ColumnInfo(name = "notes") val notes: String? = null,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
@@ -32,49 +32,26 @@ data class Entry(
             val items = mutableListOf<PasswordHistoryItem>()
             val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
             regex.findAll(passwordHistoryJson).forEach { match ->
-                val pwd = match.groupValues[1]
-                val date = match.groupValues[2].toLongOrNull() ?: 0L
-                items.add(PasswordHistoryItem(pwd, date))
+                items.add(PasswordHistoryItem(match.groupValues[1], match.groupValues[2].toLongOrNull() ?: 0L))
             }
             items
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
 
     fun addToPasswordHistory(oldPassword: String): Entry {
-        val currentHistory = getPasswordHistory().toMutableList()
-        currentHistory.add(0, PasswordHistoryItem(oldPassword, System.currentTimeMillis()))
-        val limitedHistory = currentHistory.take(10)
-        val json = limitedHistory.joinToString(",", "[", "]") { item ->
-            """{"password":"${item.password}","date":${item.date}}"""
-        }
+        val history = getPasswordHistory().toMutableList()
+        history.add(0, PasswordHistoryItem(oldPassword, System.currentTimeMillis()))
+        val json = history.take(10).joinToString(",", "[", "]") { """{"password":"${it.password}","date":${it.date}}""" }
         return this.copy(passwordHistoryJson = json)
     }
 
-    fun getDaysUntilRotation(): Int? {
-        return nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
-    }
-
-    fun getDaysUntilExpiry(): Int? = getDaysUntilRotation()
-
+    fun getDaysUntilRotation(): Int? = nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
-
-    fun getExpiryStatus(): ExpiryStatus {
-        if (!rotationEnabled || nextRotationDate == null) return ExpiryStatus.OK
-        val daysLeft = getDaysUntilRotation() ?: return ExpiryStatus.OK
-        return when {
-            daysLeft < 0 -> ExpiryStatus.EXPIRED
-            daysLeft <= 3 -> ExpiryStatus.CRITICAL
-            daysLeft <= 7 -> ExpiryStatus.WARNING
-            else -> ExpiryStatus.OK
-        }
-    }
 
     companion object {
         fun create(
             service: String, username: String, password: String,
-            profile: Profile = Profile.PERSONAL,
+            profileId: Int, // ✅ Теперь обязательный параметр
             url: String? = null, notes: String? = null,
             textHint: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
@@ -82,32 +59,15 @@ data class Entry(
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
-            val nextRotationDate = if (rotationEnabled) {
-                now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-            } else null
-            
             return Entry(
                 service = service, username = username, encryptedPassword = encryptedPassword,
-                profile = profile,
-                url = url, notes = notes,
-                textHint = textHint,
+                profileId = profileId, url = url, notes = notes, textHint = textHint,
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
-                isFavorite = isFavorite
+                nextRotationDate = if (rotationEnabled) now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null,
+                createdAt = now, lastChanged = now, isFavorite = isFavorite
             )
         }
     }
-
-    enum class ExpiryStatus { OK, WARNING, CRITICAL, EXPIRED }
 }
 
-data class PasswordHistoryItem(
-    val password: String,
-    val date: Long
-)
-
-// ✅ ВОЗВРАЩАЕМ enum Profile
-enum class Profile(val label: String) {
-    PERSONAL("Личное"), 
-    WORK("Работа")
-}
+data class PasswordHistoryItem(val password: String, val date: Long)
