@@ -82,7 +82,6 @@ fun ExportImportScreen(
         }
     }
 
-    //  ДИАЛОГ ПРЕДУПРЕЖДЕНИЯ ПЕРЕД ЭКСПОРТОМ
     if (showExportWarning) {
         AlertDialog(
             onDismissRequest = { showExportWarning = false },
@@ -90,21 +89,14 @@ fun ExportImportScreen(
             title = { Text("Внимание!") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        " Файл экспорта содержит чувствительные данные!",
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("🔒 Файл экспорта содержит чувствительные данные!", fontWeight = FontWeight.Bold)
                     Text("• Пароли зашифрованы, но файл не защищён паролем")
                     Text("• Храните его только в безопасном месте")
                     Text("• Не передавайте третьим лицам")
                     Spacer(Modifier.height(8.dp))
+                    Text("⚠️ Перенос между устройствами:", fontWeight = FontWeight.Bold)
                     Text(
-                        " Перенос между устройствами:",
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве. " +
-                        "Для переноса на другое устройство нужен защищённый экспорт с отдельным паролем (будет в будущих версиях).",
+                        "Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -158,7 +150,6 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    //  ПРЕДУПРЕЖДЕНИЕ О ЧУВСТВИТЕЛЬНЫХ ДАННЫХ
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
@@ -167,31 +158,273 @@ fun ExportImportScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
-                            )
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    " CSV содержит чувствительные данные!",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    "Файл не зашифрован. Храните его в безопасном месте и не передавайте третьим лицам.",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
-                                )
+                                Text("⚠️ CSV содержит чувствительные данные!", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                                Text("Файл не зашифрован. Храните его в безопасном месте.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f))
                             }
                         }
                     }
                     
-                    //  ПРЕДУПРЕЖДЕНИЕ О ПЕРЕНОСЕ МЕЖДУ УСТРОЙСТВАМИ
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                    )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("📱 Перенос между устройствами", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                                Text("Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.9f))
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Выберите записи для экспорта", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        TextButton(onClick = {
+                            selectedEntryIds = if (selectedEntryIds.size == entries.size) {
+                                emptySet()
+                            } else {
+                                entries.map { it.id }.toSet()
+                            }
+                        }) {
+                            Text(if (selectedEntryIds.size == entries.size) "Снять все" else "Выбрать все")
+                        }
+                    }
+
+                    if (profiles.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Фильтр по профилям:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                Spacer(Modifier.height(8.dp))
+                                androidx.compose.foundation.layout.FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    profiles.forEach { profile ->
+                                        val isSelected = selectedProfileIds.contains(profile.id)
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                selectedProfileIds = if (isSelected) {
+                                                    selectedProfileIds - profile.id
+                                                } else {
+                                                    selectedProfileIds + profile.id
+                                                }
+                                            },
+                                            label = { Text(profile.name) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val filteredEntries = if (selectedProfileIds.isEmpty()) {
+                        entries
+                    } else {
+                        entries.filter { it.profileId in selectedProfileIds }
+                    }
+
+                    if (filteredEntries.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Inbox, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                Spacer(Modifier.height(8.dp))
+                                Text("Нет записей для экспорта", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    } else {
+                        filteredEntries.forEach { entry ->
+                            val isSelected = selectedEntryIds.contains(entry.id)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedEntryIds = if (isSelected) {
+                                            selectedEntryIds - entry.id
+                                        } else {
+                                            selectedEntryIds + entry.id
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { checked ->
+                                            selectedEntryIds = if (checked) {
+                                                selectedEntryIds + entry.id
+                                            } else {
+                                                selectedEntryIds - entry.id
+                                            }
+                                        }
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(entry.service, fontWeight = FontWeight.SemiBold)
+                                        Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    Button(
+                        onClick = {
+                            if (selectedEntryIds.isEmpty()) {
+                                Toast.makeText(context, "Выберите хотя бы одну запись", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showExportWarning = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedEntryIds.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Экспортировать (${selectedEntryIds.size})")
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.FileOpen, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Импорт из файла", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            
+                            Text("Поддерживаемые форматы: CSV (экспортированные из SecureVault)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(16.dp))
+                            
+                            Text("Целевой профиль:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Spacer(Modifier.height(8.dp))
+                            
+                            if (profiles.isNotEmpty()) {
+                                ExposedDropdownMenuBox(
+                                    expanded = expandedTargetProfile,
+                                    onExpandedChange = { expandedTargetProfile = !expandedTargetProfile }
+                                ) {
+                                    val targetProfile = profiles.find { it.id == importTargetProfileId }
+                                    OutlinedTextField(
+                                        readOnly = true,
+                                        value = targetProfile?.name ?: "Выберите профиль",
+                                        onValueChange = {},
+                                        label = { Text("Профиль для импорта") },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedTargetProfile) },
+                                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = expandedTargetProfile,
+                                        onDismissRequest = { expandedTargetProfile = false }
+                                    ) {
+                                        profiles.forEach { profile ->
+                                            DropdownMenuItem(
+                                                text = { Text(profile.name) },
+                                                onClick = {
+                                                    importTargetProfileId = profile.id
+                                                    expandedTargetProfile = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Сначала создайте профиль", color = MaterialTheme.colorScheme.onErrorContainer)
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(16.dp))
+                            
+                            Button(
+                                onClick = {
+                                    importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = profiles.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.Download, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Выбрать файл")
+                            }
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Информация", fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "• Файл должен быть в формате CSV, экспортированным из SecureVault\n" +
+                                "• Пароли импортируются в зашифрованном виде\n" +
+                                "• Все записи будут добавлены в выбранный профиль\n" +
+                                "• Дубликаты могут быть созданы (проверяйте вручную)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Импортируйте только файлы из доверенных источников!", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Medium)
+                                Text("Файлы с других устройств не будут работать из-за Android Keystore.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
