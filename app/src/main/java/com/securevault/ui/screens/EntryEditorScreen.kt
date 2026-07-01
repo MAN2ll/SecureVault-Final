@@ -805,7 +805,7 @@ private fun MnemonicGeneratorDialog(
                     ) {
                         Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Ещё варианты")
+                        Text("Ещё варианты (набор #$variantOffset)")
                     }
                 }
                 
