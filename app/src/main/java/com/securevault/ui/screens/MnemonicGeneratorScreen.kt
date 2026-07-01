@@ -78,7 +78,14 @@ fun MnemonicGeneratorScreen(
         selectedVariantIndex = -1
     }
 
-    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
+    // ✅ СБРОС НОМЕРА НАБОРА ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
+    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
+        variantOffset = 0
+        generateVariants()
+    }
+
+    // ✅ ГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ variantOffset
+    LaunchedEffect(variantOffset) {
         generateVariants()
     }
 
@@ -149,6 +156,16 @@ fun MnemonicGeneratorScreen(
                 Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
 
+            // ✅ ОТОБРАЖЕНИЕ НОМЕРА НАБОРА
+            if (variants.isNotEmpty()) {
+                Text(
+                    "Текущий набор: №${variantOffset + 1}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
             OutlinedButton(
                 onClick = { variantOffset++ },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -156,7 +173,7 @@ fun MnemonicGeneratorScreen(
             ) {
                 Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Ещё варианты (набор #$variantOffset)", fontWeight = FontWeight.Medium)
+                Text("Ещё варианты", fontWeight = FontWeight.Medium)
             }
 
             if (variants.isNotEmpty()) {
