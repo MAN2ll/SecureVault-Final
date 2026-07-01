@@ -17,10 +17,50 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
+
+// ✅ ОТДЕЛЬНЫЕ COMPOSABLE ФУНКЦИИ ДЛЯ TEXT — ГАРАНТИРОВАННО РАБОТАЮТ
+@Composable
+private fun VariantNameText(value: String) {
+    Text(
+        text = value,
+        fontSize = 10.sp,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
+
+@Composable
+private fun PasswordText(value: String) {
+    Text(
+        text = value,
+        fontSize = 13.sp,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+@Composable
+private fun StrengthHintText(value: String) {
+    Text(
+        text = value,
+        fontSize = 10.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun StrengthLabel(value: String, color: Color) {
+    Text(
+        text = value,
+        fontWeight = FontWeight.Bold,
+        color = color,
+        fontSize = 12.sp
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,15 +153,8 @@ fun PasswordRotationDialog(
                 Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column {
-                    Text(
-                        text = "Замена пароля",
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Сервис: $serviceName",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(text = "Замена пароля", fontWeight = FontWeight.Bold)
+                    Text(text = "Сервис: $serviceName", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -132,11 +165,7 @@ fun PasswordRotationDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Выберите способ замены:",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
+                Text(text = "Выберите способ замены:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -195,12 +224,8 @@ fun PasswordRotationDialog(
                                         PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
                                         PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
                                     }
-                                    Text(
-                                        text = randomStrength.name,
-                                        fontWeight = FontWeight.Bold,
-                                        color = strengthColor,
-                                        fontSize = 12.sp
-                                    )
+                                    // ✅ ИСПОЛЬЗУЕМ ОТДЕЛЬНУЮ ФУНКЦИЮ
+                                    StrengthLabel(value = randomStrength.name, color = strengthColor)
                                 }
                             }
                         }
@@ -286,14 +311,6 @@ fun PasswordRotationDialog(
                             
                             mnemonicVariants.forEachIndexed { index, result ->
                                 val isSelected = selectedMnemonicIndex == index
-                                
-                                // ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: выносим все значения в переменные ПЕРЕД Card
-                                val variantName: String = result.variantName
-                                val passwordValue: String = result.password
-                                val strengthName: String = result.strength.name
-                                val hintValue: String = result.mnemonicHint
-                                val combinedLabel: String = "$strengthName • $hintValue"
-                                
                                 val cardColor = if (isSelected) {
                                     MaterialTheme.colorScheme.primaryContainer
                                 } else {
@@ -310,22 +327,10 @@ fun PasswordRotationDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = variantName,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = passwordValue,
-                                                fontSize = 13.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = combinedLabel,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            // ✅ ИСПОЛЬЗУЕМ ОТДЕЛЬНЫЕ COMPOSABLE ФУНКЦИИ
+                                            VariantNameText(value = result.variantName)
+                                            PasswordText(value = result.password)
+                                            StrengthHintText(value = "${result.strength.name} • ${result.mnemonicHint}")
                                         }
                                         RadioButton(
                                             selected = isSelected,
@@ -357,12 +362,7 @@ fun PasswordRotationDialog(
                                     PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
                                     PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
                                 }
-                                Text(
-                                    text = manualStrength.name,
-                                    fontWeight = FontWeight.Bold,
-                                    color = manualStrengthColor,
-                                    fontSize = 12.sp
-                                )
+                                StrengthLabel(value = manualStrength.name, color = manualStrengthColor)
                             }
                         }
                     }
