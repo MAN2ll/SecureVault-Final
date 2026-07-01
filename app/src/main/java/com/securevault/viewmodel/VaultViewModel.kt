@@ -10,6 +10,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class PasswordReplacement(
+    val entryId: String,
+    val newPassword: String,
+    val newHint: String?,
+    val generationType: String
+)
+
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val repository: VaultRepository
@@ -30,7 +37,6 @@ class VaultViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Записи с включённой ротацией
     val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { list, profileId ->
             if (profileId == null) list else list.filter { it.profileId == profileId }
@@ -44,10 +50,7 @@ class VaultViewModel @Inject constructor(
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
-    
-    // ✅ НОВЫЙ МЕТОД: обновление записи
     fun updateEntry(entry: Entry) = viewModelScope.launch { repository.update(entry) }
-    
     fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
 
@@ -55,7 +58,6 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ НОВЫЙ МЕТОД: обновление настроек ротации
     fun updateRotationSettings(entryId: String, enabled: Boolean, periodMonths: Int) = viewModelScope.launch {
         val entry = repository.getById(entryId) ?: return@launch
         
@@ -74,7 +76,6 @@ class VaultViewModel @Inject constructor(
         repository.update(updated)
     }
 
-    // ✅ НОВЫЙ МЕТОД: замена пароля (вызывается после выбора пользователем)
     fun replacePassword(
         entryId: String, 
         newPassword: String, 
@@ -100,8 +101,27 @@ class VaultViewModel @Inject constructor(
         repository.update(updated)
     }
 
-    fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        // Убрано: массовая автоматическая замена
-        // Теперь пользователь должен выбирать пароль для каждой записи отдельно
+    // ✅ НОВЫЙ БЕЗОПАСНЫЙ МЕТОД: массовая замена только выбранных паролей
+    fun bulkReplacePasswords(replacements: List<PasswordReplacement>) = viewModelScope.launch {
+        val now = System.currentTimeMillis()
+        
+        replacements.forEach { replacement ->
+            val entry = repository.getById(replacement.entryId) ?: return@forEach
+            
+            val newNextRotationDate = if (entry.rotationEnabled) {
+                now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+            } else {
+                null
+            }
+            
+            val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+                encryptedPassword = CryptoUtils.encrypt(replacement.newPassword),
+                textHint = replacement.newHint,
+                generationType = replacement.generationType,
+                lastChanged = now,
+                nextRotationDate = newNextRotationDate
+            )
+            repository.update(updated)
+        }
     }
 }
