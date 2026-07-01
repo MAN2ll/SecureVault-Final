@@ -118,10 +118,8 @@ fun EntryEditorScreen(
                         
                         val now = System.currentTimeMillis()
                         
-                        // ✅ ИСПРАВЛЕНО: правильная логика сохранения
                         val finalEntry = if (existingEntry != null) {
                             if (passwordChanged) {
-                                // Пароль изменился - обновляем всё
                                 val finalPassword = if (password.isBlank()) existingEntry.password else password
                                 val encryptedPwd = CryptoUtils.encrypt(finalPassword)
                                 val newNextRotationDate = if (rotationEnabled) {
@@ -145,7 +143,6 @@ fun EntryEditorScreen(
                                     generationType = generationType
                                 )
                             } else {
-                                // Пароль НЕ изменился - оставляем старый encryptedPassword и lastChanged
                                 val newNextRotationDate = if (rotationEnabled) {
                                     val existingNextDate = existingEntry.nextRotationDate
                                     if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
@@ -159,18 +156,15 @@ fun EntryEditorScreen(
                                 
                                 existingEntry.copy(
                                     service = service, username = username,
-                                    // ✅ НЕ меняем encryptedPassword
                                     url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                     textHint = textHint.ifBlank { null },
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
                                     nextRotationDate = newNextRotationDate,
                                     isFavorite = isFavorite,
-                                    // ✅ НЕ меняем lastChanged
                                     generationType = generationType
                                 )
                             }
                         } else {
-                            // Новая запись
                             Entry.create(
                                 service = service, username = username, password = password,
                                 profileId = effectiveProfileId!!,
@@ -244,7 +238,7 @@ fun EntryEditorScreen(
                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "️ Профиль не выбран",
+                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "⚠️ Профиль не выбран",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -481,6 +475,7 @@ fun EntryEditorScreen(
     }
 }
 
+// ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ МАСТЕР-ПАРОЛЯ =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfirmMasterPasswordDialogForEditor(
@@ -545,6 +540,7 @@ private fun ConfirmMasterPasswordDialogForEditor(
     )
 }
 
+// ===== ОБЫЧНЫЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimplePasswordGeneratorDialog(
@@ -591,19 +587,7 @@ private fun SimplePasswordGeneratorDialog(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Пароль:", fontWeight = FontWeight.Bold)
-                                IconButton(onClick = {
-                                    clipboardManager.setText(AnnotatedString(generatedPwd))
-                                    android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
-                                }
-                            }
+                            Text("Пароль:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = generatedPwd,
@@ -658,32 +642,34 @@ private fun SimplePasswordGeneratorDialog(
                     }
                 }
                 
-                Row(
+                // ✅ КНОПКИ ВЕРТИКАЛЬНО
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(generatedPwd))
+                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Копировать")
+                    }
+                    
                     OutlinedButton(
                         onClick = {
                             val result = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial)
                             generatedPwd = result.password
                             strength = result.strength
                         },
-                        modifier = Modifier.weight(1f).height(48.dp)
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
                     ) {
                         Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Ещё раз")
-                    }
-                    Button(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(generatedPwd))
-                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f).height(48.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Копировать")
                     }
                 }
             }
@@ -700,6 +686,7 @@ private fun SimplePasswordGeneratorDialog(
     )
 }
 
+// ===== МНЕМОНИЧЕСКИЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MnemonicGeneratorDialog(
@@ -749,7 +736,14 @@ private fun MnemonicGeneratorDialog(
         selectedVariantIndex = -1
     }
 
-    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
+    // ✅ СБРОС НОМЕРА НАБОРА ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
+    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
+        variantOffset = 0
+        generateVariants()
+    }
+
+    // ✅ ГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ variantOffset
+    LaunchedEffect(variantOffset) {
         generateVariants()
     }
 
@@ -807,19 +801,24 @@ private fun MnemonicGeneratorDialog(
                     Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
                 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // ✅ ОТОБРАЖЕНИЕ НОМЕРА НАБОРА (с 1, а не с 0)
+                if (variants.isNotEmpty()) {
+                    Text(
+                        "Текущий набор: №${variantOffset + 1}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                OutlinedButton(
+                    onClick = { variantOffset++ },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
                 ) {
-                    OutlinedButton(
-                        onClick = { variantOffset++ },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
-                    ) {
-                        Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Ещё варианты (набор #$variantOffset)")
-                    }
+                    Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ещё варианты")
                 }
                 
                 if (variants.isNotEmpty()) {
