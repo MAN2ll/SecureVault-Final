@@ -3,9 +3,8 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,100 +26,91 @@ fun SetupScreen(
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Настройка SecureVault",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            )
-        }
-    ) { padding ->
-        Column(
+
+    Scaffold { padding ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "Создайте мастер-пароль",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-            
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Мастер-пароль") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = {
-                    Text("Минимум 4 символа. Запомните его — без него вы не войдёте!")
-                }
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            OutlinedTextField(
-                value = confirmPassword,
-                onValueChange = { confirmPassword = it },
-                label = { Text("Подтвердите пароль") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                isError = error != null
-            )
-            
-            error?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(
-                onClick = {
-                    error = null
-                    when {
-                        password.length < 4 -> {
-                            error = "Пароль слишком короткий"
-                        }
-                        password != confirmPassword -> {
-                            error = "Пароли не совпадают"
-                        }
-                        else -> {
-                            // ✅ ИСПРАВЛЕНО: setupMasterPassword возвращает Unit, не Boolean
-                            viewModel.setupMasterPassword(password)
-                            onCompleted()
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth(0.9f)
             ) {
-                Text("Продолжить")
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+
+                Text(
+                    "Создание мастер-пароля",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    "Используйте длинную парольную фразу (минимум 12 символов).\n" +
+                    "Этот пароль нельзя будет восстановить.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Мастер-пароль") },
+                    placeholder = { Text("Минимум 12 символов") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = KeyboardType.Password
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it; error = null },
+                    label = { Text("Подтвердите пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = KeyboardType.Password
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+
+                if (error != null) {
+                    Text(
+                        error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        when {
+                            password.length < 12 -> error = "Пароль должен содержать минимум 12 символов"
+                            password != confirmPassword -> error = "Пароли не совпадают"
+                            else -> {
+                                viewModel.setupMasterPassword(password)
+                                onCompleted()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Создать")
+                }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                text = "Если вы забудете мастер-пароль, данные невозможно будет восстановить",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
         }
     }
 }
