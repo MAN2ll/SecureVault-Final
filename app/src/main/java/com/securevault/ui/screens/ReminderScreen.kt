@@ -2,29 +2,13 @@
 
 package com.securevault.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,84 +19,166 @@ import com.securevault.data.Entry
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val all by viewModel.entries.collectAsState()
+    val rotationEntries by viewModel.rotationEntries.collectAsState()
+    var selectedEntry by remember { mutableStateOf<Entry?>(null) }
     
-    val upcoming = remember(all) {
-        all.filter { e ->
-            e.rotationEnabled && e.nextRotationDate != null &&
-            (e.getDaysUntilRotation() ?: Int.MAX_VALUE) in 0..7
-        }
+    // Фильтруем только просроченные
+    val expiredEntries = remember(rotationEntries) {
+        val now = System.currentTimeMillis()
+        rotationEntries.filter { it.nextRotationDate != null && it.nextRotationDate <= now }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "Напоминания") },
+                title = { Text("Напоминания", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
             )
         }
     ) { padding ->
-        if (upcoming.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "Нет предстоящих смен паролей")
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(upcoming, key = { it.id }) { e ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Левая колонка (70% ширины)
-                            Column(
-                                modifier = Modifier.fillMaxWidth(0.7f)
-                            ) {
-                                Text(
-                                    text = e.service, 
-                                    fontWeight = FontWeight.Bold
-                                )
-                                
-                                // ✅ ИСПРАВЛЕНО: простая конкатенация вместо сложной интерполяции
-                                val daysText = e.getDaysUntilRotation()?.toString() ?: "—"
-                                Text(
-                                    text = "Осталось: $daysText д.",
-                                    fontSize = 12.sp
-                                )
-                            }
-                            
-                            // Правая колонка (кнопка)
-                            TextButton(
-                                onClick = {
-                                    val newPwd = PasswordGenerator.generate(12, true, true, true).password
-                                    viewModel.updatePassword(e.id, newPwd)
-                                }
-                            ) {
-                                Text(text = "Обновить")
-                            }
-                        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (expiredEntries.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            null,
+                            Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Все пароли актуальны",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Нет просроченных паролей",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
+            } else {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Просроченных паролей: ${expiredEntries.size}",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+                
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(expiredEntries, key = { it.id }) { entry ->
+                        ReminderEntryCard(
+                            entry = entry,
+                            onReplace = { selectedEntry = entry }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    selectedEntry?.let { entry ->
+        PasswordRotationDialog(
+            serviceName = entry.service,
+            currentHint = entry.textHint,
+            generationType = entry.generationType,
+            rotationMonth = null,
+            rotationYear = null,
+            onDismiss = { selectedEntry = null },
+            onPasswordReplaced = { newPassword, newHint, newGenerationType ->
+                viewModel.replacePassword(entry.id, newPassword, newHint, newGenerationType)
+                selectedEntry = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun ReminderEntryCard(
+    entry: Entry,
+    onReplace: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    entry.service,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    entry.username,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                )
+            }
+            
+            Button(
+                onClick = onReplace,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Заменить")
             }
         }
     }
