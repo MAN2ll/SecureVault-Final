@@ -35,21 +35,25 @@ fun PasswordRotationDialog(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
-    var selectedMode by remember { mutableIntStateOf(0) } // 0 = random, 1 = mnemonic, 2 = manual
+    var selectedMode by remember { mutableIntStateOf(0) }
     
-    // Для обычного генератора
     var randomPassword by remember { mutableStateOf("") }
     var randomStrength by remember { mutableStateOf(PasswordGenerator.Strength.STRONG) }
     
-    // Для мнемонического генератора
     var mnemonicPhrase by remember { mutableStateOf(currentHint ?: "") }
     var mnemonicVariants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedMnemonicIndex by remember { mutableIntStateOf(-1) }
     var variantOffset by remember { mutableIntStateOf(0) }
     
-    // Для ручного ввода
+    // ✅ НОВЫЕ ФИЛЬТРЫ
+    var includeLeet by remember { mutableStateOf(true) }
+    var includeServiceCode by remember { mutableStateOf(true) }
+    var includeRotationCode by remember { mutableStateOf(true) }
+    
     var manualPassword by remember { mutableStateOf("") }
     var manualStrength by remember { mutableStateOf(PasswordGenerator.Strength.WEAK) }
+    
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     fun generateRandomPassword() {
         val result = PasswordGenerator.generate(16, true, true, true)
@@ -58,8 +62,17 @@ fun PasswordRotationDialog(
     }
 
     fun generateMnemonicVariants() {
+        validationError = null
+        
         if (mnemonicPhrase.isBlank()) {
             mnemonicVariants = emptyList()
+            validationError = "Введите мнемоническую фразу"
+            return
+        }
+        
+        if (includeServiceCode && serviceName.isBlank()) {
+            mnemonicVariants = emptyList()
+            validationError = "Код сервиса включён, но название сервиса пустое"
             return
         }
         
@@ -69,9 +82,9 @@ fun PasswordRotationDialog(
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
             targetLength = 16,
-            includeLeet = true,
-            includeServiceCode = true,
-            includeRotationCode = true,
+            includeLeet = includeLeet,
+            includeServiceCode = includeServiceCode,
+            includeRotationCode = includeRotationCode,
             variantOffset = variantOffset
         )
         
@@ -87,8 +100,10 @@ fun PasswordRotationDialog(
         }
     }
 
-    LaunchedEffect(variantOffset) {
-        generateMnemonicVariants()
+    LaunchedEffect(mnemonicPhrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
+        if (selectedMode == 1) {
+            generateMnemonicVariants()
+        }
     }
 
     AlertDialog(
@@ -199,6 +214,26 @@ fun PasswordRotationDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                         
+                        // ✅ НОВЫЕ ФИЛЬТРЫ
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Параметры генерации:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
+                                    Text("Leet-замены (a→@, o→0...)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
+                                    Text("Код сервиса", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
+                                    Text("Код ротации (MMYY)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                }
+                            }
+                        }
+                        
                         if (currentHint != null && currentHint != mnemonicPhrase) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -221,11 +256,16 @@ fun PasswordRotationDialog(
                         
                         OutlinedButton(
                             onClick = { variantOffset++ },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = mnemonicVariants.isNotEmpty() || (mnemonicPhrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
                         ) {
                             Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Ещё варианты")
+                        }
+                        
+                        if (validationError != null) {
+                            Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                         
                         if (mnemonicVariants.isNotEmpty()) {
@@ -260,7 +300,7 @@ fun PasswordRotationDialog(
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                result.strength.name,
+                                                "${result.strength.name} • ${result.mnemonicHint}",
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -311,7 +351,7 @@ fun PasswordRotationDialog(
                     when (selectedMode) {
                         0 -> {
                             if (randomPassword.isNotEmpty()) {
-                                onPasswordReplaced(randomPassword, null, "random")
+                                onPasswordReplaced(randomPassword, "Случайный пароль, создан при ротации", "random")
                             }
                         }
                         1 -> {
