@@ -11,7 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-@Database(entities = [Entry::class, Profile::class], version = 6, exportSchema = false)
+@Database(entities = [Entry::class, Profile::class], version = 7, exportSchema = false)
 abstract class VaultDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun profileDao(): ProfileDao
