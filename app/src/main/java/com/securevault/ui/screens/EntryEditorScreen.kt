@@ -26,6 +26,7 @@ import com.securevault.data.Entry
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
 
 @Composable
@@ -33,7 +34,8 @@ fun EntryEditorScreen(
     id: String?,
     profileId: Int? = null,
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val isNewEntry = id == null || id == "new"
     
@@ -56,7 +58,11 @@ fun EntryEditorScreen(
     var isFavorite by remember { mutableStateOf(false) }
     var generationType by remember { mutableStateOf("random") }
     
+    // ✅ НОВЫЕ ФЛАГИ
+    var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
+    var showConfirmPasswordDialog by remember { mutableStateOf(false) }
+    
     var showGeneratorDialog by remember { mutableStateOf(false) }
     var showMnemonicDialog by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
@@ -66,7 +72,8 @@ fun EntryEditorScreen(
         existingEntry?.let { entry ->
             service = entry.service
             username = entry.username
-            password = entry.password
+            // ✅ НЕ загружаем пароль сразу — оставляем пустым
+            password = ""
             url = entry.url ?: ""
             notes = entry.notes ?: ""
             textHint = entry.textHint ?: ""
@@ -74,6 +81,7 @@ fun EntryEditorScreen(
             rotationMonths = entry.rotationPeriodMonths
             isFavorite = entry.isFavorite
             generationType = entry.generationType
+            passwordChanged = false
         }
     }
 
@@ -96,16 +104,31 @@ fun EntryEditorScreen(
                         ) 
                     }
                     IconButton(onClick = {
-                        if (service.isBlank() || password.isBlank()) {
-                            showError = "Заполните обязательные поля"
+                        if (service.isBlank()) {
+                            showError = "Заполните название сервиса"
                             return@IconButton
+                        }
+                        // ✅ Для новой записи пароль обязателен
+                        if (isNewEntry && password.isBlank()) {
+                            showError = "Введите или сгенерируйте пароль"
+                            return@IconButton
+                        }
+                        // ✅ Для существующей записи: если пароль не меняли, оставляем старый
+                        if (!isNewEntry && existingEntry != null && !passwordChanged && password.isBlank()) {
+                            // пароль не менялся — используем старый
                         }
                         if (effectiveProfileId == null) {
                             showError = "Профиль не выбран. Вернитесь назад и войдите в профиль."
                             return@IconButton
                         }
                         
-                        val encryptedPwd = CryptoUtils.encrypt(password)
+                        val finalPassword = if (passwordChanged) password else existingEntry?.password ?: password
+                        if (finalPassword.isBlank()) {
+                            showError = "Пароль не может быть пустым"
+                            return@IconButton
+                        }
+                        
+                        val encryptedPwd = CryptoUtils.encrypt(finalPassword)
                         
                         val now = System.currentTimeMillis()
                         val newNextRotationDate = if (rotationEnabled) {
@@ -120,7 +143,7 @@ fun EntryEditorScreen(
                         }
                         
                         val finalEntry = if (existingEntry != null) {
-                            val passwordChanged = existingEntry.password != password
+                            // ✅ Добавляем в историю ТОЛЬКО если пароль изменился
                             val baseEntry = if (passwordChanged) {
                                 existingEntry.addToPasswordHistory(existingEntry.password, existingEntry.generationType)
                             } else {
@@ -137,7 +160,7 @@ fun EntryEditorScreen(
                             )
                         } else {
                             Entry.create(
-                                service = service, username = username, password = password,
+                                service = service, username = username, password = finalPassword,
                                 profileId = effectiveProfileId!!,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
@@ -229,16 +252,39 @@ fun EntryEditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
+            // ✅ ПОЛЕ ПАРОЛЯ: скрыто по умолчанию для существующих записей
             OutlinedTextField(
                 value = password, 
-                onValueChange = { password = it }, 
-                label = { Text("Пароль *") }, 
+                onValueChange = { 
+                    password = it
+                    passwordChanged = true
+                }, 
+                label = { 
+                    Text(
+                        if (!isNewEntry && !passwordChanged && password.isBlank()) 
+                            "Пароль (скрыт, нажмите 👁️ для просмотра)" 
+                        else 
+                            "Пароль *"
+                    ) 
+                }, 
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(), 
+                placeholder = {
+                    if (!isNewEntry && !passwordChanged && password.isBlank()) {
+                        Text("••••••••••••")
+                    }
+                },
                 trailingIcon = { 
                     Row { 
-                        IconButton(onClick = { showPassword = !showPassword }) { 
-                            Icon(if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) 
-                        } 
+                        // ✅ Кнопка просмотра только для существующих записей
+                        if (!isNewEntry && existingEntry != null && !passwordChanged) {
+                            IconButton(onClick = { showConfirmPasswordDialog = true }) { 
+                                Icon(Icons.Default.Visibility, "Показать текущий пароль") 
+                            }
+                        } else if (showPassword) {
+                            IconButton(onClick = { showPassword = false }) { 
+                                Icon(Icons.Default.VisibilityOff, "Скрыть пароль") 
+                            }
+                        }
                         IconButton(onClick = { showGeneratorDialog = true }) { 
                             Icon(Icons.Default.Casino, "Обычный генератор") 
                         }
@@ -249,6 +295,26 @@ fun EntryEditorScreen(
                 }, 
                 modifier = Modifier.fillMaxWidth()
             )
+            
+            if (!isNewEntry && passwordChanged) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.tertiary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Пароль будет изменён и добавлен в историю",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+            }
             
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -365,11 +431,27 @@ fun EntryEditorScreen(
         }
     }
     
+    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ МАСТЕР-ПАРОЛЯ
+    if (showConfirmPasswordDialog) {
+        ConfirmMasterPasswordDialogForEditor(
+            authViewModel = authViewModel,
+            existingEntry = existingEntry,
+            onConfirmed = { decryptedPassword ->
+                password = decryptedPassword
+                passwordChanged = false
+                showPassword = true
+                showConfirmPasswordDialog = false
+            },
+            onDismiss = { showConfirmPasswordDialog = false }
+        )
+    }
+    
     if (showGeneratorDialog) {
         SimplePasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false }, 
             onGenerated = { pwd -> 
                 password = pwd
+                passwordChanged = true
                 generationType = "random"
                 showGeneratorDialog = false 
             }
@@ -381,12 +463,72 @@ fun EntryEditorScreen(
             onDismiss = { showMnemonicDialog = false },
             onGenerated = { pwd, hint ->
                 password = pwd
+                passwordChanged = true
                 textHint = hint
                 generationType = "mnemonic"
                 showMnemonicDialog = false
             }
         )
     }
+}
+
+// ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ РЕДАКТОРА
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConfirmMasterPasswordDialogForEditor(
+    authViewModel: AuthViewModel,
+    existingEntry: Entry?,
+    onConfirmed: (decryptedPassword: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Подтверждение") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Для просмотра текущего пароля введите мастер-пароль:", fontSize = 13.sp)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Мастер-пароль") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (authViewModel.verifyMasterPassword(password)) {
+                    try {
+                        val decrypted = existingEntry?.password ?: ""
+                        onConfirmed(decrypted)
+                    } catch (e: Exception) {
+                        error = "Не удалось расшифровать пароль"
+                    }
+                } else {
+                    error = "Неверный пароль"
+                }
+                password = ""
+            }) {
+                Text("Подтвердить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 // ===== ПРОСТОЙ ГЕНЕРАТОР =====
@@ -564,10 +706,21 @@ private fun MnemonicGeneratorDialog(
     
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     fun generateVariants() {
-        if (phrase.isBlank() || serviceName.isBlank()) {
+        validationError = null
+        
+        if (phrase.isBlank()) {
             variants = emptyList()
+            validationError = "Введите мнемоническую фразу"
+            return
+        }
+        
+        // ✅ serviceName нужен только если включён код сервиса
+        if (includeServiceCode && serviceName.isBlank()) {
+            variants = emptyList()
+            validationError = "Введите название сервиса для кода сервиса"
             return
         }
         
@@ -611,7 +764,7 @@ private fun MnemonicGeneratorDialog(
                 OutlinedTextField(
                     value = phrase,
                     onValueChange = { phrase = it },
-                    label = { Text("Мнемоническая фраза") },
+                    label = { Text("Мнемоническая фраза *") },
                     placeholder = { Text("например: моя кошка любит рыбу") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -619,7 +772,9 @@ private fun MnemonicGeneratorDialog(
                 OutlinedTextField(
                     value = serviceName,
                     onValueChange = { serviceName = it },
-                    label = { Text("Название сервиса") },
+                    label = { 
+                        Text(if (includeServiceCode) "Название сервиса *" else "Название сервиса (необяз.)") 
+                    },
                     placeholder = { Text("например: Gmail") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -637,13 +792,18 @@ private fun MnemonicGeneratorDialog(
                     Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
                 }
                 
+                if (validationError != null) {
+                    Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = { variantOffset++ },
-                        modifier = Modifier.weight(1f).height(48.dp)
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
                     ) {
                         Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
