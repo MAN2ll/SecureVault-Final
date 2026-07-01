@@ -2,8 +2,10 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,10 +25,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
-import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
 
 @Composable
@@ -34,8 +36,7 @@ fun EntryEditorScreen(
     id: String?,
     profileId: Int? = null,
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
     val isNewEntry = id == null || id == "new"
     
@@ -58,7 +59,6 @@ fun EntryEditorScreen(
     var isFavorite by remember { mutableStateOf(false) }
     var generationType by remember { mutableStateOf("random") }
     
-    // ✅ НОВЫЕ ФЛАГИ
     var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
     var showConfirmPasswordDialog by remember { mutableStateOf(false) }
@@ -72,7 +72,6 @@ fun EntryEditorScreen(
         existingEntry?.let { entry ->
             service = entry.service
             username = entry.username
-            // ✅ НЕ загружаем пароль сразу — оставляем пустым
             password = ""
             url = entry.url ?: ""
             notes = entry.notes ?: ""
@@ -108,12 +107,10 @@ fun EntryEditorScreen(
                             showError = "Заполните название сервиса"
                             return@IconButton
                         }
-                        // ✅ Для новой записи пароль обязателен
                         if (isNewEntry && password.isBlank()) {
                             showError = "Введите или сгенерируйте пароль"
                             return@IconButton
                         }
-                        // ✅ Для существующей записи: если пароль не меняли, оставляем старый
                         if (!isNewEntry && existingEntry != null && !passwordChanged && password.isBlank()) {
                             // пароль не менялся — используем старый
                         }
@@ -143,7 +140,6 @@ fun EntryEditorScreen(
                         }
                         
                         val finalEntry = if (existingEntry != null) {
-                            // ✅ Добавляем в историю ТОЛЬКО если пароль изменился
                             val baseEntry = if (passwordChanged) {
                                 existingEntry.addToPasswordHistory(existingEntry.password, existingEntry.generationType)
                             } else {
@@ -252,7 +248,6 @@ fun EntryEditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            // ✅ ПОЛЕ ПАРОЛЯ: скрыто по умолчанию для существующих записей
             OutlinedTextField(
                 value = password, 
                 onValueChange = { 
@@ -262,7 +257,7 @@ fun EntryEditorScreen(
                 label = { 
                     Text(
                         if (!isNewEntry && !passwordChanged && password.isBlank()) 
-                            "Пароль (скрыт, нажмите 👁️ для просмотра)" 
+                            "Пароль (скрыт, нажмите ️ для просмотра)" 
                         else 
                             "Пароль *"
                     ) 
@@ -275,7 +270,6 @@ fun EntryEditorScreen(
                 },
                 trailingIcon = { 
                     Row { 
-                        // ✅ Кнопка просмотра только для существующих записей
                         if (!isNewEntry && existingEntry != null && !passwordChanged) {
                             IconButton(onClick = { showConfirmPasswordDialog = true }) { 
                                 Icon(Icons.Default.Visibility, "Показать текущий пароль") 
@@ -431,10 +425,9 @@ fun EntryEditorScreen(
         }
     }
     
-    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ МАСТЕР-ПАРОЛЯ
     if (showConfirmPasswordDialog) {
         ConfirmMasterPasswordDialogForEditor(
-            authViewModel = authViewModel,
+            context = LocalContext.current,
             existingEntry = existingEntry,
             onConfirmed = { decryptedPassword ->
                 password = decryptedPassword
@@ -472,11 +465,11 @@ fun EntryEditorScreen(
     }
 }
 
-// ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ РЕДАКТОРА
+// ✅ ИСПРАВЛЕННЫЙ ДИАЛОГ ПОДТВЕРЖДЕНИЯ — прямая проверка хеша
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfirmMasterPasswordDialogForEditor(
-    authViewModel: AuthViewModel,
+    context: Context,
     existingEntry: Entry?,
     onConfirmed: (decryptedPassword: String) -> Unit,
     onDismiss: () -> Unit
@@ -495,8 +488,8 @@ private fun ConfirmMasterPasswordDialogForEditor(
                     value = password,
                     onValueChange = { password = it; error = null },
                     label = { Text("Мастер-пароль") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = error != null
@@ -508,7 +501,13 @@ private fun ConfirmMasterPasswordDialogForEditor(
         },
         confirmButton = {
             Button(onClick = {
-                if (authViewModel.verifyMasterPassword(password)) {
+                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                val storedHash = prefs.getString("master_hash", null)
+                val storedSalt = prefs.getString("master_salt", null)
+                val iterations = prefs.getInt("master_iterations", 100_000)
+                
+                if (storedHash != null && storedSalt != null && 
+                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
                     try {
                         val decrypted = existingEntry?.password ?: ""
                         onConfirmed(decrypted)
@@ -717,7 +716,6 @@ private fun MnemonicGeneratorDialog(
             return
         }
         
-        // ✅ serviceName нужен только если включён код сервиса
         if (includeServiceCode && serviceName.isBlank()) {
             variants = emptyList()
             validationError = "Введите название сервиса для кода сервиса"
