@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -43,26 +44,46 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
-        val entry = repository.getById(id) ?: return@launch
-        val updated = entry.addToPasswordHistory(entry.password).copy(
-            encryptedPassword = CryptoUtils.encrypt(newPassword),
-            lastChanged = System.currentTimeMillis()
-        )
-        repository.update(updated)
-    }
-
+    // ✅ ИСПРАВЛЕНО: корректная ротация с обновлением даты
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
-        val newPwd = PasswordGenerator.generate(16, true, true, true).password
-        val updated = entry.addToPasswordHistory(entry.password).copy(
-            encryptedPassword = CryptoUtils.encrypt(newPwd),
-            lastChanged = System.currentTimeMillis()
+        
+        val newPassword: String
+        val newHint: String?
+        
+        if (entry.generationType == "mnemonic" && entry.textHint != null) {
+            // Для мнемонических паролей — перегенерация с новой датой ротации
+            val params = MnemonicPasswordGenerator.GenerationParams(
+                phrase = entry.textHint,
+                serviceName = entry.service,
+                rotationMonth = null, // использовать текущий
+                rotationYear = null,
+                targetLength = 16,
+                includeLeet = true,
+                includeServiceCode = true,
+                includeRotationCode = true
+            )
+            val result = MnemonicPasswordGenerator.generate(params)
+            newPassword = result.password
+            newHint = result.mnemonicHint
+        } else {
+            // Для обычных паролей — случайная генерация
+            newPassword = PasswordGenerator.generate(16, true, true, true).password
+            newHint = entry.textHint
+        }
+        
+        val now = System.currentTimeMillis()
+        val newNextRotationDate = now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+        
+        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
+            textHint = newHint,
+            lastChanged = now,
+            nextRotationDate = newNextRotationDate
         )
         repository.update(updated)
     }
 
-    // ✅ НОВЫЙ МЕТОД: массовая ротация
     fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
         ids.forEach { rotatePassword(it) }
     }
