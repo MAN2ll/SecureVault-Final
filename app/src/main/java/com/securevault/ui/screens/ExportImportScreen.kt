@@ -7,8 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -35,7 +33,6 @@ fun ExportImportScreen(
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current.applicationContext
-    // ✅ Создаём ExportManager через context, а не через hiltViewModel
     val exportManager = remember { ExportManager(context) }
     
     val scope = rememberCoroutineScope()
@@ -50,7 +47,7 @@ fun ExportImportScreen(
     var importTargetProfileId by remember { mutableIntStateOf(currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
-    // ✅ Лаунчер для экспорта
+    // Лаунчер для экспорта
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -69,7 +66,7 @@ fun ExportImportScreen(
         }
     }
 
-    // ✅ Лаунчер для импорта
+    // Лаунчер для импорта
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -126,6 +123,62 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // ⚠️ ПРЕДУПРЕЖДЕНИЕ О ЧУВСТВИТЕЛЬНЫХ ДАННЫХ
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "⚠️ CSV содержит чувствительные данные!",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    "Файл не зашифрован. Храните его в безопасном месте и не передавайте третьим лицам.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+                    }
+                    
+                    // TODO: зашифрованный экспорт
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "TODO: В будущих версиях — зашифрованный экспорт (AES-256 + пароль)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     // Заголовок с кнопкой "Выбрать все"
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -150,7 +203,7 @@ fun ExportImportScreen(
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text("Фильтр по профилям:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                 Spacer(Modifier.height(8.dp))
-                                androidx.compose.foundation.layout.FlowRow(
+                                FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
@@ -227,6 +280,23 @@ fun ExportImportScreen(
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        // Индикатор типа генерации
+                                        if (entry.generationType == "mnemonic") {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.Lightbulb,
+                                                    null,
+                                                    Modifier.size(12.dp),
+                                                    tint = MaterialTheme.colorScheme.tertiary
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    "Мнемонический (AMPG)",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.tertiary
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -271,7 +341,7 @@ fun ExportImportScreen(
                             Spacer(Modifier.height(12.dp))
                             
                             Text(
-                                "Поддерживаемые форматы: CSV",
+                                "Поддерживаемые форматы: CSV (экспортированные из SecureVault)",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -361,15 +431,60 @@ fun ExportImportScreen(
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "• Файл должен быть в формате CSV, экспортированным из SecureVault\n" +
-                                "• Пароли будут импортированы в зашифрованном виде\n" +
-                                "• Все записи будут добавлены в выбранный профиль",
+                                "• Пароли импортируются в зашифрованном виде\n" +
+                                "• Все записи будут добавлены в выбранный профиль\n" +
+                                "• Дубликаты могут быть созданы (проверяйте вручную)",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                    
+                    // Предупреждение о безопасности импорта
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Импортируйте только файлы из доверенных источников!",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+// FlowRow для чипов
+@Composable
+private fun FlowRow(
+    modifier: Modifier = Modifier,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    content: @Composable () -> Unit
+) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = modifier,
+        horizontalArrangement = horizontalArrangement,
+        verticalArrangement = verticalArrangement
+    ) {
+        content()
     }
 }
