@@ -28,6 +28,18 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
+    // ✅ НОВАЯ СТРУКТУРА: спецификация варианта
+    data class VariantSpec(
+        val blockStrategy: BlockStrategy,
+        val orderStrategy: OrderStrategy,
+        val casingStrategy: CasingStrategy,
+        val leetStrategy: LeetStrategy,
+        val tokenOrderStrategy: TokenOrderStrategy,
+        val serviceCodeStyle: ServiceCodeStyle,
+        val rotationCodeStyle: RotationCodeStyle,
+        val separatorStrategy: SeparatorStrategy
+    )
+
     // ===== СТРАТЕГИИ =====
     
     enum class BlockStrategy {
@@ -110,34 +122,71 @@ object MnemonicPasswordGenerator {
 
     private val vowels = setOf('a', 'e', 'i', 'o', 'u')
 
+    // ✅ НОВЫЙ МЕТОД: построение спецификации варианта
+    private fun buildVariantSpec(setIndex: Int, variantIndex: Int, options: GenerationOptions): VariantSpec {
+        val seed = setIndex * 5 + variantIndex
+        
+        val blockStrategy = BlockStrategy.values()[(seed + variantIndex) % BlockStrategy.values().size]
+        val orderStrategy = OrderStrategy.values()[(seed / 2 + variantIndex + setIndex) % OrderStrategy.values().size]
+        val casingStrategy = CasingStrategy.values()[(seed / 3 + setIndex * 2) % CasingStrategy.values().size]
+        
+        val leetStrategy = if (!options.includeLeet) {
+            LeetStrategy.NONE
+        } else {
+            LeetStrategy.values()[(seed / 4 + variantIndex + setIndex) % LeetStrategy.values().size]
+        }
+        
+        val tokenOrderStrategy = TokenOrderStrategy.values()[(seed / 5 + variantIndex * 2) % TokenOrderStrategy.values().size]
+        
+        val serviceCodeStyle = if (!options.includeServiceCode) {
+            ServiceCodeStyle.NO_SERVICE
+        } else {
+            ServiceCodeStyle.values()[(seed / 6 + setIndex + variantIndex) % ServiceCodeStyle.values().size]
+        }
+        
+        val rotationCodeStyle = if (!options.includeRotationCode) {
+            RotationCodeStyle.NO_ROTATION
+        } else {
+            RotationCodeStyle.values()[(seed / 7 + variantIndex + setIndex * 3) % RotationCodeStyle.values().size]
+        }
+        
+        val separatorStrategy = SeparatorStrategy.values()[(seed / 8 + setIndex + variantIndex * 2) % SeparatorStrategy.values().size]
+        
+        return VariantSpec(
+            blockStrategy, orderStrategy, casingStrategy, leetStrategy,
+            tokenOrderStrategy, serviceCodeStyle, rotationCodeStyle, separatorStrategy
+        )
+    }
+
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
+        val usedPasswords = mutableSetOf<String>()
+        val setIndex = options.variantOffset
         
-        val offset = options.variantOffset
+        // Генерируем варианты с защитой от дублей
+        var variantIndex = 0
+        var attempts = 0
+        val maxAttempts = count * 3
         
-        // Выбираем стратегии на основе offset
-        val blockStrategy = BlockStrategy.values()[offset % BlockStrategy.values().size]
-        val orderStrategy = OrderStrategy.values()[(offset / BlockStrategy.values().size) % OrderStrategy.values().size]
-        val casingStrategy = CasingStrategy.values()[((offset / (BlockStrategy.values().size * OrderStrategy.values().size))) % CasingStrategy.values().size]
-        val leetStrategy = if (!options.includeLeet) LeetStrategy.NONE else LeetStrategy.values()[(offset / (BlockStrategy.values().size * OrderStrategy.values().size * CasingStrategy.values().size)) % LeetStrategy.values().size]
-        val tokenOrderStrategy = TokenOrderStrategy.values()[((offset / (BlockStrategy.values().size * OrderStrategy.values().size * CasingStrategy.values().size * LeetStrategy.values().size))) % TokenOrderStrategy.values().size]
-        val serviceCodeStyle = if (!options.includeServiceCode) ServiceCodeStyle.NO_SERVICE else ServiceCodeStyle.values()[(offset / (BlockStrategy.values().size * OrderStrategy.values().size * CasingStrategy.values().size * LeetStrategy.values().size * TokenOrderStrategy.values().size)) % ServiceCodeStyle.values().size]
-        val rotationCodeStyle = if (!options.includeRotationCode) RotationCodeStyle.NO_ROTATION else RotationCodeStyle.values()[(offset / (BlockStrategy.values().size * OrderStrategy.values().size * CasingStrategy.values().size * LeetStrategy.values().size * TokenOrderStrategy.values().size * ServiceCodeStyle.values().size)) % RotationCodeStyle.values().size]
-        val separatorStrategy = SeparatorStrategy.values()[(offset / (BlockStrategy.values().size * OrderStrategy.values().size * CasingStrategy.values().size * LeetStrategy.values().size * TokenOrderStrategy.values().size * ServiceCodeStyle.values().size * RotationCodeStyle.values().size)) % SeparatorStrategy.values().size]
-
-        // Генерируем 5 вариантов с разными комбинациями
-        results.add(generateWithStrategies(options, blockStrategy, orderStrategy, casingStrategy, leetStrategy, tokenOrderStrategy, serviceCodeStyle, rotationCodeStyle, separatorStrategy))
-        results.add(generateWithStrategies(options, BlockStrategy.FIRST_LAST, OrderStrategy.REVERSED, casingStrategy, LeetStrategy.SOFT, TokenOrderStrategy.SERVICE_PHRASE_ROTATION, serviceCodeStyle, rotationCodeStyle, SeparatorStrategy.DOT))
-        results.add(generateWithStrategies(options, BlockStrategy.INITIALS_ONLY, orderStrategy, CasingStrategy.ALTERNATING_CASE, leetStrategy, TokenOrderStrategy.PHRASE_ROTATION_SERVICE, ServiceCodeStyle.FIRST3, RotationCodeStyle.YYMM, SeparatorStrategy.NONE))
-        results.add(generateWithStrategies(options, BlockStrategy.SYLLABLE_LIKE, OrderStrategy.LONG_FIRST, CasingStrategy.FIRST_LAST_UPPER, LeetStrategy.VOWEL_ONLY, tokenOrderStrategy, ServiceCodeStyle.CONSONANTS, RotationCodeStyle.MM_YY, SeparatorStrategy.MAJOR_ONLY))
-        results.add(generateWithStrategies(options, BlockStrategy.FIRST_VOWELS, OrderStrategy.ALTERNATING, CasingStrategy.SERVICE_UPPER, leetStrategy, TokenOrderStrategy.PHRASE_SERVICE_ROTATION, serviceCodeStyle, RotationCodeStyle.QYY, separatorStrategy))
+        while (results.size < count && attempts < maxAttempts) {
+            val spec = buildVariantSpec(setIndex, variantIndex, options)
+            val result = generateWithStrategies(options, spec)
+            
+            // ✅ ЗАЩИТА ОТ ДУБЛЕЙ: проверяем уникальность
+            if (result.password !in usedPasswords) {
+                results.add(result)
+                usedPasswords.add(result.password)
+            }
+            
+            variantIndex++
+            attempts++
+        }
         
-        return results.take(count)
+        return results
     }
 
     fun generate(options: GenerationOptions): GenerationResult {
-        return generateWithStrategies(
-            options,
+        val spec = VariantSpec(
             BlockStrategy.CONSONANTS,
             OrderStrategy.ORIGINAL,
             CasingStrategy.CAPITALIZE_BLOCKS,
@@ -147,18 +196,12 @@ object MnemonicPasswordGenerator {
             if (options.includeRotationCode) RotationCodeStyle.MMYY else RotationCodeStyle.NO_ROTATION,
             SeparatorStrategy.DASH
         )
+        return generateWithStrategies(options, spec)
     }
 
     private fun generateWithStrategies(
         options: GenerationOptions,
-        blockStrategy: BlockStrategy,
-        orderStrategy: OrderStrategy,
-        casingStrategy: CasingStrategy,
-        leetStrategy: LeetStrategy,
-        tokenOrderStrategy: TokenOrderStrategy,
-        serviceCodeStyle: ServiceCodeStyle,
-        rotationCodeStyle: RotationCodeStyle,
-        separatorStrategy: SeparatorStrategy
+        spec: VariantSpec
     ): GenerationResult {
         val steps = mutableListOf<String>()
         
@@ -175,17 +218,17 @@ object MnemonicPasswordGenerator {
         steps.add("3. Транслитерация: ${transliteratedWords.joinToString(" ")}")
 
         // Шаг 4: Построение блоков
-        val blocks = when (blockStrategy) {
+        val blocks = when (spec.blockStrategy) {
             BlockStrategy.CONSONANTS -> transliteratedWords.map { createConsonantBlock(it) }
             BlockStrategy.FIRST_LAST -> transliteratedWords.map { createFirstLastBlock(it) }
             BlockStrategy.FIRST_VOWELS -> transliteratedWords.map { createVowelBlock(it) }
             BlockStrategy.SYLLABLE_LIKE -> transliteratedWords.map { createSyllableBlock(it) }
             BlockStrategy.INITIALS_ONLY -> transliteratedWords.map { it.firstOrNull()?.uppercaseChar()?.toString() ?: "" }
         }
-        steps.add("4. Блоки (${blockStrategy.name}): ${blocks.joinToString(", ")}")
+        steps.add("4. Блоки (${spec.blockStrategy.name}): ${blocks.joinToString(", ")}")
 
         // Шаг 5: Порядок блоков
-        val orderedBlocks = when (orderStrategy) {
+        val orderedBlocks = when (spec.orderStrategy) {
             OrderStrategy.ORIGINAL -> blocks
             OrderStrategy.REVERSED -> blocks.reversed()
             OrderStrategy.ALTERNATING -> {
@@ -195,79 +238,79 @@ object MnemonicPasswordGenerator {
             }
             OrderStrategy.LONG_FIRST -> blocks.sortedByDescending { it.length }
         }
-        steps.add("5. Порядок (${orderStrategy.name}): ${orderedBlocks.joinToString(", ")}")
+        steps.add("5. Порядок (${spec.orderStrategy.name}): ${orderedBlocks.joinToString(", ")}")
 
         // Шаг 6: Регистр
-        val casedBlocks = when (casingStrategy) {
+        val casedBlocks = when (spec.casingStrategy) {
             CasingStrategy.CAPITALIZE_BLOCKS -> orderedBlocks.map { it.capitalize() }
             CasingStrategy.ALTERNATING_CASE -> orderedBlocks.mapIndexed { index, block ->
                 if (index % 2 == 0) block.uppercase() else block.lowercase()
             }
-            CasingStrategy.SERVICE_UPPER -> orderedBlocks // сервис будет заглавным отдельно
+            CasingStrategy.SERVICE_UPPER -> orderedBlocks
             CasingStrategy.FIRST_LAST_UPPER -> orderedBlocks.mapIndexed { index, block ->
                 if (index == 0 || index == orderedBlocks.size - 1) block.uppercase() else block.lowercase()
             }
         }
-        steps.add("6. Регистр (${casingStrategy.name}): ${casedBlocks.joinToString(", ")}")
+        steps.add("6. Регистр (${spec.casingStrategy.name}): ${casedBlocks.joinToString(", ")}")
 
         // Шаг 7: Leet-замены
-        val leetBlocks = when (leetStrategy) {
+        val leetBlocks = when (spec.leetStrategy) {
             LeetStrategy.NONE -> casedBlocks
             LeetStrategy.SOFT -> casedBlocks.map { applySoftLeet(it) }
             LeetStrategy.FULL -> casedBlocks.map { applyFullLeet(it) }
             LeetStrategy.VOWEL_ONLY -> casedBlocks.map { applyVowelLeet(it) }
         }
-        if (leetStrategy != LeetStrategy.NONE) {
-            steps.add("7. Leet (${leetStrategy.name}): ${leetBlocks.joinToString(", ")}")
+        if (spec.leetStrategy != LeetStrategy.NONE) {
+            steps.add("7. Leet (${spec.leetStrategy.name}): ${leetBlocks.joinToString(", ")}")
         }
 
         // Шаг 8: Код сервиса
         var serviceCode = ""
-        if (serviceCodeStyle != ServiceCodeStyle.NO_SERVICE && options.serviceName.isNotBlank()) {
-            serviceCode = when (serviceCodeStyle) {
+        if (spec.serviceCodeStyle != ServiceCodeStyle.NO_SERVICE && options.serviceName.isNotBlank()) {
+            serviceCode = when (spec.serviceCodeStyle) {
                 ServiceCodeStyle.FIRST2_LENGTH -> createServiceCode(options.serviceName, "first2+length")
                 ServiceCodeStyle.FIRST3 -> createServiceCode(options.serviceName, "first3")
                 ServiceCodeStyle.FIRST_LAST -> createServiceCode(options.serviceName, "first+last")
                 ServiceCodeStyle.CONSONANTS -> createServiceCode(options.serviceName, "consonants")
                 ServiceCodeStyle.NO_SERVICE -> ""
             }
-            if (casingStrategy == CasingStrategy.SERVICE_UPPER) {
+            if (spec.casingStrategy == CasingStrategy.SERVICE_UPPER) {
                 serviceCode = serviceCode.uppercase()
             }
-            steps.add("8. Код сервиса (${serviceCodeStyle.name}): $serviceCode")
+            steps.add("8. Код сервиса (${spec.serviceCodeStyle.name}): $serviceCode")
         }
 
         // Шаг 9: Код ротации
         var rotationCode = ""
-        if (rotationCodeStyle != RotationCodeStyle.NO_ROTATION) {
-            rotationCode = when (rotationCodeStyle) {
+        if (spec.rotationCodeStyle != RotationCodeStyle.NO_ROTATION) {
+            rotationCode = when (spec.rotationCodeStyle) {
                 RotationCodeStyle.MMYY -> createRotationCode(options.rotationMonth, options.rotationYear, "MMYY")
                 RotationCodeStyle.YYMM -> createRotationCode(options.rotationMonth, options.rotationYear, "YYMM")
                 RotationCodeStyle.MM_YY -> createRotationCode(options.rotationMonth, options.rotationYear, "MM-YY")
                 RotationCodeStyle.QYY -> createRotationCode(options.rotationMonth, options.rotationYear, "QYY")
                 RotationCodeStyle.NO_ROTATION -> ""
             }
-            steps.add("9. Код ротации (${rotationCodeStyle.name}): $rotationCode")
+            steps.add("9. Код ротации (${spec.rotationCodeStyle.name}): $rotationCode")
         }
 
         // Шаг 10: Сборка пароля
-        val separator = when (separatorStrategy) {
+        val separator = when (spec.separatorStrategy) {
             SeparatorStrategy.DASH -> "-"
             SeparatorStrategy.DOT -> "."
             SeparatorStrategy.NONE -> ""
             SeparatorStrategy.MAJOR_ONLY -> "-"
         }
 
-        var password = when (tokenOrderStrategy) {
+        var password = when (spec.tokenOrderStrategy) {
             TokenOrderStrategy.PHRASE_SERVICE_ROTATION -> {
-                val phrasePart = leetBlocks.joinToString(if (separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
+                val phrasePart = leetBlocks.joinToString(if (spec.separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
                 val parts = mutableListOf(phrasePart)
                 if (serviceCode.isNotBlank()) parts.add(serviceCode)
                 if (rotationCode.isNotBlank()) parts.add(rotationCode)
                 parts.joinToString(separator)
             }
             TokenOrderStrategy.SERVICE_PHRASE_ROTATION -> {
-                val phrasePart = leetBlocks.joinToString(if (separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
+                val phrasePart = leetBlocks.joinToString(if (spec.separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
                 val parts = mutableListOf<String>()
                 if (serviceCode.isNotBlank()) parts.add(serviceCode)
                 parts.add(phrasePart)
@@ -275,17 +318,17 @@ object MnemonicPasswordGenerator {
                 parts.joinToString(separator)
             }
             TokenOrderStrategy.PHRASE_ROTATION_SERVICE -> {
-                val phrasePart = leetBlocks.joinToString(if (separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
+                val phrasePart = leetBlocks.joinToString(if (spec.separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
                 val parts = mutableListOf(phrasePart)
                 if (rotationCode.isNotBlank()) parts.add(rotationCode)
                 if (serviceCode.isNotBlank()) parts.add(serviceCode)
                 parts.joinToString(separator)
             }
             TokenOrderStrategy.PHRASE_ONLY -> {
-                leetBlocks.joinToString(if (separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
+                leetBlocks.joinToString(if (spec.separatorStrategy == SeparatorStrategy.MAJOR_ONLY) "" else separator)
             }
         }
-        steps.add("10. Сборка (${tokenOrderStrategy.name}, ${separatorStrategy.name}): $password")
+        steps.add("10. Сборка (${spec.tokenOrderStrategy.name}, ${spec.separatorStrategy.name}): $password")
 
         // Шаг 11: Добивание до targetLength
         if (password.length < options.targetLength) {
@@ -294,9 +337,9 @@ object MnemonicPasswordGenerator {
             steps.add("11. Добивание суффиксом: $password")
         }
 
-        val hint = buildHint(options, blockStrategy, orderStrategy, leetStrategy, serviceCodeStyle, rotationCodeStyle)
+        val hint = buildHint(options, spec.blockStrategy, spec.orderStrategy, spec.leetStrategy, spec.serviceCodeStyle, spec.rotationCodeStyle)
         val strength = calculateStrength(password)
-        val variantName = buildVariantName(blockStrategy, orderStrategy, casingStrategy, leetStrategy, tokenOrderStrategy, serviceCodeStyle, rotationCodeStyle)
+        val variantName = buildVariantName(spec)
 
         return GenerationResult(password, hint, strength, steps, variantName)
     }
@@ -479,10 +522,11 @@ object MnemonicPasswordGenerator {
         return "${parts.joinToString(" + ")} [${blockStrategy.name}, ${orderStrategy.name}]"
     }
 
-    private fun buildVariantName(blockStrategy: BlockStrategy, orderStrategy: OrderStrategy, casingStrategy: CasingStrategy, leetStrategy: LeetStrategy, tokenOrderStrategy: TokenOrderStrategy, serviceCodeStyle: ServiceCodeStyle, rotationCodeStyle: RotationCodeStyle): String {
+    // ✅ УЛУЧШЕННЫЙ МЕТОД: понятные названия вариантов
+    private fun buildVariantName(spec: VariantSpec): String {
         val parts = mutableListOf<String>()
         
-        when (blockStrategy) {
+        when (spec.blockStrategy) {
             BlockStrategy.CONSONANTS -> parts.add("Согласные")
             BlockStrategy.FIRST_LAST -> parts.add("Первая+Последняя")
             BlockStrategy.FIRST_VOWELS -> parts.add("Гласные")
@@ -490,21 +534,27 @@ object MnemonicPasswordGenerator {
             BlockStrategy.INITIALS_ONLY -> parts.add("Инициалы")
         }
         
-        if (orderStrategy != OrderStrategy.ORIGINAL) {
-            when (orderStrategy) {
-                OrderStrategy.REVERSED -> parts.add("Обратный порядок")
-                OrderStrategy.ALTERNATING -> parts.add("Чередование")
-                OrderStrategy.LONG_FIRST -> parts.add("Длинные сначала")
-                else -> {}
-            }
+        when (spec.orderStrategy) {
+            OrderStrategy.REVERSED -> parts.add("Обратный порядок")
+            OrderStrategy.ALTERNATING -> parts.add("Чередование")
+            OrderStrategy.LONG_FIRST -> parts.add("Длинные сначала")
+            else -> {}
         }
         
-        if (leetStrategy != LeetStrategy.NONE) {
+        if (spec.leetStrategy != LeetStrategy.NONE) {
             parts.add("Leet")
         }
         
-        if (tokenOrderStrategy == TokenOrderStrategy.SERVICE_PHRASE_ROTATION) {
-            parts.add("Сервис в начале")
+        when (spec.tokenOrderStrategy) {
+            TokenOrderStrategy.SERVICE_PHRASE_ROTATION -> parts.add("Сервис в начале")
+            TokenOrderStrategy.PHRASE_ROTATION_SERVICE -> parts.add("Сервис в конце")
+            else -> {}
+        }
+        
+        when (spec.rotationCodeStyle) {
+            RotationCodeStyle.QYY -> parts.add("Квартальный код")
+            RotationCodeStyle.MM_YY -> parts.add("Код через дефис")
+            else -> {}
         }
         
         return parts.joinToString(" + ")
