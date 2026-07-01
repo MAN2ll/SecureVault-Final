@@ -145,8 +145,7 @@ class ExportManager(private val context: Context) {
         val values = parseCsvValues(line)
         if (values.size < 15) return null
 
-        // ✅ ИСПРАВЛЕНО: ВСЕГДА используем defaultProfileId (выбранный при импорте),
-        // игнорируя profileId из CSV
+        // ✅ ВСЕГДА используем defaultProfileId (выбранный при импорте)
         val targetProfileId = defaultProfileId
 
         return if (generateNewIds) {
