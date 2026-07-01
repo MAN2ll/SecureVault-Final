@@ -2,6 +2,7 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -19,9 +20,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.viewmodel.AuthViewModel
+import com.securevault.security.MasterPasswordHasher
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -29,13 +29,11 @@ import java.util.*
 @Composable
 fun PasswordViewDialog(
     entry: Entry,
-    onDismiss: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    onDismiss: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
-    // ✅ СОСТОЯНИЕ: пароль скрыт по умолчанию
     var isPasswordRevealed by remember { mutableStateOf(false) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var isHistoryRevealed by remember { mutableStateOf(false) }
@@ -43,10 +41,8 @@ fun PasswordViewDialog(
     val history = entry.getPasswordHistory()
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
 
-    // Основной диалог с информацией
     AlertDialog(
         onDismissRequest = {
-            // При закрытии сбрасываем состояние
             isPasswordRevealed = false
             isHistoryRevealed = false
             onDismiss()
@@ -60,7 +56,6 @@ fun PasswordViewDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Информация о записи (всегда видна)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Информация:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -119,7 +114,6 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // Пароль (скрыт по умолчанию)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -174,7 +168,6 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // История ротации (скрыта по умолчанию)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         if (isHistoryRevealed) {
@@ -267,10 +260,9 @@ fun PasswordViewDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    // Диалог подтверждения мастер-пароля
     if (showMasterPasswordDialog) {
         ConfirmMasterPasswordDialog(
-            authViewModel = authViewModel,
+            context = context,
             onConfirmed = {
                 showMasterPasswordDialog = false
                 isPasswordRevealed = true
@@ -281,11 +273,10 @@ fun PasswordViewDialog(
     }
 }
 
-// ✅ НОВЫЙ ДИАЛОГ: подтверждение мастер-пароля
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfirmMasterPasswordDialog(
-    authViewModel: AuthViewModel,
+    context: Context,
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -316,7 +307,14 @@ private fun ConfirmMasterPasswordDialog(
         },
         confirmButton = {
             Button(onClick = {
-                if (authViewModel.verifyMasterPassword(password)) {
+                // ✅ ПРЯМАЯ ПРОВЕРКА ХЕША — не зависит от AuthViewModel.init()
+                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                val storedHash = prefs.getString("master_hash", null)
+                val storedSalt = prefs.getString("master_salt", null)
+                val iterations = prefs.getInt("master_iterations", 100_000)
+                
+                if (storedHash != null && storedSalt != null && 
+                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
                     onConfirmed()
                 } else {
                     error = "Неверный пароль"
