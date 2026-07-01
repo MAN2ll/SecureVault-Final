@@ -44,6 +44,16 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
+    // ✅ ДОБАВЛЕНО: функция updatePassword для ReminderScreen
+    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
+        val entry = repository.getById(id) ?: return@launch
+        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
+            lastChanged = System.currentTimeMillis()
+        )
+        repository.update(updated)
+    }
+
     // ✅ ИСПРАВЛЕНО: корректная ротация с обновлением даты
     fun rotatePassword(id: String) = viewModelScope.launch {
         val entry = repository.getById(id) ?: return@launch
@@ -52,11 +62,10 @@ class VaultViewModel @Inject constructor(
         val newHint: String?
         
         if (entry.generationType == "mnemonic" && entry.textHint != null) {
-            // Для мнемонических паролей — перегенерация с новой датой ротации
             val params = MnemonicPasswordGenerator.GenerationParams(
                 phrase = entry.textHint,
                 serviceName = entry.service,
-                rotationMonth = null, // использовать текущий
+                rotationMonth = null,
                 rotationYear = null,
                 targetLength = 16,
                 includeLeet = true,
@@ -67,7 +76,6 @@ class VaultViewModel @Inject constructor(
             newPassword = result.password
             newHint = result.mnemonicHint
         } else {
-            // Для обычных паролей — случайная генерация
             newPassword = PasswordGenerator.generate(16, true, true, true).password
             newHint = entry.textHint
         }
