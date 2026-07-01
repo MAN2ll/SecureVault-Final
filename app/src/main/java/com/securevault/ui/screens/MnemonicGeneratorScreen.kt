@@ -47,10 +47,20 @@ fun MnemonicGeneratorScreen(
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
     var showError by remember { mutableStateOf<String?>(null) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     fun generateVariants() {
-        if (phrase.isBlank() || serviceName.isBlank()) {
+        validationError = null
+        
+        if (phrase.isBlank()) {
             variants = emptyList()
+            validationError = "Введите мнемоническую фразу"
+            return
+        }
+        
+        if (includeServiceCode && serviceName.isBlank()) {
+            variants = emptyList()
+            validationError = "Введите название сервиса для кода сервиса"
             return
         }
         
@@ -88,7 +98,6 @@ fun MnemonicGeneratorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Информация об алгоритме
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -102,7 +111,7 @@ fun MnemonicGeneratorScreen(
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
-                label = { Text("Мнемоническая фраза") },
+                label = { Text("Мнемоническая фраза *") },
                 placeholder = { Text("например: моя кошка любит рыбу") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -110,7 +119,9 @@ fun MnemonicGeneratorScreen(
             OutlinedTextField(
                 value = serviceName,
                 onValueChange = { serviceName = it },
-                label = { Text("Название сервиса") },
+                label = { 
+                    Text(if (includeServiceCode) "Название сервиса *" else "Название сервиса (необяз.)") 
+                },
                 placeholder = { Text("например: Gmail") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -134,17 +145,20 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Кнопка "Ещё варианты"
+            if (validationError != null) {
+                Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+
             OutlinedButton(
                 onClick = { variantOffset++ },
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
             ) {
                 Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Ещё варианты", fontWeight = FontWeight.Medium)
             }
 
-            // Список вариантов
             if (variants.isNotEmpty()) {
                 Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 
@@ -231,7 +245,7 @@ fun MnemonicGeneratorScreen(
                         return@Button
                     }
                     if (serviceName.isBlank()) {
-                        showError = "Введите название сервиса"
+                        showError = "Введите название сервиса для записи"
                         return@Button
                     }
                     if (currentProfileId == null) {
