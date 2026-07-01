@@ -24,36 +24,43 @@ data class Entry(
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "password_history_json") val passwordHistoryJson: String? = null,
-    @ColumnInfo(name = "generation_type") val generationType: String = "random" // "random" или "mnemonic"
+    @ColumnInfo(name = "generation_type") val generationType: String = "random"
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
+    // ✅ ИСПРАВЛЕНО: убрал forEach, использую простой цикл
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
-        return try {
-            val items = mutableListOf<PasswordHistoryItem>()
-            // Формат: "hash:date:type|hash:date:type|..."
-            passwordHistoryJson.split("|").forEach { part ->
-                val parts = part.split(":")
+        
+        val result = mutableListOf<PasswordHistoryItem>()
+        
+        // Новый формат: "hash:date:type|hash:date:type|..."
+        try {
+            val entries = passwordHistoryJson.split("|")
+            for (entry in entries) {
+                if (entry.isBlank()) continue
+                val parts = entry.split(":")
                 if (parts.size >= 2) {
                     val hash = parts[0]
                     val date = parts[1].toLongOrNull() ?: 0L
                     val type = if (parts.size >= 3) parts[2] else "unknown"
-                    items.add(PasswordHistoryItem(hash, date, type))
+                    result.add(PasswordHistoryItem(hash, date, type))
                 }
             }
-            items
+            return result
         } catch (e: Exception) {
-            // Обратная совместимость со старым форматом JSON
-            try {
+            // Обратная совместимость со старым JSON-форматом
+            return try {
+                val legacyResult = mutableListOf<PasswordHistoryItem>()
                 val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
-                regex.findAll(passwordHistoryJson).forEach { match ->
+                val matches = regex.findAll(passwordHistoryJson)
+                for (match in matches) {
                     val oldPassword = match.groupValues[1]
                     val date = match.groupValues[2].toLongOrNull() ?: 0L
                     val hash = hashPassword(oldPassword)
-                    items.add(PasswordHistoryItem(hash, date, "legacy"))
+                    legacyResult.add(PasswordHistoryItem(hash, date, "legacy"))
                 }
-                items
+                legacyResult
             } catch (e2: Exception) {
                 emptyList()
             }
@@ -66,7 +73,11 @@ data class Entry(
         val newEntry = "$hash:$date:$generationType"
         
         val currentHistory = getPasswordHistory()
-        val updatedHistory = listOf(newEntry) + currentHistory.take(9)
+        val updatedHistory = mutableListOf<String>()
+        updatedHistory.add(newEntry)
+        for (item in currentHistory.take(9)) {
+            updatedHistory.add("${item.passwordHash}:${item.date}:${item.type}")
+        }
         val json = updatedHistory.joinToString("|")
         
         return this.copy(passwordHistoryJson = json)
