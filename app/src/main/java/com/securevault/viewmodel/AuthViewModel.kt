@@ -51,6 +51,15 @@ class AuthViewModel @Inject constructor() : ViewModel() {
         _authState.value = AuthState.Unlocked
     }
 
+    // ✅ НОВЫЙ МЕТОД: проверка пароля без изменения состояния
+    fun verifyMasterPassword(password: String): Boolean {
+        if (!isInitialized) return false
+        val storedHash = prefs.getString("master_hash", null) ?: return false
+        val storedSalt = prefs.getString("master_salt", null) ?: return false
+        val iterations = prefs.getInt("master_iterations", 100_000)
+        return MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)
+    }
+
     fun attemptUnlock(password: String): Boolean {
         if (BruteForceGuard.isLockedOut()) {
             val remaining = BruteForceGuard.getRemainingLockoutMillis()
@@ -72,7 +81,6 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             BruteForceGuard.recordFailedAttempt()
             
             if (BruteForceGuard.shouldWipeData()) {
-                // Сброс данных после 10 неудачных попыток
                 prefs.edit().clear().apply()
                 _authState.value = AuthState.SetupRequired
             } else {
