@@ -2,13 +2,13 @@ package com.securevault.utils
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.security.KeyStore
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import android.util.Base64
 
 object CryptoUtils {
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
@@ -33,16 +33,20 @@ object CryptoUtils {
         return keyGenerator.generateKey()
     }
 
+    // ✅ ИСПРАВЛЕНО: используем Base64.NO_WRAP для новых значений (без переносов строк)
     fun encrypt(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val iv = cipher.iv
         val encrypted = cipher.doFinal(plaintext.toByteArray())
-        return Base64.encodeToString(iv + encrypted, Base64.DEFAULT)
+        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
     }
 
+    // ✅ Совместимость: decrypt понимает и NO_WRAP, и DEFAULT (со старыми записями)
     fun decrypt(ciphertext: String): String {
-        val data = Base64.decode(ciphertext, Base64.DEFAULT)
+        // Удаляем возможные переносы строк из старых записей
+        val cleanedCiphertext = ciphertext.replace("\n", "").replace("\r", "").trim()
+        val data = Base64.decode(cleanedCiphertext, Base64.DEFAULT)
         val iv = data.sliceArray(0..11)
         val encrypted = data.sliceArray(12 until data.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -50,7 +54,6 @@ object CryptoUtils {
         return String(cipher.doFinal(encrypted))
     }
 
-    // ✅ НОВЫЙ МЕТОД: хэширование пароля (SHA-256)
     fun hashPassword(password: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
