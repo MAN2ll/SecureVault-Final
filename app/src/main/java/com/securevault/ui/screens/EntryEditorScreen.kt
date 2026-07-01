@@ -111,52 +111,68 @@ fun EntryEditorScreen(
                             showError = "Введите или сгенерируйте пароль"
                             return@IconButton
                         }
-                        if (!isNewEntry && existingEntry != null && !passwordChanged && password.isBlank()) {
-                            // пароль не менялся — используем старый
-                        }
                         if (effectiveProfileId == null) {
                             showError = "Профиль не выбран. Вернитесь назад и войдите в профиль."
                             return@IconButton
                         }
                         
-                        val finalPassword = if (passwordChanged) password else existingEntry?.password ?: password
-                        if (finalPassword.isBlank()) {
-                            showError = "Пароль не может быть пустым"
-                            return@IconButton
-                        }
-                        
-                        val encryptedPwd = CryptoUtils.encrypt(finalPassword)
-                        
                         val now = System.currentTimeMillis()
-                        val newNextRotationDate = if (rotationEnabled) {
-                            val existingNextDate = existingEntry?.nextRotationDate
-                            if (existingNextDate == null || existingEntry?.rotationPeriodMonths != rotationMonths) {
-                                now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
-                            } else {
-                                existingNextDate
-                            }
-                        } else {
-                            null
-                        }
                         
+                        // ✅ ИСПРАВЛЕНО: правильная логика сохранения
                         val finalEntry = if (existingEntry != null) {
-                            val baseEntry = if (passwordChanged) {
-                                existingEntry.addToPasswordHistory(existingEntry.password, existingEntry.generationType)
+                            if (passwordChanged) {
+                                // Пароль изменился - обновляем всё
+                                val finalPassword = if (password.isBlank()) existingEntry.password else password
+                                val encryptedPwd = CryptoUtils.encrypt(finalPassword)
+                                val newNextRotationDate = if (rotationEnabled) {
+                                    val existingNextDate = existingEntry.nextRotationDate
+                                    if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
+                                        now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
+                                    } else {
+                                        existingNextDate
+                                    }
+                                } else {
+                                    null
+                                }
+                                
+                                existingEntry.addToPasswordHistory(existingEntry.password, existingEntry.generationType).copy(
+                                    service = service, username = username, encryptedPassword = encryptedPwd,
+                                    url = url.ifBlank { null }, notes = notes.ifBlank { null },
+                                    textHint = textHint.ifBlank { null },
+                                    rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
+                                    nextRotationDate = newNextRotationDate,
+                                    isFavorite = isFavorite, lastChanged = now,
+                                    generationType = generationType
+                                )
                             } else {
-                                existingEntry
+                                // Пароль НЕ изменился - оставляем старый encryptedPassword и lastChanged
+                                val newNextRotationDate = if (rotationEnabled) {
+                                    val existingNextDate = existingEntry.nextRotationDate
+                                    if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
+                                        now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
+                                    } else {
+                                        existingNextDate
+                                    }
+                                } else {
+                                    null
+                                }
+                                
+                                existingEntry.copy(
+                                    service = service, username = username,
+                                    // ✅ НЕ меняем encryptedPassword
+                                    url = url.ifBlank { null }, notes = notes.ifBlank { null },
+                                    textHint = textHint.ifBlank { null },
+                                    rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
+                                    nextRotationDate = newNextRotationDate,
+                                    isFavorite = isFavorite,
+                                    // ✅ НЕ меняем lastChanged
+                                    generationType = generationType
+                                )
                             }
-                            baseEntry.copy(
-                                service = service, username = username, encryptedPassword = encryptedPwd,
-                                url = url.ifBlank { null }, notes = notes.ifBlank { null },
-                                textHint = textHint.ifBlank { null },
-                                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
-                                nextRotationDate = newNextRotationDate,
-                                isFavorite = isFavorite, lastChanged = now,
-                                generationType = generationType
-                            )
                         } else {
+                            // Новая запись
                             Entry.create(
-                                service = service, username = username, password = finalPassword,
+                                service = service, username = username, password = password,
                                 profileId = effectiveProfileId!!,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
@@ -228,7 +244,7 @@ fun EntryEditorScreen(
                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "⚠️ Профиль не выбран",
+                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "️ Профиль не выбран",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
@@ -257,7 +273,7 @@ fun EntryEditorScreen(
                 label = { 
                     Text(
                         if (!isNewEntry && !passwordChanged && password.isBlank()) 
-                            "Пароль (скрыт, нажмите ️ для просмотра)" 
+                            "Пароль (скрыт, нажмите 👁️ для просмотра)" 
                         else 
                             "Пароль *"
                     ) 
@@ -465,7 +481,6 @@ fun EntryEditorScreen(
     }
 }
 
-// ✅ ИСПРАВЛЕННЫЙ ДИАЛОГ ПОДТВЕРЖДЕНИЯ — прямая проверка хеша
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfirmMasterPasswordDialogForEditor(
@@ -530,7 +545,6 @@ private fun ConfirmMasterPasswordDialogForEditor(
     )
 }
 
-// ===== ПРОСТОЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimplePasswordGeneratorDialog(
@@ -686,7 +700,6 @@ private fun SimplePasswordGeneratorDialog(
     )
 }
 
-// ===== МНЕМОНИЧЕСКИЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MnemonicGeneratorDialog(
