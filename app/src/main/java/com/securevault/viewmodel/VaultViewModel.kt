@@ -58,6 +58,25 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
+    // ✅ ДОБАВЛЕНО: метод для ReminderScreen
+    fun updatePassword(entryId: String, newPassword: String) = viewModelScope.launch {
+        val entry = repository.getById(entryId) ?: return@launch
+        
+        val now = System.currentTimeMillis()
+        val newNextRotationDate = if (entry.rotationEnabled) {
+            now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+        } else {
+            null
+        }
+        
+        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+            encryptedPassword = CryptoUtils.encrypt(newPassword),
+            lastChanged = now,
+            nextRotationDate = newNextRotationDate
+        )
+        repository.update(updated)
+    }
+
     fun updateRotationSettings(entryId: String, enabled: Boolean, periodMonths: Int) = viewModelScope.launch {
         val entry = repository.getById(entryId) ?: return@launch
         
@@ -101,7 +120,6 @@ class VaultViewModel @Inject constructor(
         repository.update(updated)
     }
 
-    // ✅ НОВЫЙ БЕЗОПАСНЫЙ МЕТОД: массовая замена только выбранных паролей
     fun bulkReplacePasswords(replacements: List<PasswordReplacement>) = viewModelScope.launch {
         val now = System.currentTimeMillis()
         
