@@ -18,14 +18,44 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
 
+enum class RotationFilter(val label: String) {
+    EXPIRED("Просроченные"),
+    SOON("Скоро истекают"),
+    ALL("Все с ротацией")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val rotationEntries by viewModel.rotationEntries.collectAsState()
+    val allRotationEntries by viewModel.rotationEntries.collectAsState()
     var selectedEntry by remember { mutableStateOf<Entry?>(null) }
+    var showBulkRotation by remember { mutableStateOf(false) }
+    var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
+    var daysThreshold by remember { mutableIntStateOf(7) }
+
+    // Фильтрация записей
+    val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
+        val now = System.currentTimeMillis()
+        when (currentFilter) {
+            RotationFilter.EXPIRED -> {
+                allRotationEntries.filter { it.nextRotationDate != null && it.nextRotationDate <= now }
+            }
+            RotationFilter.SOON -> {
+                val threshold = now + (daysThreshold * 24L * 60 * 60 * 1000)
+                allRotationEntries.filter { 
+                    it.nextRotationDate != null && 
+                    it.nextRotationDate > now && 
+                    it.nextRotationDate <= threshold 
+                }
+            }
+            RotationFilter.ALL -> {
+                allRotationEntries
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -44,11 +74,45 @@ fun RotationScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Фильтры
+            TabRow(selectedTabIndex = currentFilter.ordinal) {
+                RotationFilter.entries.forEach { filter ->
+                    Tab(
+                        selected = currentFilter == filter,
+                        onClick = { currentFilter = filter },
+                        text = { 
+                            Text(
+                                filter.label,
+                                fontSize = 11.sp
+                            ) 
+                        }
+                    )
+                }
+            }
+
+            // Дополнительный фильтр для "Скоро истекают"
+            if (currentFilter == RotationFilter.SOON) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(7, 14, 30).forEach { days ->
+                        FilterChip(
+                            selected = daysThreshold == days,
+                            onClick = { daysThreshold = days },
+                            label = { Text("$days дн.", fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+
             // Информация
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Row(
@@ -63,14 +127,14 @@ fun RotationScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Записи с включённой ротацией. Нажмите «Заменить» для выбора нового пароля.",
+                        "Найдено: ${filteredEntries.size} записей",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
 
-            if (rotationEntries.isEmpty()) {
+            if (filteredEntries.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -86,13 +150,8 @@ fun RotationScreen(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Нет записей с ротацией",
+                            "Нет записей по фильтру",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "Включите ротацию в настройках записи",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -104,18 +163,33 @@ fun RotationScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    items(rotationEntries, key = { it.id }) { entry ->
+                    items(filteredEntries, key = { it.id }) { entry ->
                         RotationEntryCard(
                             entry = entry,
                             onReplace = { selectedEntry = entry }
                         )
+                    }
+                    
+                    // Кнопка массовой ротации
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { showBulkRotation = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = filteredEntries.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Group, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Массовая ротация (${filteredEntries.size})")
+                        }
+                        Spacer(Modifier.height(16.dp))
                     }
                 }
             }
         }
     }
 
-    // Диалог замены пароля
+    // Диалог замены пароля для одной записи
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
@@ -127,6 +201,18 @@ fun RotationScreen(
             onPasswordReplaced = { newPassword, newHint, newGenerationType ->
                 viewModel.replacePassword(entry.id, newPassword, newHint, newGenerationType)
                 selectedEntry = null
+            }
+        )
+    }
+
+    // Диалог массовой ротации
+    if (showBulkRotation) {
+        BulkRotationDialog(
+            entries = filteredEntries,
+            onDismiss = { showBulkRotation = false },
+            onBulkReplace = { replacements ->
+                viewModel.bulkReplacePasswords(replacements)
+                showBulkRotation = false
             }
         )
     }
