@@ -3,23 +3,17 @@ package com.securevault.utils
 import android.content.Context
 import android.net.Uri
 import com.securevault.data.Entry
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.*
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class ExportManager @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
+class ExportManager(private val context: Context) {
 
     companion object {
-        private const val CSV_HEADER = "id,service,username,encrypted_password,profile_id,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json"
+        private const val CSV_HEADER = "id,service,username,encrypted_password,profile_id,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json,generation_type"
     }
 
     fun exportToCsv(entries: List<Entry>, outputStream: OutputStream): Boolean {
@@ -42,7 +36,8 @@ class ExportManager @Inject constructor(
                 writer.append(entry.nextRotationDate?.toString() ?: "").append(",")
                 writer.append(entry.createdAt.toString()).append(",")
                 writer.append(entry.lastChanged.toString()).append(",")
-                writer.append(escapeCsv(entry.passwordHistoryJson ?: "")).append("\n")
+                writer.append(escapeCsv(entry.passwordHistoryJson ?: "")).append(",")
+                writer.append(escapeCsv(entry.generationType)).append("\n")
             }
             
             writer.flush()
@@ -61,15 +56,16 @@ class ExportManager @Inject constructor(
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
                 val header = reader.readLine()
-                if (header != CSV_HEADER) {
+                if (header == null || !header.startsWith("id,service,username")) {
                     reader.close()
                     return emptyList()
                 }
                 
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
+                // ✅ ИСПРАВЛЕНО: корректный парсер CSV с поддержкой quoted полей
+                val lines = readAllCsvRecords(reader)
+                for (line in lines) {
                     try {
-                        val entry = parseCsvLine(line!!, defaultProfileId)
+                        val entry = parseCsvLine(line, defaultProfileId)
                         entry?.let { importedEntries.add(it) }
                     } catch (e: Exception) {
                         continue
@@ -82,6 +78,41 @@ class ExportManager @Inject constructor(
         }
         
         return importedEntries
+    }
+
+    // ✅ НОВЫЙ МЕТОД: читает все CSV-записи, включая многострочные quoted поля
+    private fun readAllCsvRecords(reader: BufferedReader): List<String> {
+        val records = mutableListOf<String>()
+        val currentRecord = StringBuilder()
+        var inQuotes = false
+        
+        var line: String?
+        while (reader.readLine().also { line = it } != null) {
+            val currentLine = line!!
+            
+            if (currentRecord.isNotEmpty()) {
+                currentRecord.append("\n")
+            }
+            currentRecord.append(currentLine)
+            
+            // Считаем кавычки, чтобы определить, внутри ли мы quoted поля
+            for (char in currentLine) {
+                if (char == '"') inQuotes = !inQuotes
+            }
+            
+            // Если мы не внутри quoted поля — запись завершена
+            if (!inQuotes) {
+                records.add(currentRecord.toString())
+                currentRecord.clear()
+            }
+        }
+        
+        // Добавляем последнюю запись, если она есть
+        if (currentRecord.isNotEmpty()) {
+            records.add(currentRecord.toString())
+        }
+        
+        return records
     }
 
     private fun parseCsvLine(line: String, defaultProfileId: Int): Entry? {
@@ -103,28 +134,44 @@ class ExportManager @Inject constructor(
             nextRotationDate = values[11].toLongOrNull(),
             createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
             lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
-            passwordHistoryJson = values[14].takeIf { it.isNotEmpty() }
+            passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
+            generationType = if (values.size > 15) values[15] else "random"
         )
     }
 
+    // ✅ ИСПРАВЛЕНО: корректный парсер CSV-значений с поддержкой quoted полей
     private fun parseCsvValues(line: String): List<String> {
         val values = mutableListOf<String>()
         var current = StringBuilder()
         var inQuotes = false
         
-        for (char in line) {
-            when (char) {
-                '"' -> inQuotes = !inQuotes
-                ',' -> if (!inQuotes) {
-                    values.add(unescapeCsv(current.toString()))
+        var i = 0
+        while (i < line.length) {
+            val char = line[i]
+            when {
+                char == '"' && !inQuotes -> {
+                    inQuotes = true
+                }
+                char == '"' && inQuotes -> {
+                    // Проверяем экранированную кавычку ""
+                    if (i + 1 < line.length && line[i + 1] == '"') {
+                        current.append('"')
+                        i++
+                    } else {
+                        inQuotes = false
+                    }
+                }
+                char == ',' && !inQuotes -> {
+                    values.add(current.toString())
                     current = StringBuilder()
-                } else {
+                }
+                else -> {
                     current.append(char)
                 }
-                else -> current.append(char)
             }
+            i++
         }
-        values.add(unescapeCsv(current.toString()))
+        values.add(current.toString())
         
         return values
     }
@@ -136,31 +183,8 @@ class ExportManager @Inject constructor(
         return value
     }
 
-    private fun unescapeCsv(value: String): String {
-        if (value.startsWith("\"") && value.endsWith("\"")) {
-            return value.substring(1, value.length - 1).replace("\"\"", "\"")
-        }
-        return value
-    }
-
     fun generateExportFilename(): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         return "securevault_export_$timestamp.csv"
-    }
-
-    fun filterByProfile(entries: List<Entry>, profileId: Int?): List<Entry> {
-        return if (profileId == null) entries else entries.filter { it.profileId == profileId }
-    }
-
-    fun filterExpired(entries: List<Entry>): List<Entry> {
-        return entries.filter { it.isPasswordExpired() }
-    }
-
-    fun filterUpcomingRotation(entries: List<Entry>, daysAhead: Int = 7): List<Entry> {
-        return entries.filter { entry ->
-            entry.rotationEnabled && 
-            entry.nextRotationDate != null && 
-            entry.getDaysUntilRotation() in 0..daysAhead
-        }
     }
 }
