@@ -427,7 +427,7 @@ private fun SimplePasswordGeneratorDialog(
         },
         text = {
             Column(
-                modifier = androidx.compose.foundation.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (generatedPwd.isNotEmpty()) {
@@ -604,7 +604,7 @@ private fun MnemonicGeneratorDialog(
         text = {
             Column(
                 modifier = Modifier
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
