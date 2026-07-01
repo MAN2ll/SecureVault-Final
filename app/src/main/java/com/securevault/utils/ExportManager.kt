@@ -49,7 +49,6 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    // ✅ НОВЫЙ ПАРАМЕТР: generateNewIds
     fun importFromCsv(uri: Uri, defaultProfileId: Int, generateNewIds: Boolean = true): ImportResult {
         val importedEntries = mutableListOf<Entry>()
         val errors = mutableListOf<String>()
@@ -69,10 +68,9 @@ class ExportManager(private val context: Context) {
                     try {
                         val entry = parseCsvLine(line, defaultProfileId, generateNewIds)
                         if (entry != null) {
-                            // Проверяем, можно ли расшифровать пароль
                             try {
                                 @Suppress("UNUSED_EXPRESSION")
-                                entry.password  // Попытка расшифровки
+                                entry.password
                                 importedEntries.add(entry)
                             } catch (e: Exception) {
                                 keystoreErrors++
@@ -116,14 +114,12 @@ class ExportManager(private val context: Context) {
             }
             currentRecord.append(currentLine)
             
-            // ✅ ИСПРАВЛЕНО: корректный подсчёт кавычек с учётом экранирования
             var i = 0
             while (i < currentLine.length) {
                 val char = currentLine[i]
                 if (char == '"') {
-                    // Проверяем экранированную кавычку ""
                     if (i + 1 < currentLine.length && currentLine[i + 1] == '"') {
-                        i += 2  // пропускаем обе кавычки
+                        i += 2
                         continue
                     } else {
                         inQuotes = !inQuotes
@@ -149,12 +145,16 @@ class ExportManager(private val context: Context) {
         val values = parseCsvValues(line)
         if (values.size < 15) return null
 
+        // ✅ ИСПРАВЛЕНО: ВСЕГДА используем defaultProfileId (выбранный при импорте),
+        // игнорируя profileId из CSV
+        val targetProfileId = defaultProfileId
+
         return if (generateNewIds) {
             Entry.createWithNewId(
                 service = values[1],
                 username = values[2],
                 encryptedPassword = values[3],
-                profileId = values[4].toIntOrNull() ?: defaultProfileId,
+                profileId = targetProfileId,
                 url = values[5].takeIf { it.isNotEmpty() },
                 notes = values[6].takeIf { it.isNotEmpty() },
                 isFavorite = values[7] == "1",
@@ -173,7 +173,7 @@ class ExportManager(private val context: Context) {
                 service = values[1],
                 username = values[2],
                 encryptedPassword = values[3],
-                profileId = values[4].toIntOrNull() ?: defaultProfileId,
+                profileId = targetProfileId,
                 url = values[5].takeIf { it.isNotEmpty() },
                 notes = values[6].takeIf { it.isNotEmpty() },
                 isFavorite = values[7] == "1",
@@ -189,7 +189,6 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: корректный парсер CSV-значений
     private fun parseCsvValues(line: String): List<String> {
         val values = mutableListOf<String>()
         var current = StringBuilder()
@@ -203,10 +202,9 @@ class ExportManager(private val context: Context) {
                     inQuotes = true
                 }
                 char == '"' && inQuotes -> {
-                    // Проверяем экранированную кавычку ""
                     if (i + 1 < line.length && line[i + 1] == '"') {
                         current.append('"')
-                        i++  // пропускаем вторую кавычку
+                        i++
                     } else {
                         inQuotes = false
                     }
