@@ -23,7 +23,15 @@ abstract class VaultDatabase : RoomDatabase() {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext, VaultDatabase::class.java, "vault_db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                // TODO: CRITICAL! Для релизной версии менеджера паролей НЕДОПУСТИМО использовать
+                // fallbackToDestructiveMigration(). При изменении схемы БД все пароли пользователей
+                // будут безвозвратно удалены. Необходимо реализовать нормальные Migration с сохранением
+                // данных пользователей. Например:
+                // .addMigrations(MIGRATION_6_7, MIGRATION_7_8, ...)
+                // где каждая миграция добавляет новые колонки или изменяет схему без потери данных.
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
