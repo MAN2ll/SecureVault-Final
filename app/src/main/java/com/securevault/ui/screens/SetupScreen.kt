@@ -3,12 +3,14 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -23,6 +25,12 @@ fun SetupScreen(
     onCompleted: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
+    // ✅ ИНИЦИАЛИЗАЦИЯ AuthViewModel
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.init(context)
+    }
+    
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -66,9 +74,7 @@ fun SetupScreen(
                     label = { Text("Мастер-пароль") },
                     placeholder = { Text("Минимум 12 символов") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = KeyboardType.Password
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = error != null
@@ -79,9 +85,7 @@ fun SetupScreen(
                     onValueChange = { confirmPassword = it; error = null },
                     label = { Text("Подтвердите пароль") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = KeyboardType.Password
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = error != null
