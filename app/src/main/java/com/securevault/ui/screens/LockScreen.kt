@@ -3,6 +3,7 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -26,6 +28,12 @@ fun LockScreen(
     onSetupRequired: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
+    // ✅ ИНИЦИАЛИЗАЦИЯ AuthViewModel
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.init(context)
+    }
+    
     val authState by viewModel.authState.collectAsState()
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -138,9 +146,7 @@ fun LockScreen(
                     onValueChange = { password = it; error = null },
                     label = { Text("Мастер-пароль") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = KeyboardType.Password
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = error != null
