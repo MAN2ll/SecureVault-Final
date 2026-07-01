@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 import javax.inject.Inject
 
 @HiltViewModel
@@ -46,18 +47,37 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             .putString("master_hash", hashResult.hash)
             .putString("master_salt", hashResult.salt)
             .putInt("master_iterations", hashResult.iterations)
+            // ✅ Удаляем старый SHA-256 хеш если он был
+            .remove("master_hash_sha256")
             .apply()
         BruteForceGuard.resetAttempts()
         _authState.value = AuthState.Unlocked
     }
 
-    // ✅ НОВЫЙ МЕТОД: проверка пароля без изменения состояния
     fun verifyMasterPassword(password: String): Boolean {
         if (!isInitialized) return false
-        val storedHash = prefs.getString("master_hash", null) ?: return false
-        val storedSalt = prefs.getString("master_salt", null) ?: return false
+        
+        val storedHash = prefs.getString("master_hash", null)
+        val storedSalt = prefs.getString("master_salt", null)
         val iterations = prefs.getInt("master_iterations", 100_000)
-        return MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)
+        
+        // ✅ Проверяем новый PBKDF2 формат
+        if (storedHash != null && storedSalt != null) {
+            return MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)
+        }
+        
+        // ✅ Проверяем старый SHA-256 формат (для миграции)
+        val oldHash = prefs.getString("master_hash_sha256", null)
+        if (oldHash != null) {
+            val passwordHash = hashPasswordSHA256(password)
+            if (passwordHash == oldHash) {
+                // ✅ Миграция: пересохраняем в новом формате
+                setupMasterPassword(password)
+                return true
+            }
+        }
+        
+        return false
     }
 
     fun attemptUnlock(password: String): Boolean {
@@ -67,11 +87,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             return false
         }
 
-        val storedHash = prefs.getString("master_hash", null) ?: return false
-        val storedSalt = prefs.getString("master_salt", null) ?: return false
-        val iterations = prefs.getInt("master_iterations", 100_000)
-
-        val isValid = MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)
+        val isValid = verifyMasterPassword(password)
 
         if (isValid) {
             BruteForceGuard.resetAttempts()
@@ -103,11 +119,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
     }
 
     fun changeMasterPassword(oldPassword: String, newPassword: String): Boolean {
-        val storedHash = prefs.getString("master_hash", null) ?: return false
-        val storedSalt = prefs.getString("master_salt", null) ?: return false
-        val iterations = prefs.getInt("master_iterations", 100_000)
-
-        if (!MasterPasswordHasher.verify(oldPassword, storedHash, storedSalt, iterations)) {
+        if (!verifyMasterPassword(oldPassword)) {
             return false
         }
 
@@ -117,5 +129,12 @@ class AuthViewModel @Inject constructor() : ViewModel() {
 
     fun lock() {
         _authState.value = AuthState.Locked
+    }
+
+    // ✅ Хелпер для проверки старого SHA-256 хеша
+    private fun hashPasswordSHA256(password: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
     }
 }
