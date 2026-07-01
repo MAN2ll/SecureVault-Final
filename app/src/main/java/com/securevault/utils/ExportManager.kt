@@ -49,8 +49,11 @@ class ExportManager(private val context: Context) {
         }
     }
 
-    fun importFromCsv(uri: Uri, defaultProfileId: Int): List<Entry> {
+    // ✅ НОВЫЙ ПАРАМЕТР: generateNewIds
+    fun importFromCsv(uri: Uri, defaultProfileId: Int, generateNewIds: Boolean = true): ImportResult {
         val importedEntries = mutableListOf<Entry>()
+        val errors = mutableListOf<String>()
+        var keystoreErrors = 0
         
         try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -58,29 +61,47 @@ class ExportManager(private val context: Context) {
                 val header = reader.readLine()
                 if (header == null || !header.startsWith("id,service,username")) {
                     reader.close()
-                    return emptyList()
+                    return ImportResult(emptyList(), listOf("Неверный формат CSV-файла"), 0)
                 }
                 
-                // ✅ ИСПРАВЛЕНО: корректный парсер CSV с поддержкой quoted полей
                 val lines = readAllCsvRecords(reader)
-                for (line in lines) {
+                for ((index, line) in lines.withIndex()) {
                     try {
-                        val entry = parseCsvLine(line, defaultProfileId)
-                        entry?.let { importedEntries.add(it) }
+                        val entry = parseCsvLine(line, defaultProfileId, generateNewIds)
+                        if (entry != null) {
+                            // Проверяем, можно ли расшифровать пароль
+                            try {
+                                @Suppress("UNUSED_EXPRESSION")
+                                entry.password  // Попытка расшифровки
+                                importedEntries.add(entry)
+                            } catch (e: Exception) {
+                                keystoreErrors++
+                                errors.add("Строка ${index + 2}: пароль нельзя расшифровать на этом устройстве")
+                            }
+                        } else {
+                            errors.add("Строка ${index + 2}: некорректный формат")
+                        }
                     } catch (e: Exception) {
-                        continue
+                        errors.add("Строка ${index + 2}: ${e.message}")
                     }
                 }
                 reader.close()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            errors.add("Ошибка чтения файла: ${e.message}")
         }
         
-        return importedEntries
+        return ImportResult(importedEntries, errors, keystoreErrors)
     }
 
-    // ✅ НОВЫЙ МЕТОД: читает все CSV-записи, включая многострочные quoted поля
+    data class ImportResult(
+        val entries: List<Entry>,
+        val errors: List<String>,
+        val keystoreErrors: Int
+    ) {
+        val hasKeystoreErrors: Boolean get() = keystoreErrors > 0
+    }
+
     private fun readAllCsvRecords(reader: BufferedReader): List<String> {
         val records = mutableListOf<String>()
         val currentRecord = StringBuilder()
@@ -95,19 +116,28 @@ class ExportManager(private val context: Context) {
             }
             currentRecord.append(currentLine)
             
-            // Считаем кавычки, чтобы определить, внутри ли мы quoted поля
-            for (char in currentLine) {
-                if (char == '"') inQuotes = !inQuotes
+            // ✅ ИСПРАВЛЕНО: корректный подсчёт кавычек с учётом экранирования
+            var i = 0
+            while (i < currentLine.length) {
+                val char = currentLine[i]
+                if (char == '"') {
+                    // Проверяем экранированную кавычку ""
+                    if (i + 1 < currentLine.length && currentLine[i + 1] == '"') {
+                        i += 2  // пропускаем обе кавычки
+                        continue
+                    } else {
+                        inQuotes = !inQuotes
+                    }
+                }
+                i++
             }
             
-            // Если мы не внутри quoted поля — запись завершена
             if (!inQuotes) {
                 records.add(currentRecord.toString())
                 currentRecord.clear()
             }
         }
         
-        // Добавляем последнюю запись, если она есть
         if (currentRecord.isNotEmpty()) {
             records.add(currentRecord.toString())
         }
@@ -115,31 +145,51 @@ class ExportManager(private val context: Context) {
         return records
     }
 
-    private fun parseCsvLine(line: String, defaultProfileId: Int): Entry? {
+    private fun parseCsvLine(line: String, defaultProfileId: Int, generateNewIds: Boolean): Entry? {
         val values = parseCsvValues(line)
         if (values.size < 15) return null
 
-        return Entry(
-            id = values[0],
-            service = values[1],
-            username = values[2],
-            encryptedPassword = values[3],
-            profileId = values[4].toIntOrNull() ?: defaultProfileId,
-            url = values[5].takeIf { it.isNotEmpty() },
-            notes = values[6].takeIf { it.isNotEmpty() },
-            isFavorite = values[7] == "1",
-            textHint = values[8].takeIf { it.isNotEmpty() },
-            rotationEnabled = values[9] == "1",
-            rotationPeriodMonths = values[10].toIntOrNull() ?: 6,
-            nextRotationDate = values[11].toLongOrNull(),
-            createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
-            lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
-            passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
-            generationType = if (values.size > 15) values[15] else "random"
-        )
+        return if (generateNewIds) {
+            Entry.createWithNewId(
+                service = values[1],
+                username = values[2],
+                encryptedPassword = values[3],
+                profileId = values[4].toIntOrNull() ?: defaultProfileId,
+                url = values[5].takeIf { it.isNotEmpty() },
+                notes = values[6].takeIf { it.isNotEmpty() },
+                isFavorite = values[7] == "1",
+                textHint = values[8].takeIf { it.isNotEmpty() },
+                rotationEnabled = values[9] == "1",
+                rotationPeriodMonths = values[10].toIntOrNull() ?: 6,
+                nextRotationDate = values[11].toLongOrNull(),
+                createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
+                lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
+                passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
+                generationType = if (values.size > 15) values[15] else "random"
+            )
+        } else {
+            Entry(
+                id = values[0],
+                service = values[1],
+                username = values[2],
+                encryptedPassword = values[3],
+                profileId = values[4].toIntOrNull() ?: defaultProfileId,
+                url = values[5].takeIf { it.isNotEmpty() },
+                notes = values[6].takeIf { it.isNotEmpty() },
+                isFavorite = values[7] == "1",
+                textHint = values[8].takeIf { it.isNotEmpty() },
+                rotationEnabled = values[9] == "1",
+                rotationPeriodMonths = values[10].toIntOrNull() ?: 6,
+                nextRotationDate = values[11].toLongOrNull(),
+                createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
+                lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
+                passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
+                generationType = if (values.size > 15) values[15] else "random"
+            )
+        }
     }
 
-    // ✅ ИСПРАВЛЕНО: корректный парсер CSV-значений с поддержкой quoted полей
+    // ✅ ИСПРАВЛЕНО: корректный парсер CSV-значений
     private fun parseCsvValues(line: String): List<String> {
         val values = mutableListOf<String>()
         var current = StringBuilder()
@@ -156,7 +206,7 @@ class ExportManager(private val context: Context) {
                     // Проверяем экранированную кавычку ""
                     if (i + 1 < line.length && line[i + 1] == '"') {
                         current.append('"')
-                        i++
+                        i++  // пропускаем вторую кавычку
                     } else {
                         inQuotes = false
                     }
