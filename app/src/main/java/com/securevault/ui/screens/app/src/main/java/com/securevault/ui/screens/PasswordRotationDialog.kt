@@ -11,6 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -18,10 +21,6 @@ import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 
-/**
- * Диалог выбора способа замены пароля при ротации.
- * Три варианта: обычный случайный, мнемонический, ручной ввод.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
@@ -33,6 +32,9 @@ fun PasswordRotationDialog(
     onDismiss: () -> Unit,
     onPasswordReplaced: (newPassword: String, newHint: String?, newGenerationType: String) -> Unit
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    
     var selectedMode by remember { mutableIntStateOf(0) } // 0 = random, 1 = mnemonic, 2 = manual
     
     // Для обычного генератора
@@ -49,14 +51,12 @@ fun PasswordRotationDialog(
     var manualPassword by remember { mutableStateOf("") }
     var manualStrength by remember { mutableStateOf(PasswordGenerator.Strength.WEAK) }
 
-    // Генерация случайного пароля
     fun generateRandomPassword() {
         val result = PasswordGenerator.generate(16, true, true, true)
         randomPassword = result.password
         randomStrength = result.strength
     }
 
-    // Генерация мнемонических вариантов
     fun generateMnemonicVariants() {
         if (mnemonicPhrase.isBlank()) {
             mnemonicVariants = emptyList()
@@ -79,7 +79,6 @@ fun PasswordRotationDialog(
         selectedMnemonicIndex = -1
     }
 
-    // Инициализация
     LaunchedEffect(Unit) {
         generateRandomPassword()
         if (currentHint != null) {
@@ -111,7 +110,6 @@ fun PasswordRotationDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Выбор режима
                 Text("Выберите способ замены:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 
                 Row(
@@ -140,7 +138,6 @@ fun PasswordRotationDialog(
 
                 when (selectedMode) {
                     0 -> {
-                        // Обычный случайный пароль
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -153,10 +150,8 @@ fun PasswordRotationDialog(
                                 ) {
                                     Text("Новый пароль:", fontWeight = FontWeight.Bold)
                                     IconButton(onClick = {
-                                        android.content.ClipData.newPlainText("password", randomPassword).let {
-                                            val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-                                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(randomPassword))
-                                        }
+                                        clipboardManager.setText(AnnotatedString(randomPassword))
+                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
                                     }) {
                                         Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
                                     }
@@ -196,7 +191,6 @@ fun PasswordRotationDialog(
                     }
                     
                     1 -> {
-                        // Мнемонический пароль
                         OutlinedTextField(
                             value = mnemonicPhrase,
                             onValueChange = { mnemonicPhrase = it },
@@ -282,7 +276,6 @@ fun PasswordRotationDialog(
                     }
                     
                     2 -> {
-                        // Ручной ввод
                         OutlinedTextField(
                             value = manualPassword,
                             onValueChange = { 
