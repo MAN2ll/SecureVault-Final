@@ -274,7 +274,7 @@ fun PasswordRotationDialog(
                         ) {
                             Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Ещё варианты")
+                            Text("Ещё варианты (набор #$variantOffset)")
                         }
                         
                         if (validationError != null) {
