@@ -1,6 +1,7 @@
 package com.securevault
 
 import android.app.Application
+import com.securevault.security.BruteForceGuard
 import com.securevault.utils.AutoLockManager
 import com.securevault.utils.NotificationHelper
 import dagger.hilt.android.HiltAndroidApp
@@ -16,5 +17,8 @@ class SecureVaultApp : Application() {
         
         // ✅ Создание канала уведомлений
         NotificationHelper.createNotificationChannel(applicationContext)
+        
+        // ✅ Инициализация BruteForceGuard (ОБЯЗАТЕЛЬНО!)
+        BruteForceGuard.init(applicationContext)
     }
 }
