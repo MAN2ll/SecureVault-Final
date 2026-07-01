@@ -107,13 +107,38 @@ fun EntryEditorScreen(
                         
                         val encryptedPwd = CryptoUtils.encrypt(password)
                         
-                        val entry = if (existingEntry != null) {
-                            existingEntry.copy(
+                        // ✅ ИСПРАВЛЕНО: правильная логика ротации
+                        val now = System.currentTimeMillis()
+                        val newNextRotationDate = if (rotationEnabled) {
+                            // Если ротация включена, устанавливаем/пересчитываем дату
+                            val existingNextDate = existingEntry?.nextRotationDate
+                            if (existingNextDate == null || existingEntry?.rotationPeriodMonths != rotationMonths) {
+                                // Новая ротация или изменён период
+                                now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
+                            } else {
+                                // Оставляем существующую дату
+                                existingNextDate
+                            }
+                        } else {
+                            // Ротация выключена
+                            null
+                        }
+                        
+                        // ✅ ИСПРАВЛЕНО: добавление в историю только если пароль изменился
+                        val finalEntry = if (existingEntry != null) {
+                            val passwordChanged = existingEntry.password != password
+                            val baseEntry = if (passwordChanged) {
+                                existingEntry.addToPasswordHistory(existingEntry.password, existingEntry.generationType)
+                            } else {
+                                existingEntry
+                            }
+                            baseEntry.copy(
                                 service = service, username = username, encryptedPassword = encryptedPwd,
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
-                                isFavorite = isFavorite, lastChanged = System.currentTimeMillis(),
+                                nextRotationDate = newNextRotationDate,
+                                isFavorite = isFavorite, lastChanged = now,
                                 generationType = generationType
                             )
                         } else {
@@ -128,7 +153,7 @@ fun EntryEditorScreen(
                             )
                         }
                         
-                        viewModel.insert(entry)
+                        viewModel.insert(finalEntry)
                         showSuccess = true
                         onBack()
                     }) { 
@@ -231,7 +256,6 @@ fun EntryEditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             
-            // Индикатор типа генерации
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -532,7 +556,7 @@ private fun SimplePasswordGeneratorDialog(
 @Composable
 private fun MnemonicGeneratorDialog(
     onDismiss: () -> Unit,
-    onGenerated: (String, String) -> Unit // password, hint
+    onGenerated: (String, String) -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -619,7 +643,6 @@ private fun MnemonicGeneratorDialog(
                     Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
                 }
                 
-                // Кнопка "Ещё варианты"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -634,7 +657,6 @@ private fun MnemonicGeneratorDialog(
                     }
                 }
                 
-                // Список вариантов
                 if (variants.isNotEmpty()) {
                     Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     
@@ -653,86 +675,4 @@ private fun MnemonicGeneratorDialog(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            result.variantName,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            result.password,
-                                            fontSize = 14.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Сложность: ", fontSize = 10.sp)
-                                            Text(
-                                                result.strength.name,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = when (result.strength) {
-                                                    PasswordGenerator.Strength.VERY_STRONG -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
-                                                    PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-                                                    PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                                    PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-                                                }
-                                            )
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            result.mnemonicHint,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    
-                                    Column {
-                                        IconButton(onClick = {
-                                            clipboardManager.setText(AnnotatedString(result.password))
-                                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                        }) {
-                                            Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
-                                        }
-                                        RadioButton(
-                                            selected = isSelected,
-                                            onClick = { selectedVariantIndex = index }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else if (phrase.isNotBlank() && serviceName.isNotBlank()) {
-                    Text(
-                        "Заполните все поля для генерации",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (selectedVariantIndex >= 0 && selectedVariantIndex < variants.size) {
-                        val selected = variants[selectedVariantIndex]
-                        onGenerated(selected.password, selected.mnemonicHint)
-                    }
-                },
-                enabled = selectedVariantIndex >= 0
-            ) {
-                Icon(Icons.Default.Check, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Выбрать")
-            }
-        },
-        dismissButton = { TextButton(onDismiss) { Text("Отмена") } },
-        modifier = Modifier.fillMaxWidth(0.95f)
-    )
-}
+                                    verticalAlignment
