@@ -113,8 +113,15 @@ fun PasswordRotationDialog(
                 Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column {
-                    Text("Замена пароля", fontWeight = FontWeight.Bold)
-                    Text("Сервис: " + serviceName.toString(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = "Замена пароля",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Сервис: $serviceName",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         },
@@ -125,7 +132,11 @@ fun PasswordRotationDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Выберите способ замены:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    text = "Выберите способ замены:",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -134,17 +145,17 @@ fun PasswordRotationDialog(
                     FilterChip(
                         selected = selectedMode == 0,
                         onClick = { selectedMode = 0 },
-                        label = { Text("Случайный", fontSize = 11.sp) }
+                        label = { Text(text = "Случайный", fontSize = 11.sp) }
                     )
                     FilterChip(
                         selected = selectedMode == 1,
                         onClick = { selectedMode = 1 },
-                        label = { Text("Мнемонический", fontSize = 11.sp) }
+                        label = { Text(text = "Мнемонический", fontSize = 11.sp) }
                     )
                     FilterChip(
                         selected = selectedMode == 2,
                         onClick = { selectedMode = 2 },
-                        label = { Text("Вручную", fontSize = 11.sp) }
+                        label = { Text(text = "Вручную", fontSize = 11.sp) }
                     )
                 }
 
@@ -160,7 +171,7 @@ fun PasswordRotationDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Новый пароль:", fontWeight = FontWeight.Bold)
+                                    Text(text = "Новый пароль:", fontWeight = FontWeight.Bold)
                                     IconButton(onClick = {
                                         clipboardManager.setText(AnnotatedString(randomPassword))
                                         android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
@@ -170,25 +181,25 @@ fun PasswordRotationDialog(
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    randomPassword.toString(),
+                                    text = randomPassword,
                                     fontSize = 18.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Сложность: ", fontSize = 12.sp)
-                                    val strengthText = randomStrength.name.toString()
-                                    val strengthColor = when (randomStrength) {
+                                    Text(text = "Сложность: ", fontSize = 12.sp)
+                                    val strengthColor: Color = when (randomStrength) {
                                         PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
                                         PasswordGenerator.Strength.STRONG -> Color(0xFF2196F3)
                                         PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
                                         PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
                                     }
                                     Text(
-                                        strengthText,
+                                        text = randomStrength.name,
                                         fontWeight = FontWeight.Bold,
-                                        color = strengthColor
+                                        color = strengthColor,
+                                        fontSize = 12.sp
                                     )
                                 }
                             }
@@ -200,7 +211,7 @@ fun PasswordRotationDialog(
                         ) {
                             Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Сгенерировать другой")
+                            Text(text = "Сгенерировать другой")
                         }
                     }
                     
@@ -208,26 +219,26 @@ fun PasswordRotationDialog(
                         OutlinedTextField(
                             value = mnemonicPhrase,
                             onValueChange = { mnemonicPhrase = it },
-                            label = { Text("Мнемоническая фраза") },
-                            placeholder = { Text("например: моя кошка любит рыбу") },
+                            label = { Text(text = "Мнемоническая фраза") },
+                            placeholder = { Text(text = "например: моя кошка любит рыбу") },
                             modifier = Modifier.fillMaxWidth()
                         )
                         
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Параметры генерации:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                                Text(text = "Параметры генерации:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                 Spacer(Modifier.height(8.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Leet-замены (a→@, o→0...)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                    Text(text = "Leet-замены (a→@, o→0...)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                                    Text("Код сервиса", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                    Text(text = "Код сервиса", fontSize = 12.sp, Modifier.padding(start = 8.dp))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                                    Text("Код ротации (MMYY)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
+                                    Text(text = "Код ротации (MMYY)", fontSize = 12.sp, Modifier.padding(start = 8.dp))
                                 }
                             }
                         }
@@ -244,7 +255,7 @@ fun PasswordRotationDialog(
                                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Старая подсказка: " + currentHint.toString(),
+                                        text = "Старая подсказка: $currentHint",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
@@ -259,27 +270,39 @@ fun PasswordRotationDialog(
                         ) {
                             Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Ещё варианты")
+                            Text(text = "Ещё варианты")
                         }
                         
                         if (validationError != null) {
-                            val errorText = validationError ?: ""
-                            Text(errorText.toString(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            Text(
+                                text = validationError ?: "",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
                         }
                         
                         if (mnemonicVariants.isNotEmpty()) {
-                            Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text(text = "Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             
                             mnemonicVariants.forEachIndexed { index, result ->
                                 val isSelected = selectedMnemonicIndex == index
+                                
+                                // ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: выносим все значения в переменные ПЕРЕД Card
+                                val variantName: String = result.variantName
+                                val passwordValue: String = result.password
+                                val strengthName: String = result.strength.name
+                                val hintValue: String = result.mnemonicHint
+                                val combinedLabel: String = "$strengthName • $hintValue"
+                                
+                                val cardColor = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                }
+                                
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isSelected) 
-                                            MaterialTheme.colorScheme.primaryContainer 
-                                        else 
-                                            MaterialTheme.colorScheme.surfaceVariant
-                                    )
+                                    colors = CardDefaults.cardColors(containerColor = cardColor)
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -287,21 +310,19 @@ fun PasswordRotationDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            // ✅ ИСПРАВЛЕНО: явные .toString() для всех значений
                                             Text(
-                                                result.variantName.toString(),
+                                                text = variantName,
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
                                             Text(
-                                                result.password.toString(),
+                                                text = passwordValue,
                                                 fontSize = 13.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 fontWeight = FontWeight.Bold
                                             )
-                                            val combinedText = result.strength.name.toString() + " • " + result.mnemonicHint.toString()
                                             Text(
-                                                combinedText,
+                                                text = combinedLabel,
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -323,24 +344,24 @@ fun PasswordRotationDialog(
                                 manualPassword = it
                                 manualStrength = calculateManualStrength(it)
                             },
-                            label = { Text("Новый пароль") },
+                            label = { Text(text = "Новый пароль") },
                             modifier = Modifier.fillMaxWidth()
                         )
                         
                         if (manualPassword.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Сложность: ", fontSize = 12.sp)
-                                val manualStrengthText = manualStrength.name.toString()
-                                val manualStrengthColor = when (manualStrength) {
+                                Text(text = "Сложность: ", fontSize = 12.sp)
+                                val manualStrengthColor: Color = when (manualStrength) {
                                     PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
                                     PasswordGenerator.Strength.STRONG -> Color(0xFF2196F3)
                                     PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
                                     PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
                                 }
                                 Text(
-                                    manualStrengthText,
+                                    text = manualStrength.name,
                                     fontWeight = FontWeight.Bold,
-                                    color = manualStrengthColor
+                                    color = manualStrengthColor,
+                                    fontSize = 12.sp
                                 )
                             }
                         }
@@ -377,12 +398,12 @@ fun PasswordRotationDialog(
                     else -> false
                 }
             ) {
-                Text("Заменить пароль")
+                Text(text = "Заменить пароль")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена")
+                Text(text = "Отмена")
             }
         },
         modifier = Modifier.fillMaxWidth(0.95f)
