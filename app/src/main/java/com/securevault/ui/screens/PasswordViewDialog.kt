@@ -3,148 +3,163 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordViewDialog(
     entry: Entry,
-    onDismiss: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    onDismiss: () -> Unit
 ) {
-    var masterPwd by remember { mutableStateOf("") }
-    var isRevealed by remember { mutableStateOf(false) }
-    var isError by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    var showCurrentPassword by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null) }
-                }
-                Text(entry.username, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
-                
-                if (!isRevealed) {
-                    Text("Введите мастер-пароль для просмотра:", fontSize = 14.sp)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = masterPwd,
-                        onValueChange = { masterPwd = it; isError = false },
-                        visualTransformation = PasswordVisualTransformation(),
-                        isError = isError,
-                        modifier = Modifier.fillMaxWidth()
+    val history = entry.getPasswordHistory()
+    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(entry.service, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Текущий пароль
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                    if (isError) Text("Неверный пароль!", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                    
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                        TextButton(onClick = onDismiss) { Text("Отмена") }
-                        Button(onClick = {
-                            if (authViewModel.tryUnlock(masterPwd)) {
-                                isRevealed = true
-                            } else {
-                                isError = true
-                            }
-                        }) { Text("Показать") }
-                    }
-                } else {
-                    // ✅ Текущий пароль
-                    Text("Текущий пароль:", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-                    Text(
-                        text = entry.password,
-                        fontSize = 18.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                    
-                    if (!entry.textHint.isNullOrBlank()) {
-                        Text("Подсказка: ${entry.textHint}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                    }
-                    
-                    Spacer(Modifier.height(16.dp))
-                    
-                    // ✅ КНОПКА ИСТОРИИ
-                    val history = entry.getPasswordHistory()
-                    if (history.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { showHistory = !showHistory },
-                            modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Текущий пароль:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.History, null, Modifier.size(18.dp))
-                            Spacer(Modifier.size(8.dp))
-                            Text("История изменений (${history.size})")
-                        }
-                        
-                        // ✅ ПОКАЗ ИСТОРИИ
-                        if (showHistory) {
-                            Spacer(Modifier.height(12.dp))
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .padding(12.dp)
-                                        .heightIn(max = 200.dp)
-                                        .verticalScroll(rememberScrollState())
-                                ) {
-                                    Text("Предыдущие пароли:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Spacer(Modifier.height(8.dp))
-                                    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-                                    history.forEachIndexed { idx, item ->
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                                        ) {
-                                            Column(modifier = Modifier.padding(8.dp)) {
-                                                Text(
-                                                    text = item.password,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = dateFormat.format(Date(item.date)),
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
+                            Text(
+                                if (showCurrentPassword) entry.password else "••••••••••••",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row {
+                                IconButton(onClick = { showCurrentPassword = !showCurrentPassword }) {
+                                    Icon(
+                                        if (showCurrentPassword) Icons.Default.Lock else Icons.Default.ContentCopy,
+                                        null,
+                                        Modifier.size(20.dp)
+                                    )
+                                }
+                                if (showCurrentPassword) {
+                                    IconButton(onClick = {
+                                        clipboardManager.setText(AnnotatedString(entry.password))
+                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }) {
+                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
                                     }
                                 }
                             }
                         }
                     }
-                    
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = onDismiss) { Text("Закрыть") }
+                }
+
+                // Информация о записи
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Информация:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Тип генерации: ${if (entry.generationType == "mnemonic") "Мнемонический (AMPG)" else "Случайный"}", fontSize = 11.sp)
+                        if (entry.textHint != null) {
+                            Text("Подсказка: ${entry.textHint}", fontSize = 11.sp)
+                        }
+                        Text("Последнее изменение: ${dateFormat.format(Date(entry.lastChanged))}", fontSize = 11.sp)
+                    }
+                }
+
+                // История изменений (без старых паролей!)
+                if (history.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.History, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("История изменений", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            history.take(5).forEach { item ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            dateFormat.format(Date(item.date)),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            when (item.type) {
+                                                "mnemonic" -> "Мнемоническая ротация"
+                                                "random" -> "Случайная ротация"
+                                                "legacy" -> "Старая запись"
+                                                else -> "Изменение"
+                                            },
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text(
+                                        "Старый пароль скрыт",
+                                        fontSize = 10.sp,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Закрыть")
+            }
+        },
+        modifier = Modifier.fillMaxWidth(0.95f)
+    )
 }
