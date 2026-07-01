@@ -1,127 +1,69 @@
 package com.securevault.security
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
+import android.content.SharedPreferences
 
-@Singleton
-class BruteForceGuard @Inject constructor(
-    @ApplicationContext private val context: Context  //  Добавлена аннотация
-) {
-    companion object {
-        private const val PREFS_NAME = "brute_force_prefs"
-        private const val KEY_ATTEMPTS = "failed_attempts"
-        private const val KEY_LOCKED_UNTIL = "locked_until"
-        private const val KEY_WIPE_TRIGGERED = "wipe_triggered"
-        
-        private const val MAX_ATTEMPTS = 10
-        private const val LOCKOUT_1_MIN = 60_000L
-        private const val LOCKOUT_5_MIN = 300_000L
-        private const val LOCKOUT_30_MIN = 1_800_000L
-        private const val LOCKOUT_PERMANENT = Long.MAX_VALUE
+object BruteForceGuard {
+
+    private const val PREFS_NAME = "brute_force_guard"
+    private const val KEY_ATTEMPTS = "failed_attempts"
+    private const val KEY_LOCKOUT_UNTIL = "lockout_until"
+    private const val KEY_TOTAL_FAILURES = "total_failures"
+
+    private lateinit var prefs: SharedPreferences
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    private val masterKey by lazy {
-        MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+    fun getFailedAttempts(): Int = prefs.getInt(KEY_ATTEMPTS, 0)
+    fun getTotalFailures(): Int = prefs.getInt(KEY_TOTAL_FAILURES, 0)
+    fun getLockoutUntil(): Long = prefs.getLong(KEY_LOCKOUT_UNTIL, 0)
+
+    fun isLockedOut(): Boolean {
+        val lockoutUntil = getLockoutUntil()
+        return lockoutUntil > System.currentTimeMillis()
     }
 
-    private val prefs by lazy {
-        EncryptedSharedPreferences.create(
-            context,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    fun getRemainingLockoutMillis(): Long {
+        val lockoutUntil = getLockoutUntil()
+        return (lockoutUntil - System.currentTimeMillis()).coerceAtLeast(0)
     }
 
-    fun getFailedAttempts(): Int {
-        return prefs.getInt(KEY_ATTEMPTS, 0)
-    }
+    fun recordFailedAttempt() {
+        val attempts = getFailedAttempts() + 1
+        prefs.edit().putInt(KEY_ATTEMPTS, attempts).apply()
+        prefs.edit().putInt(KEY_TOTAL_FAILURES, getTotalFailures() + 1).apply()
 
-    fun getLockedUntil(): Long {
-        return prefs.getLong(KEY_LOCKED_UNTIL, 0L)
-    }
-
-    fun isLocked(): Boolean {
-        val lockedUntil = getLockedUntil()
-        return lockedUntil > 0L && System.currentTimeMillis() < lockedUntil
-    }
-
-    fun isWipeTriggered(): Boolean {
-        return prefs.getBoolean(KEY_WIPE_TRIGGERED, false)
-    }
-
-    fun incrementAttempts() {
-        val current = getFailedAttempts()
-        val newCount = current + 1
-        
-        prefs.edit()
-            .putInt(KEY_ATTEMPTS, newCount)
-            .apply()
-        
-        when {
-            newCount >= MAX_ATTEMPTS -> {
-                triggerWipe()
-            }
-            newCount >= 7 -> {
-                setLockout(LOCKOUT_30_MIN)
-            }
-            newCount >= 5 -> {
-                setLockout(LOCKOUT_5_MIN)
-            }
-            newCount >= 3 -> {
-                setLockout(LOCKOUT_1_MIN)
-            }
+        // Прогрессивная блокировка
+        val lockoutMillis = when {
+            attempts >= 10 -> 0L // Сброс данных после 10 попыток
+            attempts >= 7 -> 60_000L // 1 минута
+            attempts >= 5 -> 30_000L // 30 секунд
+            else -> 0L
         }
-    }
 
-    private fun setLockout(durationMs: Long) {
-        val unlockTime = System.currentTimeMillis() + durationMs
-        prefs.edit()
-            .putLong(KEY_LOCKED_UNTIL, unlockTime)
-            .apply()
-    }
-
-    private fun triggerWipe() {
-        prefs.edit()
-            .putLong(KEY_LOCKED_UNTIL, LOCKOUT_PERMANENT)
-            .putBoolean(KEY_WIPE_TRIGGERED, true)
-            .apply()
+        if (lockoutMillis > 0) {
+            prefs.edit().putLong(KEY_LOCKOUT_UNTIL, System.currentTimeMillis() + lockoutMillis).apply()
+        }
     }
 
     fun resetAttempts() {
         prefs.edit()
             .putInt(KEY_ATTEMPTS, 0)
-            .putLong(KEY_LOCKED_UNTIL, 0L)
+            .putLong(KEY_LOCKOUT_UNTIL, 0)
             .apply()
     }
 
-    fun getRemainingLockoutTime(): Long {
-        val lockedUntil = getLockedUntil()
-        val now = System.currentTimeMillis()
-        return if (lockedUntil > now) {
-            lockedUntil - now
-        } else {
-            0L
-        }
-    }
+    fun shouldWipeData(): Boolean = getFailedAttempts() >= 10
 
-    fun formatLockoutTime(milliseconds: Long): String {
-        val seconds = milliseconds / 1000
+    fun getAttemptsWarning(): String? {
+        val attempts = getFailedAttempts()
         return when {
-            seconds < 60 -> "$seconds сек"
-            seconds < 3600 -> "${seconds / 60} мин"
-            else -> "${seconds / 3600} час"
+            attempts >= 10 -> "Слишком много попыток. Данные будут удалены."
+            attempts >= 7 -> "Блокировка на 1 минуту."
+            attempts >= 5 -> "Блокировка на 30 секунд."
+            else -> null
         }
-    }
-
-    fun shouldAllowAttempt(): Boolean {
-        return !isLocked() && !isWipeTriggered()
     }
 }
