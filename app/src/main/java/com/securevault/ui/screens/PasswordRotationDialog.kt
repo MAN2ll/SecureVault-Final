@@ -22,16 +22,6 @@ import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 
-// ✅ Вспомогательная функция для получения цвета сложности
-private fun getStrengthColor(strength: PasswordGenerator.Strength): Color {
-    return when (strength) {
-        PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
-        PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-        PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-        PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
@@ -124,7 +114,7 @@ fun PasswordRotationDialog(
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("Замена пароля", fontWeight = FontWeight.Bold)
-                    Text("Сервис: $serviceName", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Сервис: " + serviceName, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -180,7 +170,7 @@ fun PasswordRotationDialog(
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    randomPassword,
+                                    text = randomPassword,
                                     fontSize = 18.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold
@@ -188,11 +178,17 @@ fun PasswordRotationDialog(
                                 Spacer(Modifier.height(8.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Сложность: ", fontSize = 12.sp)
-                                    // ✅ ИСПРАВЛЕНО: используем вспомогательную функцию
+                                    val strengthText = randomStrength.name
+                                    val strengthColor = when (randomStrength) {
+                                        PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
+                                        PasswordGenerator.Strength.STRONG -> Color(0xFF2196F3)
+                                        PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
+                                        PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
+                                    }
                                     Text(
-                                        text = randomStrength.name,
+                                        text = strengthText,
                                         fontWeight = FontWeight.Bold,
-                                        color = getStrengthColor(randomStrength)
+                                        color = strengthColor
                                     )
                                 }
                             }
@@ -248,7 +244,7 @@ fun PasswordRotationDialog(
                                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Старая подсказка: $currentHint",
+                                        "Старая подсказка: " + currentHint,
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
@@ -267,7 +263,8 @@ fun PasswordRotationDialog(
                         }
                         
                         if (validationError != null) {
-                            Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            val errorText = validationError ?: ""
+                            Text(text = errorText, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                         
                         if (mnemonicVariants.isNotEmpty()) {
@@ -290,22 +287,24 @@ fun PasswordRotationDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
+                                            val variantName = result.variantName
                                             Text(
-                                                text = result.variantName,
+                                                text = variantName,
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
+                                            val passwordText = result.password
                                             Text(
-                                                text = result.password,
+                                                text = passwordText,
                                                 fontSize = 13.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 fontWeight = FontWeight.Bold
                                             )
-                                            // ✅ ИСПРАВЛЕНО: явное указание text =
-                                            val strengthLabel = result.strength.name
-                                            val hintLabel = result.mnemonicHint
+                                            val strengthText = result.strength.name
+                                            val hintText = result.mnemonicHint
+                                            val combinedText = strengthText + " • " + hintText
                                             Text(
-                                                text = "$strengthLabel • $hintLabel",
+                                                text = combinedText,
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -334,11 +333,17 @@ fun PasswordRotationDialog(
                         if (manualPassword.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Сложность: ", fontSize = 12.sp)
-                                // ✅ ИСПРАВЛЕНО: используем вспомогательную функцию
+                                val manualStrengthText = manualStrength.name
+                                val manualStrengthColor = when (manualStrength) {
+                                    PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
+                                    PasswordGenerator.Strength.STRONG -> Color(0xFF2196F3)
+                                    PasswordGenerator.Strength.MEDIUM -> Color(0xFFFF9800)
+                                    PasswordGenerator.Strength.WEAK -> Color(0xFFF44336)
+                                }
                                 Text(
-                                    text = manualStrength.name,
+                                    text = manualStrengthText,
                                     fontWeight = FontWeight.Bold,
-                                    color = getStrengthColor(manualStrength)
+                                    color = manualStrengthColor
                                 )
                             }
                         }
