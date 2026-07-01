@@ -156,7 +156,7 @@ fun MnemonicGeneratorScreen(
             ) {
                 Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Ещё варианты", fontWeight = FontWeight.Medium)
+                Text("Ещё варианты (набор #$variantOffset)", fontWeight = FontWeight.Medium)
             }
 
             if (variants.isNotEmpty()) {
