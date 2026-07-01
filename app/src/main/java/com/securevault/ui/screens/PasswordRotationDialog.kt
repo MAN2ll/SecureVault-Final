@@ -45,7 +45,6 @@ fun PasswordRotationDialog(
     var selectedMnemonicIndex by remember { mutableIntStateOf(-1) }
     var variantOffset by remember { mutableIntStateOf(0) }
     
-    // ✅ НОВЫЕ ФИЛЬТРЫ
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
@@ -134,20 +133,17 @@ fun PasswordRotationDialog(
                     FilterChip(
                         selected = selectedMode == 0,
                         onClick = { selectedMode = 0 },
-                        label = { Text("Случайный", fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Default.Casino, null, Modifier.size(16.dp)) }
+                        label = { Text("Случайный", fontSize = 11.sp) }
                     )
                     FilterChip(
                         selected = selectedMode == 1,
                         onClick = { selectedMode = 1 },
-                        label = { Text("Мнемонический", fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Default.Lightbulb, null, Modifier.size(16.dp)) }
+                        label = { Text("Мнемонический", fontSize = 11.sp) }
                     )
                     FilterChip(
                         selected = selectedMode == 2,
                         onClick = { selectedMode = 2 },
-                        label = { Text("Вручную", fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) }
+                        label = { Text("Вручную", fontSize = 11.sp) }
                     )
                 }
 
@@ -214,7 +210,6 @@ fun PasswordRotationDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                         
-                        // ✅ НОВЫЕ ФИЛЬТРЫ
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text("Параметры генерации:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
@@ -299,8 +294,11 @@ fun PasswordRotationDialog(
                                                 fontFamily = FontFamily.Monospace,
                                                 fontWeight = FontWeight.Bold
                                             )
+                                            // ✅ ИСПРАВЛЕНО: явное преобразование в String
+                                            val strengthText = result.strength.name.toString()
+                                            val hintText = result.mnemonicHint.toString()
                                             Text(
-                                                "${result.strength.name} • ${result.mnemonicHint}",
+                                                text = "$strengthText • $hintText",
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
