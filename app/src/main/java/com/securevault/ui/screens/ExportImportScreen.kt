@@ -70,14 +70,28 @@ fun ExportImportScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            val imported = exportManager.importFromCsv(it, importTargetProfileId)
+            // ✅ ИСПРАВЛЕНО: передаём выбранный профиль и генерируем новые ID
+            val result = exportManager.importFromCsv(it, importTargetProfileId, generateNewIds = true)
             scope.launch {
-                imported.forEach { entry -> vaultViewModel.insert(entry) }
-                Toast.makeText(
-                    context,
-                    if (imported.isNotEmpty()) "Импортировано: ${imported.size} записей" else "Не удалось импортировать файл",
-                    Toast.LENGTH_LONG
-                ).show()
+                result.entries.forEach { entry -> vaultViewModel.insert(entry) }
+                
+                val message = buildString {
+                    if (result.entries.isNotEmpty()) {
+                        append("Импортировано: ${result.entries.size} записей")
+                    }
+                    if (result.hasKeystoreErrors) {
+                        if (isNotEmpty()) append("\n")
+                        append("⚠️ ${result.keystoreErrors} записей нельзя расшифровать на этом устройстве (разные ключи Android Keystore)")
+                    }
+                    if (result.errors.isNotEmpty() && result.entries.isEmpty()) {
+                        append("Не удалось импортировать: ${result.errors.take(3).joinToString("; ")}")
+                    }
+                    if (isEmpty()) {
+                        append("Файл не содержит данных")
+                    }
+                }
+                
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -96,7 +110,8 @@ fun ExportImportScreen(
                     Spacer(Modifier.height(8.dp))
                     Text("⚠️ Перенос между устройствами:", fontWeight = FontWeight.Bold)
                     Text(
-                        "Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве.",
+                        "Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве. " +
+                        "Для переноса на другое устройство нужен защищённый экспорт с отдельным паролем (будет в будущих версиях).",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -399,7 +414,7 @@ fun ExportImportScreen(
                             Text(
                                 "• Файл должен быть в формате CSV, экспортированным из SecureVault\n" +
                                 "• Пароли импортируются в зашифрованном виде\n" +
-                                "• Все записи будут добавлены в выбранный профиль\n" +
+                                "• Все записи будут добавлены в выбранный профиль с новыми ID\n" +
                                 "• Дубликаты могут быть созданы (проверяйте вручную)",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
