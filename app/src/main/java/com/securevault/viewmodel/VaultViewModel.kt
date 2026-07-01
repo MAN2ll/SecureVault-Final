@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.MnemonicPasswordGenerator
-import com.securevault.utils.PasswordGenerator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -32,11 +30,24 @@ class VaultViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Записи с включённой ротацией
+    val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
+        .combine(_currentProfileId) { list, profileId ->
+            if (profileId == null) list else list.filter { it.profileId == profileId }
+        }
+        .map { list ->
+            list.filter { it.rotationEnabled && it.nextRotationDate != null }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
-    fun update(entry: Entry) = viewModelScope.launch { repository.update(entry) }
+    
+    // ✅ НОВЫЙ МЕТОД: обновление записи
+    fun updateEntry(entry: Entry) = viewModelScope.launch { repository.update(entry) }
+    
     fun delete(entry: Entry) = viewModelScope.launch { repository.delete(entry) }
     fun deleteAll() = viewModelScope.launch { repository.deleteAll() }
 
@@ -44,48 +55,45 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ ДОБАВЛЕНО: функция updatePassword для ReminderScreen
-    fun updatePassword(id: String, newPassword: String) = viewModelScope.launch {
-        val entry = repository.getById(id) ?: return@launch
-        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
-            encryptedPassword = CryptoUtils.encrypt(newPassword),
-            lastChanged = System.currentTimeMillis()
+    // ✅ НОВЫЙ МЕТОД: обновление настроек ротации
+    fun updateRotationSettings(entryId: String, enabled: Boolean, periodMonths: Int) = viewModelScope.launch {
+        val entry = repository.getById(entryId) ?: return@launch
+        
+        val now = System.currentTimeMillis()
+        val newNextRotationDate = if (enabled) {
+            now + (periodMonths * 30L * 24 * 60 * 60 * 1000)
+        } else {
+            null
+        }
+        
+        val updated = entry.copy(
+            rotationEnabled = enabled,
+            rotationPeriodMonths = periodMonths,
+            nextRotationDate = newNextRotationDate
         )
         repository.update(updated)
     }
 
-    // ✅ ИСПРАВЛЕНО: корректная ротация с обновлением даты
-    fun rotatePassword(id: String) = viewModelScope.launch {
-        val entry = repository.getById(id) ?: return@launch
-        
-        val newPassword: String
-        val newHint: String?
-        
-        if (entry.generationType == "mnemonic" && entry.textHint != null) {
-            val params = MnemonicPasswordGenerator.GenerationParams(
-                phrase = entry.textHint,
-                serviceName = entry.service,
-                rotationMonth = null,
-                rotationYear = null,
-                targetLength = 16,
-                includeLeet = true,
-                includeServiceCode = true,
-                includeRotationCode = true
-            )
-            val result = MnemonicPasswordGenerator.generate(params)
-            newPassword = result.password
-            newHint = result.mnemonicHint
-        } else {
-            newPassword = PasswordGenerator.generate(16, true, true, true).password
-            newHint = entry.textHint
-        }
+    // ✅ НОВЫЙ МЕТОД: замена пароля (вызывается после выбора пользователем)
+    fun replacePassword(
+        entryId: String, 
+        newPassword: String, 
+        newHint: String?, 
+        newGenerationType: String
+    ) = viewModelScope.launch {
+        val entry = repository.getById(entryId) ?: return@launch
         
         val now = System.currentTimeMillis()
-        val newNextRotationDate = now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+        val newNextRotationDate = if (entry.rotationEnabled) {
+            now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+        } else {
+            null
+        }
         
         val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
             textHint = newHint,
+            generationType = newGenerationType,
             lastChanged = now,
             nextRotationDate = newNextRotationDate
         )
@@ -93,6 +101,7 @@ class VaultViewModel @Inject constructor(
     }
 
     fun bulkRotatePasswords(ids: List<String>) = viewModelScope.launch {
-        ids.forEach { rotatePassword(it) }
+        // Убрано: массовая автоматическая замена
+        // Теперь пользователь должен выбирать пароль для каждой записи отдельно
     }
 }
