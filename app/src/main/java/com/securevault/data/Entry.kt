@@ -28,13 +28,11 @@ data class Entry(
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
-    // ✅ ИСПРАВЛЕНО: убрал forEach, использую простой цикл
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
         
         val result = mutableListOf<PasswordHistoryItem>()
         
-        // Новый формат: "hash:date:type|hash:date:type|..."
         try {
             val entries = passwordHistoryJson.split("|")
             for (entry in entries) {
@@ -49,7 +47,6 @@ data class Entry(
             }
             return result
         } catch (e: Exception) {
-            // Обратная совместимость со старым JSON-форматом
             return try {
                 val legacyResult = mutableListOf<PasswordHistoryItem>()
                 val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
@@ -119,6 +116,34 @@ data class Entry(
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                 nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
                 isFavorite = isFavorite,
+                generationType = generationType
+            )
+        }
+
+        // ✅ НОВЫЙ МЕТОД: создание записи с новым ID для импорта
+        fun createWithNewId(
+            service: String, username: String, encryptedPassword: String,
+            profileId: Int,
+            url: String? = null, notes: String? = null,
+            textHint: String? = null,
+            isFavorite: Boolean = false,
+            rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            nextRotationDate: Long? = null,
+            createdAt: Long = System.currentTimeMillis(),
+            lastChanged: Long = System.currentTimeMillis(),
+            passwordHistoryJson: String? = null,
+            generationType: String = "random"
+        ): Entry {
+            return Entry(
+                id = UUID.randomUUID().toString(),
+                service = service, username = username, encryptedPassword = encryptedPassword,
+                profileId = profileId,
+                url = url, notes = notes,
+                textHint = textHint,
+                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate, createdAt = createdAt, lastChanged = lastChanged,
+                isFavorite = isFavorite,
+                passwordHistoryJson = passwordHistoryJson,
                 generationType = generationType
             )
         }
