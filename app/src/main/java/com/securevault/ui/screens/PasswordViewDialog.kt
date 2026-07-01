@@ -34,15 +34,18 @@ fun PasswordViewDialog(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
+    // ✅ РАЗДЕЛЬНЫЕ СОСТОЯНИЯ для пароля и истории
     var isPasswordRevealed by remember { mutableStateOf(false) }
-    var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var isHistoryRevealed by remember { mutableStateOf(false) }
+    var showPasswordConfirmDialog by remember { mutableStateOf(false) }
+    var showHistoryConfirmDialog by remember { mutableStateOf(false) }
 
     val history = entry.getPasswordHistory()
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
 
     AlertDialog(
         onDismissRequest = {
+            // ✅ При закрытии всё скрывается
             isPasswordRevealed = false
             isHistoryRevealed = false
             onDismiss()
@@ -56,6 +59,7 @@ fun PasswordViewDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Информация о записи (всегда видна)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Информация:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -114,6 +118,7 @@ fun PasswordViewDialog(
                     }
                 }
 
+                // ✅ ПАРОЛЬ: показывается только после подтверждения
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -131,6 +136,7 @@ fun PasswordViewDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("Текущий пароль:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                // ✅ Копирование только после подтверждения
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(entry.password))
                                     android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
@@ -156,7 +162,7 @@ fun PasswordViewDialog(
                                     Text("••••••••••••", fontSize = 16.sp, fontFamily = FontFamily.Monospace)
                                 }
                                 Button(
-                                    onClick = { showMasterPasswordDialog = true },
+                                    onClick = { showPasswordConfirmDialog = true },
                                     modifier = Modifier.padding(start = 8.dp)
                                 ) {
                                     Icon(Icons.Default.Visibility, null, Modifier.size(16.dp))
@@ -168,6 +174,7 @@ fun PasswordViewDialog(
                     }
                 }
 
+                // ✅ ИСТОРИЯ: показывается только после отдельного подтверждения
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         if (isHistoryRevealed) {
@@ -234,8 +241,9 @@ fun PasswordViewDialog(
                                     Spacer(Modifier.width(8.dp))
                                     Text("История ротации", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                 }
+                                // ✅ Отдельная кнопка для истории
                                 Button(
-                                    onClick = { showMasterPasswordDialog = true },
+                                    onClick = { showHistoryConfirmDialog = true },
                                     modifier = Modifier.padding(start = 8.dp)
                                 ) {
                                     Text("Показать", fontSize = 11.sp)
@@ -260,15 +268,29 @@ fun PasswordViewDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    if (showMasterPasswordDialog) {
+    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ ПАРОЛЯ
+    if (showPasswordConfirmDialog) {
         ConfirmMasterPasswordDialog(
             context = context,
             onConfirmed = {
-                showMasterPasswordDialog = false
+                showPasswordConfirmDialog = false
                 isPasswordRevealed = true
-                isHistoryRevealed = true
+                // ✅ История НЕ раскрывается автоматически
             },
-            onDismiss = { showMasterPasswordDialog = false }
+            onDismiss = { showPasswordConfirmDialog = false }
+        )
+    }
+
+    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ ИСТОРИИ
+    if (showHistoryConfirmDialog) {
+        ConfirmMasterPasswordDialog(
+            context = context,
+            onConfirmed = {
+                showHistoryConfirmDialog = false
+                isHistoryRevealed = true
+                // ✅ Пароль НЕ раскрывается автоматически
+            },
+            onDismiss = { showHistoryConfirmDialog = false }
         )
     }
 }
@@ -307,7 +329,6 @@ private fun ConfirmMasterPasswordDialog(
         },
         confirmButton = {
             Button(onClick = {
-                // ✅ ПРЯМАЯ ПРОВЕРКА ХЕША — не зависит от AuthViewModel.init()
                 val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
                 val storedHash = prefs.getString("master_hash", null)
                 val storedSalt = prefs.getString("master_salt", null)
