@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 import kotlin.random.Random
@@ -82,9 +83,11 @@ fun EntryEditorScreen(
     var rotationEnabled by remember { mutableStateOf(false) }
     var rotationMonths by remember { mutableIntStateOf(6) }
     var isFavorite by remember { mutableStateOf(false) }
+    var generationType by remember { mutableStateOf("random") }
     
     var showPassword by remember { mutableStateOf(false) }
     var showGeneratorDialog by remember { mutableStateOf(false) }
+    var showMnemonicDialog by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
 
@@ -99,6 +102,7 @@ fun EntryEditorScreen(
             rotationEnabled = entry.rotationEnabled
             rotationMonths = entry.rotationPeriodMonths
             isFavorite = entry.isFavorite
+            generationType = entry.generationType
         }
     }
 
@@ -138,7 +142,8 @@ fun EntryEditorScreen(
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
-                                isFavorite = isFavorite, lastChanged = System.currentTimeMillis()
+                                isFavorite = isFavorite, lastChanged = System.currentTimeMillis(),
+                                generationType = generationType
                             )
                         } else {
                             Entry.create(
@@ -147,7 +152,8 @@ fun EntryEditorScreen(
                                 url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
-                                isFavorite = isFavorite
+                                isFavorite = isFavorite,
+                                generationType = generationType
                             )
                         }
                         
@@ -244,12 +250,53 @@ fun EntryEditorScreen(
                             Icon(if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility, null) 
                         } 
                         IconButton(onClick = { showGeneratorDialog = true }) { 
-                            Icon(Icons.Default.Casino, "Генератор") 
+                            Icon(Icons.Default.Casino, "Обычный генератор") 
+                        }
+                        IconButton(onClick = { showMnemonicDialog = true }) { 
+                            Icon(Icons.Default.Lightbulb, "Мнемонический генератор") 
                         } 
                     } 
                 }, 
                 modifier = Modifier.fillMaxWidth()
             )
+            
+            // Индикатор типа генерации
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (generationType == "mnemonic") 
+                        MaterialTheme.colorScheme.tertiaryContainer 
+                    else 
+                        MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (generationType == "mnemonic") Icons.Default.Lightbulb else Icons.Default.Casino,
+                        null,
+                        tint = if (generationType == "mnemonic") 
+                            MaterialTheme.colorScheme.tertiary 
+                        else 
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            if (generationType == "mnemonic") "Мнемонический пароль (AMPG v1)" else "Случайный пароль",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            if (generationType == "mnemonic") "Запоминается по подсказке" else "Криптостойкий, не запоминается",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
             
             OutlinedTextField(
                 value = url,
@@ -334,7 +381,20 @@ fun EntryEditorScreen(
             onDismiss = { showGeneratorDialog = false }, 
             onGenerated = { pwd -> 
                 password = pwd
+                generationType = "random"
                 showGeneratorDialog = false 
+            }
+        )
+    }
+    
+    if (showMnemonicDialog) {
+        MnemonicGeneratorDialog(
+            onDismiss = { showMnemonicDialog = false },
+            onGenerated = { pwd, hint ->
+                password = pwd
+                textHint = hint
+                generationType = "mnemonic"
+                showMnemonicDialog = false
             }
         )
     }
@@ -593,7 +653,7 @@ private fun ScientificPasswordGeneratorDialog(
     var passwordHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var regenerationCounter by remember { mutableIntStateOf(0) }
     
-    fun applyFilters(text: String): Pair<String, List<TransformationStep>> {
+    fun applyFilters(text: String, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): Pair<String, List<TransformationStep>> {
         val steps = mutableListOf<TransformationStep>()
         val chars = text.toCharArray()
         if (useUpper) {
@@ -640,7 +700,7 @@ private fun ScientificPasswordGeneratorDialog(
         
         if (useTwoParts) result = generateTwoPartPassword(result)
         
-        val (filteredPwd, filterSteps) = applyFilters(result)
+        val (filteredPwd, filterSteps) = applyFilters(result, useUpper, useDigits, useSpecial)
         
         allSteps.addAll(filterSteps.map { it.copy(stepNumber = it.stepNumber + allSteps.size) })
         
@@ -682,8 +742,8 @@ private fun ScientificPasswordGeneratorDialog(
                 Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Column {
-                    Text("Научный генератор", fontWeight = FontWeight.Bold)
-                    Text("Запоминаемые пароли", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Генератор паролей", fontWeight = FontWeight.Bold)
+                    Text("Обычный и научный режимы", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -981,6 +1041,166 @@ private fun ScientificPasswordGeneratorDialog(
                 Spacer(Modifier.width(4.dp))
                 Text("Использовать") 
             } 
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Отмена") } },
+        modifier = Modifier.fillMaxWidth(0.95f)
+    )
+}
+
+// ===== МНЕМОНИЧЕСКИЙ ГЕНЕРАТОР (AMPG v1) =====
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MnemonicGeneratorDialog(
+    onDismiss: () -> Unit,
+    onGenerated: (String, String) -> Unit // password, hint
+) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    
+    var phrase by remember { mutableStateOf("") }
+    var serviceName by remember { mutableStateOf("") }
+    var includeLeet by remember { mutableStateOf(true) }
+    var includeServiceCode by remember { mutableStateOf(true) }
+    var includeRotationCode by remember { mutableStateOf(true) }
+    
+    var generationResult by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
+
+    fun generate() {
+        if (phrase.isBlank() || serviceName.isBlank()) {
+            generationResult = null
+            return
+        }
+        
+        val params = MnemonicPasswordGenerator.GenerationParams(
+            phrase = phrase,
+            serviceName = serviceName,
+            targetLength = 16,
+            includeLeet = includeLeet,
+            includeServiceCode = includeServiceCode,
+            includeRotationCode = includeRotationCode
+        )
+        
+        generationResult = MnemonicPasswordGenerator.generate(params)
+    }
+
+    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
+        generate()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Lightbulb, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("Мнемонический генератор", fontWeight = FontWeight.Bold)
+                    Text("AMPG v1 — запоминаемый пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = phrase,
+                    onValueChange = { phrase = it },
+                    label = { Text("Мнемоническая фраза") },
+                    placeholder = { Text("например: моя кошка любит рыбу") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                OutlinedTextField(
+                    value = serviceName,
+                    onValueChange = { serviceName = it },
+                    label = { Text("Название сервиса") },
+                    placeholder = { Text("например: Gmail") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
+                    Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
+                    Text("Код сервиса", Modifier.padding(start = 8.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
+                    Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
+                }
+                
+                generationResult?.let { result ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Пароль:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                result.password,
+                                fontSize = 18.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("Подсказка:", fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                            Text(result.mnemonicHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(4.dp))
+                            Text("Сложность: ${result.strength.name}", fontSize = 10.sp)
+                        }
+                    }
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Шаги:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(Modifier.height(4.dp))
+                            result.steps.forEach { step ->
+                                Text("• $step", fontSize = 10.sp, modifier = Modifier.padding(vertical = 2.dp))
+                            }
+                        }
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(result.password))
+                                android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Копировать")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val result = generationResult
+                    if (result != null) {
+                        onGenerated(result.password, result.mnemonicHint)
+                    }
+                },
+                enabled = generationResult != null
+            ) {
+                Icon(Icons.Default.Check, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Использовать")
+            }
         },
         dismissButton = { TextButton(onDismiss) { Text("Отмена") } },
         modifier = Modifier.fillMaxWidth(0.95f)
