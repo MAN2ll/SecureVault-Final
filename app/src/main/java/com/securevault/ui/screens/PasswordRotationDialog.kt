@@ -100,7 +100,6 @@ fun PasswordRotationDialog(
         }
     }
 
-    // ✅ СБРОС НОМЕРА НАБОРА ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
     LaunchedEffect(mnemonicPhrase, includeLeet, includeServiceCode, includeRotationCode) {
         variantOffset = 0
         if (selectedMode == 1) {
@@ -108,7 +107,6 @@ fun PasswordRotationDialog(
         }
     }
 
-    // ✅ ГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ variantOffset
     LaunchedEffect(variantOffset) {
         if (selectedMode == 1) {
             generateMnemonicVariants()
@@ -136,25 +134,145 @@ fun PasswordRotationDialog(
             ) {
                 Text("Выберите способ замены:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 
-                Row(
+                // ✅ ВЕРТИКАЛЬНЫЙ СПИСОК КАРТОЧЕК ВМЕСТО ROW
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilterChip(
-                        selected = selectedMode == 0,
-                        onClick = { selectedMode = 0 },
-                        label = { Text("Случайный", fontSize = 11.sp) }
-                    )
-                    FilterChip(
-                        selected = selectedMode == 1,
-                        onClick = { selectedMode = 1 },
-                        label = { Text("Мнемонический", fontSize = 11.sp) }
-                    )
-                    FilterChip(
-                        selected = selectedMode == 2,
-                        onClick = { selectedMode = 2 },
-                        label = { Text("Вручную", fontSize = 11.sp) }
-                    )
+                    // Карточка 1: Случайный пароль
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedMode == 0) 
+                                MaterialTheme.colorScheme.primaryContainer 
+                            else 
+                                MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedMode == 0,
+                                onClick = { selectedMode = 0 }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Default.Casino,
+                                null,
+                                tint = if (selectedMode == 0) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Случайный пароль",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Криптостойкий пароль",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Карточка 2: Мнемонический пароль
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedMode == 1) 
+                                MaterialTheme.colorScheme.primaryContainer 
+                            else 
+                                MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedMode == 1,
+                                onClick = { selectedMode = 1 }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                null,
+                                tint = if (selectedMode == 1) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Мнемонический пароль",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "По фразе и подсказке",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Карточка 3: Вручную
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedMode == 2) 
+                                MaterialTheme.colorScheme.primaryContainer 
+                            else 
+                                MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedMode == 2,
+                                onClick = { selectedMode = 2 }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Default.Edit,
+                                null,
+                                tint = if (selectedMode == 2) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Вручную",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Ввести свой пароль",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
 
                 when (selectedMode) {
@@ -191,7 +309,6 @@ fun PasswordRotationDialog(
                             }
                         }
                         
-                        // ✅ КНОПКИ ВЕРТИКАЛЬНО
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -267,7 +384,6 @@ fun PasswordRotationDialog(
                             }
                         }
                         
-                        // ✅ ОТОБРАЖЕНИЕ НОМЕРА НАБОРА
                         if (mnemonicVariants.isNotEmpty()) {
                             Text(
                                 "Текущий набор: №${variantOffset + 1}",
