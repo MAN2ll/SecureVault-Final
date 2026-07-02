@@ -11,12 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
-import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,8 +24,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel(),
-    vaultViewModel: VaultViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showLockConfirmDialog by remember { mutableStateOf(false) }
@@ -52,7 +51,7 @@ fun SettingsScreen(
         ) {
             // Безопасность
             Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     SettingsItem(
@@ -73,7 +72,7 @@ fun SettingsScreen(
 
             // Данные
             Text("Данные", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     // ✅ ИСПРАВЛЕНО: убран быстрый экспорт, только переход на ExportImportScreen
@@ -88,10 +87,9 @@ fun SettingsScreen(
 
             // О приложении
             Text("О приложении", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    // ✅ ИСПРАВЛЕНО: корректное описание вместо "6 алгоритмов"
                     SettingsItem(
                         icon = Icons.Default.Info,
                         title = "SecureVault v1.0",
@@ -109,12 +107,12 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Технологии защиты", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.height(8.dp))
-                    TechnologyItem("🔐 AES-256-GCM", "Шифрование паролей через Android Keystore")
-                    TechnologyItem("🔑 PBKDF2", "Хеширование мастер-пароля (100,000 итераций)")
-                    TechnologyItem("🧠 AMPG v1", "Авторская мнемоническая генерация")
-                    TechnologyItem("🔄 Управляемая ротация", "Автоматическое напоминание о смене")
-                    TechnologyItem("🛡️ HMAC-SHA256", "Защищённые fingerprint паролей")
-                    TechnologyItem("🚫 BruteForceGuard", "Защита от подбора мастер-пароля")
+                    TechnologyItem(" AES-256-GCM", "Шифрование паролей через Android Keystore")
+                    TechnologyItem(" PBKDF2", "Хеширование мастер-пароля (100,000 итераций)")
+                    TechnologyItem(" AMPG v1", "Авторская мнемоническая генерация")
+                    TechnologyItem(" Управляемая ротация", "Автоматическое напоминание о смене")
+                    TechnologyItem(" HMAC-SHA256", "Защищённые fingerprint паролей")
+                    TechnologyItem(" BruteForceGuard", "Защита от подбора мастер-пароля")
                 }
             }
         }
@@ -129,7 +127,11 @@ fun SettingsScreen(
                     Text("SecureVault v1.0", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text("Менеджер паролей с авторским алгоритмом мнемонической генерации AMPG v1.")
                     Spacer(Modifier.height(8.dp))
-                    Text("Разработано в рамках магистерской диссертации.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Разработано в рамках магистерской диссертации.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
             confirmButton = {
@@ -164,7 +166,7 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -190,7 +192,17 @@ private fun SettingsItem(
 @Composable
 private fun TechnologyItem(title: String, description: String) {
     Row(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(title, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.width(140.dp))
-        Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryVariant)
+        Text(
+            title,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            modifier = Modifier.width(140.dp)
+        )
+        Text(
+            description,
+            fontSize = 11.sp,
+            // ✅ ИСПРАВЛЕНО: onSurfaceVariant вместо onSecondaryVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
