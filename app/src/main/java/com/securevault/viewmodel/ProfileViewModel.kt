@@ -26,7 +26,6 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun delete(id: Int) = viewModelScope.launch {
-        // ✅ Теперь работает благодаря перегрузке deleteProfile(id: Int)
         repository.deleteProfile(id)
     }
 
