@@ -74,7 +74,7 @@ object PasswordValidator {
                 HMAC_KEY_ALIAS,
                 KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
             )
-            .setBlockModes(KeyProperties.BLOCK_MODE_HMAC_SHA256)
+            // ✅ УДАЛЕНО: .setBlockModes(...) — не существует для HMAC
             .build()
         )
         return keyGenerator.generateKey()
@@ -83,13 +83,13 @@ object PasswordValidator {
     fun wasPasswordUsedForEntry(entry: Entry, password: String, context: Context): Boolean {
         val newFingerprint = buildPasswordFingerprint(password, context)
         val legacyFingerprint = buildLegacyFingerprint(password)
-        
+
         if (entry.passwordFingerprint == newFingerprint || entry.passwordFingerprint == legacyFingerprint) {
             return true
         }
-        
+
         val history = entry.getPasswordHistory()
-        return history.any { 
+        return history.any {
             it.passwordFingerprint == newFingerprint || it.passwordFingerprint == legacyFingerprint
         }
     }
@@ -106,46 +106,46 @@ object PasswordValidator {
     fun calculatePasswordDifferencePercent(oldPassword: String, newPassword: String): Int {
         val old = oldPassword.lowercase().replace(" ", "")
         val new = newPassword.lowercase().replace(" ", "")
-        
+
         if (old.isEmpty() || new.isEmpty()) return 100
         if (old == new) return 0
-        
+
         val maxLength = maxOf(old.length, new.length)
         val minLength = minOf(old.length, new.length)
-        
+
         // 1. Совпадение по позициям (weight: 0.4)
         var positionMatches = 0
         for (i in 0 until minLength) {
             if (old[i] == new[i]) positionMatches++
         }
         val positionSimilarity = positionMatches.toDouble() / maxLength
-        
+
         // 2. Совпадение множеств символов (Jaccard, weight: 0.3)
         val oldSet = old.toSet()
         val newSet = new.toSet()
         val intersection = oldSet.intersect(newSet).size.toDouble()
         val union = oldSet.union(newSet).size.toDouble()
         val jaccardSimilarity = if (union == 0.0) 0.0 else intersection / union
-        
+
         // 3. Совпадение биграмм (weight: 0.2)
         val oldBigrams = getBigrams(old)
         val newBigrams = getBigrams(new)
         val bigramIntersection = oldBigrams.intersect(newBigrams).size.toDouble()
         val bigramUnion = oldBigrams.union(newBigrams).size.toDouble()
         val bigramSimilarity = if (bigramUnion == 0.0) 0.0 else bigramIntersection / bigramUnion
-        
+
         // 4. Разница в длине (weight: 0.1)
         val lengthSimilarity = 1.0 - (kotlin.math.abs(old.length - new.length).toDouble() / maxLength)
-        
+
         // Итоговая SIMILARITY
-        val similarity = positionSimilarity * 0.4 + 
-                        jaccardSimilarity * 0.3 + 
-                        bigramSimilarity * 0.2 + 
-                        lengthSimilarity * 0.1
-        
+        val similarity = positionSimilarity * 0.4 +
+                jaccardSimilarity * 0.3 +
+                bigramSimilarity * 0.2 +
+                lengthSimilarity * 0.1
+
         // DIFFERENCE = 100 - similarity
         val differencePercent = ((1.0 - similarity) * 100).toInt().coerceIn(0, 100)
-        
+
         return differencePercent
     }
 
@@ -166,12 +166,12 @@ object PasswordValidator {
     ): ValidationResult {
         val uniqueCheck = validateUniqueCharacters(newPassword)
         if (!uniqueCheck.isValid) return uniqueCheck
-        
+
         if (checkHistory) {
             val reuseCheck = validatePasswordNotReusedForEntry(entry, newPassword, context)
             if (!reuseCheck.isValid) return reuseCheck
         }
-        
+
         if (checkHistory) {
             val history = entry.getPasswordHistory()
             val lastHistoryItem = history.firstOrNull()
@@ -189,7 +189,7 @@ object PasswordValidator {
                 }
             }
         }
-        
+
         return ValidationResult(true)
     }
 }
