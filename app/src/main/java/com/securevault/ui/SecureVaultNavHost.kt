@@ -76,8 +76,7 @@ fun SecureVaultNavHost() {
 
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
-            
-            // ✅ НОВАЯ СИГНАТУРА VaultListScreen
+
             VaultListScreen(
                 onNavigateToEntry = { entryId ->
                     navController.navigate("editor/$entryId")
@@ -124,11 +123,10 @@ fun SecureVaultNavHost() {
         }
 
         composable("settings") {
-            // ✅ НОВАЯ СИГНАТУРА SettingsScreen
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToExport = { navController.navigate("export") },
-                onNavigateToChangePassword = { /* TODO: добавить экран смены пароля */ }
+                onNavigateToChangePassword = { /* TODO */ }
             )
         }
 
