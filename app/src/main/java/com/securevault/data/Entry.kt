@@ -4,7 +4,9 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.securevault.utils.CryptoUtils
-import java.security.MessageDigest
+import com.securevault.utils.PasswordValidator
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
 
 @Entity(tableName = "entries")
@@ -24,17 +26,47 @@ data class Entry(
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "password_history_json") val passwordHistoryJson: String? = null,
-    @ColumnInfo(name = "generation_type") val generationType: String = "random"
+    @ColumnInfo(name = "generation_type") val generationType: String = "random",
+    // ✅ НОВЫЕ ПОЛЯ для версии 8
+    @ColumnInfo(name = "password_fingerprint") val passwordFingerprint: String? = null,
+    @ColumnInfo(name = "mnemonic_phrase_hint") val mnemonicPhraseHint: String? = null,
+    @ColumnInfo(name = "mnemonic_options_json") val mnemonicOptionsJson: String? = null
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
         
+        return try {
+            val jsonArray = JSONArray(passwordHistoryJson)
+            val result = mutableListOf<PasswordHistoryItem>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                result.add(
+                    PasswordHistoryItem(
+                        encryptedOldPassword = obj.optString("encryptedOldPassword", null),
+                        encryptedNewPassword = obj.optString("encryptedNewPassword", null),
+                        passwordHash = obj.optString("passwordHash", ""),
+                        passwordFingerprint = obj.optString("passwordFingerprint", ""),
+                        date = obj.optLong("date", 0L),
+                        type = obj.optString("type", "unknown"),
+                        relatedService = obj.optString("relatedService", null),
+                        relatedEntryId = obj.optString("relatedEntryId", null),
+                        hint = obj.optString("hint", null)
+                    )
+                )
+            }
+            result
+        } catch (e: Exception) {
+            // Обратная совместимость со старым форматом
+            parseLegacyHistory(passwordHistoryJson)
+        }
+    }
+
+    private fun parseLegacyHistory(json: String): List<PasswordHistoryItem> {
         val result = mutableListOf<PasswordHistoryItem>()
-        
         try {
-            val entries = passwordHistoryJson.split("|")
+            val entries = json.split("|")
             for (entry in entries) {
                 if (entry.isBlank()) continue
                 val parts = entry.split(":")
@@ -42,48 +74,68 @@ data class Entry(
                     val hash = parts[0]
                     val date = parts[1].toLongOrNull() ?: 0L
                     val type = if (parts.size >= 3) parts[2] else "unknown"
-                    result.add(PasswordHistoryItem(hash, date, type))
+                    result.add(
+                        PasswordHistoryItem(
+                            passwordHash = hash,
+                            passwordFingerprint = "",
+                            date = date,
+                            type = type
+                        )
+                    )
                 }
             }
-            return result
         } catch (e: Exception) {
-            return try {
-                val legacyResult = mutableListOf<PasswordHistoryItem>()
-                val regex = Regex("""\{"password":"([^"]+)","date":(\d+)\}""")
-                val matches = regex.findAll(passwordHistoryJson)
-                for (match in matches) {
-                    val oldPassword = match.groupValues[1]
-                    val date = match.groupValues[2].toLongOrNull() ?: 0L
-                    val hash = hashPassword(oldPassword)
-                    legacyResult.add(PasswordHistoryItem(hash, date, "legacy"))
-                }
-                legacyResult
-            } catch (e2: Exception) {
-                emptyList()
-            }
+            // ignore
         }
+        return result
     }
 
-    fun addToPasswordHistory(oldPassword: String, generationType: String = "random"): Entry {
-        val hash = hashPassword(oldPassword)
-        val date = System.currentTimeMillis()
-        val newEntry = "$hash:$date:$generationType"
-        
-        val currentHistory = getPasswordHistory()
-        val updatedHistory = mutableListOf<String>()
-        updatedHistory.add(newEntry)
-        for (item in currentHistory.take(9)) {
-            updatedHistory.add("${item.passwordHash}:${item.date}:${item.type}")
+    fun addToPasswordHistory(
+        oldPassword: String,
+        generationType: String,
+        relatedService: String? = null,
+        relatedEntryId: String? = null,
+        hint: String? = null
+    ): Entry {
+        val encryptedOld = try {
+            CryptoUtils.encrypt(oldPassword)
+        } catch (e: Exception) {
+            null
         }
-        val json = updatedHistory.joinToString("|")
         
-        return this.copy(passwordHistoryJson = json)
-    }
-
-    private fun hashPassword(password: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
+        val fingerprint = PasswordValidator.buildPasswordFingerprint(oldPassword)
+        val hash = PasswordValidator.buildPasswordFingerprint(oldPassword)
+        
+        val newItem = PasswordHistoryItem(
+            encryptedOldPassword = encryptedOld,
+            passwordHash = hash,
+            passwordFingerprint = fingerprint,
+            date = System.currentTimeMillis(),
+            type = generationType,
+            relatedService = relatedService,
+            relatedEntryId = relatedEntryId,
+            hint = hint
+        )
+        
+        val currentHistory = getPasswordHistory().toMutableList()
+        currentHistory.add(0, newItem)
+        val trimmed = currentHistory.take(10)
+        
+        val jsonArray = JSONArray()
+        for (item in trimmed) {
+            val obj = JSONObject()
+            obj.put("encryptedOldPassword", item.encryptedOldPassword ?: JSONObject.NULL)
+            obj.put("passwordHash", item.passwordHash)
+            obj.put("passwordFingerprint", item.passwordFingerprint)
+            obj.put("date", item.date)
+            obj.put("type", item.type)
+            obj.put("relatedService", item.relatedService ?: JSONObject.NULL)
+            obj.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
+            obj.put("hint", item.hint ?: JSONObject.NULL)
+            jsonArray.put(obj)
+        }
+        
+        return this.copy(passwordHistoryJson = jsonArray.toString())
     }
 
     fun getDaysUntilRotation(): Int? {
@@ -100,9 +152,12 @@ data class Entry(
             textHint: String? = null,
             rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
             isFavorite: Boolean = false,
-            generationType: String = "random"
+            generationType: String = "random",
+            mnemonicPhraseHint: String? = null,
+            mnemonicOptionsJson: String? = null
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
+            val fingerprint = PasswordValidator.buildPasswordFingerprint(password)
             val now = System.currentTimeMillis()
             val nextRotationDate = if (rotationEnabled) {
                 now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
@@ -116,11 +171,13 @@ data class Entry(
                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                 nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
                 isFavorite = isFavorite,
-                generationType = generationType
+                generationType = generationType,
+                passwordFingerprint = fingerprint,
+                mnemonicPhraseHint = mnemonicPhraseHint,
+                mnemonicOptionsJson = mnemonicOptionsJson
             )
         }
 
-        // ✅ НОВЫЙ МЕТОД: создание записи с новым ID для импорта
         fun createWithNewId(
             service: String, username: String, encryptedPassword: String,
             profileId: Int,
@@ -132,7 +189,10 @@ data class Entry(
             createdAt: Long = System.currentTimeMillis(),
             lastChanged: Long = System.currentTimeMillis(),
             passwordHistoryJson: String? = null,
-            generationType: String = "random"
+            generationType: String = "random",
+            passwordFingerprint: String? = null,
+            mnemonicPhraseHint: String? = null,
+            mnemonicOptionsJson: String? = null
         ): Entry {
             return Entry(
                 id = UUID.randomUUID().toString(),
@@ -144,14 +204,34 @@ data class Entry(
                 nextRotationDate = nextRotationDate, createdAt = createdAt, lastChanged = lastChanged,
                 isFavorite = isFavorite,
                 passwordHistoryJson = passwordHistoryJson,
-                generationType = generationType
+                generationType = generationType,
+                passwordFingerprint = passwordFingerprint,
+                mnemonicPhraseHint = mnemonicPhraseHint,
+                mnemonicOptionsJson = mnemonicOptionsJson
             )
+        }
+
+        /**
+         * Извлечение короткой фразы из старой подсказки.
+         */
+        fun extractShortPhrase(textHint: String?): String? {
+            if (textHint.isNullOrBlank()) return null
+            val parts = textHint.split("+")
+            val first = parts.firstOrNull()?.trim() ?: return null
+            // Убираем служебные слова
+            return first.replace(Regex("\\s*\\(.*?\\)\\s*"), "").trim().takeIf { it.isNotBlank() }
         }
     }
 }
 
 data class PasswordHistoryItem(
-    val passwordHash: String,
-    val date: Long,
-    val type: String = "unknown"
+    val encryptedOldPassword: String? = null,
+    val encryptedNewPassword: String? = null,
+    val passwordHash: String = "",
+    val passwordFingerprint: String = "",
+    val date: Long = 0L,
+    val type: String = "unknown",
+    val relatedService: String? = null,
+    val relatedEntryId: String? = null,
+    val hint: String? = null
 )
