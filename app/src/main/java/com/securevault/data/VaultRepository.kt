@@ -11,89 +11,39 @@ class VaultRepository @Inject constructor(
     private val entryDao: EntryDao,
     private val profileDao: ProfileDao
 ) {
-    // ===== Entries =====
-    
     val allEntries: Flow<List<Entry>> = entryDao.getAllEntries()
 
-    suspend fun insert(entry: Entry) {
-        entryDao.insert(entry)
+    suspend fun insert(entry: Entry) = entryDao.insert(entry)
+    suspend fun update(entry: Entry) = entryDao.update(entry)
+    suspend fun delete(entry: Entry) = entryDao.delete(entry)
+    suspend fun deleteAll() = entryDao.deleteAll()
+
+    suspend fun getById(entryId: String): Entry? = entryDao.getById(entryId)
+
+    fun getByIdBlocking(entryId: String): Entry? = runBlocking {
+        entryDao.getById(entryId)
     }
 
-    suspend fun update(entry: Entry) {
-        entryDao.update(entry)
+    fun getAllEntriesSync(): List<Entry> = runBlocking {
+        entryDao.getAllEntries().first()
     }
 
-    suspend fun delete(entry: Entry) {
-        entryDao.delete(entry)
-    }
+    suspend fun getByProfileId(profileId: Int): List<Entry> = entryDao.getByProfileId(profileId)
+    fun getEntriesByProfile(profileId: Int): Flow<List<Entry>> = entryDao.getEntriesByProfile(profileId)
 
-    suspend fun deleteAll() {
-        entryDao.deleteAll()
-    }
-
-    suspend fun getById(entryId: String): Entry? {
-        return entryDao.getById(entryId)
-    }
-
-    fun getByIdBlocking(entryId: String): Entry? {
-        return runBlocking {
-            entryDao.getById(entryId)
-        }
-    }
-
-    // ✅ НОВЫЙ МЕТОД для PasswordReminderReceiver
-    fun getAllEntriesSync(): List<Entry> {
-        return runBlocking {
-            entryDao.getAllEntries().first()
-        }
-    }
-
-    suspend fun getByProfileId(profileId: Int): List<Entry> {
-        return entryDao.getByProfileId(profileId)
-    }
-
-    fun getEntriesByProfile(profileId: Int): Flow<List<Entry>> {
-        return entryDao.getEntriesByProfile(profileId)
-    }
-
-    // ===== Profiles =====
-    
     val allProfiles: Flow<List<Profile>> = profileDao.getAllProfiles()
 
-    suspend fun insertProfile(profile: Profile): Long {
-        return profileDao.insert(profile)
-    }
+    suspend fun insertProfile(profile: Profile): Long = profileDao.insert(profile)
+    suspend fun updateProfile(profile: Profile) = profileDao.update(profile)
+    suspend fun deleteProfile(profile: Profile) = profileDao.delete(profile)
+    suspend fun deleteProfile(id: Int) = profileDao.deleteById(id)
 
-    suspend fun updateProfile(profile: Profile) {
-        profileDao.update(profile)
-    }
+    suspend fun getProfileById(profileId: Int): Profile? = profileDao.getById(profileId)
+    suspend fun getProfileByName(name: String): Profile? = profileDao.getByName(name)
 
-    suspend fun deleteProfile(profile: Profile) {
-        profileDao.delete(profile)
-    }
+    suspend fun deleteEntriesByProfileId(profileId: Int) = entryDao.deleteByProfileId(profileId)
 
-    // ✅ ПЕРЕГРУЗКА: удаление по ID (для ProfileViewModel)
-    suspend fun deleteProfile(id: Int) {
-        profileDao.deleteById(id)
-    }
-
-    suspend fun getProfileById(profileId: Int): Profile? {
-        return profileDao.getById(profileId)
-    }
-
-    suspend fun getProfileByName(name: String): Profile? {
-        return profileDao.getByName(name)
-    }
-
-    // ===== Связанные операции =====
-
-    suspend fun deleteEntriesByProfileId(profileId: Int) {
-        entryDao.deleteByProfileId(profileId)
-    }
-
-    suspend fun getEntriesWithRotation(): List<Entry> {
-        return entryDao.getEntriesWithRotation()
-    }
+    suspend fun getEntriesWithRotation(): List<Entry> = entryDao.getEntriesWithRotation()
 
     suspend fun getExpiredEntries(): List<Entry> {
         val now = System.currentTimeMillis()
