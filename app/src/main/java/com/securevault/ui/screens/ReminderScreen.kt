@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,16 +122,24 @@ fun ReminderScreen(
         }
     }
 
+    // ✅ ИСПРАВЛЕНО: новая сигнатура с 5 параметрами
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
-            currentHint = entry.textHint,
+            currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
             generationType = entry.generationType,
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
-            onPasswordReplaced = { newPassword, newHint, newGenerationType ->
-                viewModel.replacePassword(entry.id, newPassword, newHint, newGenerationType)
+            onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
+                viewModel.replacePassword(
+                    entryId = entry.id,
+                    newPassword = newPassword,
+                    newHint = newHint,
+                    newGenerationType = newGenerationType,
+                    newMnemonicPhraseHint = mnemonicPhrase,
+                    newMnemonicOptionsJson = mnemonicOptions
+                )
                 selectedEntry = null
             }
         )
@@ -168,6 +175,23 @@ private fun ReminderEntryCard(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                 )
+                if (entry.generationType == "mnemonic") {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Lightbulb,
+                            null,
+                            Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Мнемонический",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
             }
             
             Button(
