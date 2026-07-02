@@ -2,12 +2,8 @@
 
 package com.securevault.ui.screens
 
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,71 +11,34 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.utils.AutoLockManager
-import com.securevault.utils.NotificationHelper
-import com.securevault.utils.ReminderScheduler
-import com.securevault.utils.ThemeManager
-import com.securevault.utils.ThemeManager.AppTheme
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
-import kotlinx.coroutines.launch
-import java.io.OutputStreamWriter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigate: (String) -> Unit,
-    viewModel: VaultViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    onNavigateToExport: () -> Unit,
+    onNavigateToChangePassword: () -> Unit,
+    authViewModel: AuthViewModel = hiltViewModel(),
+    vaultViewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var currentTheme by remember { mutableStateOf(AppTheme.SYSTEM) }
-    var showThemeDialog by remember { mutableStateOf(false) }
-    var showResetDialog by remember { mutableStateOf(false) }
-    var showChangePasswordDialog by remember { mutableStateOf(false) }
-    
-    // ✅ ВЫНЕСЕНО: переменные для переключателей на верхний уровень
-    var autoLockEnabled by remember { mutableStateOf(AutoLockManager.isEnabled()) }
-    var notificationsEnabled by remember { mutableStateOf(NotificationHelper.isEnabled(context)) }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
-        uri?.let {
-            try {
-                context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                    val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
-                    writer.write("Service,Username,Password,ProfileId\n")
-                    viewModel.entries.value.forEach { entry ->
-                        writer.write("${entry.service},${entry.username},${entry.password},${entry.profileId}\n")
-                    }
-                    writer.flush()
-                    Toast.makeText(context, "Экспорт успешен!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Ошибка экспорта: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        ThemeManager.getThemeFlow(context).collect { currentTheme = it }
-    }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showLockConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Назад")
+                    }
+                }
             )
         }
     ) { padding ->
@@ -89,402 +48,149 @@ fun SettingsScreen(
                 .padding(padding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Оформление
-            Text("ОФОРМЛЕНИЕ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { showThemeDialog = true }) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Palette, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Тема оформления", fontWeight = FontWeight.Medium)
-                            Text(
-                                when (currentTheme) {
-                                    AppTheme.SYSTEM -> "Системная"
-                                    AppTheme.LIGHT -> "Светлая"
-                                    AppTheme.DARK -> "Тёмная"
-                                    else -> "Системная"
-                                },
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
-
             // Безопасность
-            Text("БЕЗОПАСНОСТЬ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { showChangePasswordDialog = true }) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Изменить мастер-пароль", fontWeight = FontWeight.Medium)
-                            Text("Смена пароля для входа", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
-
-            // ✅ АВТОБЛОКИРОВКА (исправлено)
+            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Timer, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text("Автоблокировка", fontWeight = FontWeight.Medium)
-                                Text("Блокировать при неактивности", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Switch(
-                            checked = autoLockEnabled,
-                            onCheckedChange = {
-                                autoLockEnabled = it
-                                AutoLockManager.setEnabled(it)
-                            }
-                        )
-                    }
-
-                    if (autoLockEnabled) {
-                        Spacer(Modifier.height(16.dp))
-
-                        var timeoutMinutes by remember { mutableIntStateOf(AutoLockManager.getTimeoutMinutes()) }
-                        var expanded by remember { mutableStateOf(false) }
-
-                        ExposedDropdownMenuBox(
-                            expanded = expanded,
-                            onExpandedChange = { expanded = !expanded }
-                        ) {
-                            OutlinedTextField(
-                                readOnly = true,
-                                value = "$timeoutMinutes мин.",
-                                onValueChange = {},
-                                label = { Text("Время неактивности") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                                modifier = Modifier.menuAnchor().fillMaxWidth()
-                            )
-                            ExposedDropdownMenu(
-                                expanded = expanded,
-                                onDismissRequest = { expanded = false }
-                            ) {
-                                listOf(1, 2, 5, 10, 15, 30).forEach { minutes ->
-                                    DropdownMenuItem(
-                                        text = { Text("$minutes мин.") },
-                                        onClick = {
-                                            timeoutMinutes = minutes
-                                            AutoLockManager.setTimeoutMinutes(minutes)
-                                            expanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Приложение заблокируется после $timeoutMinutes мин. неактивности",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // ✅ УВЕДОМЛЕНИЯ (исправлено)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Notifications, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text("Уведомления", fontWeight = FontWeight.Medium)
-                                Text("Напоминания об истечении паролей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Switch(
-                            checked = notificationsEnabled,
-                            onCheckedChange = {
-                                notificationsEnabled = it
-                                NotificationHelper.setEnabled(context, it)
-                                if (it) {
-                                    ReminderScheduler.scheduleReminder(context)
-                                } else {
-                                    ReminderScheduler.cancelReminder(context)
-                                }
-                            }
-                        )
-                    }
-
-                    if (notificationsEnabled) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "• За 7 дней до истечения — обычное уведомление\n• За 1 день — критическое уведомление\n• В день истечения — срочное уведомление",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                Column(modifier = Modifier.padding(12.dp)) {
+                    SettingsItem(
+                        icon = Icons.Default.Lock,
+                        title = "Сменить мастер-пароль",
+                        subtitle = "Рекомендуется менять регулярно",
+                        onClick = onNavigateToChangePassword
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    SettingsItem(
+                        icon = Icons.Default.LockReset,
+                        title = "Заблокировать приложение",
+                        subtitle = "Потребуется мастер-пароль для входа",
+                        onClick = { showLockConfirmDialog = true }
+                    )
                 }
             }
 
             // Данные
-            Text("ДАННЫЕ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { onNavigate("export") }) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Экспорт / Импорт", fontWeight = FontWeight.Medium)
-                            Text("Расширенные настройки экспорта", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { exportLauncher.launch("securevault_backup.csv") }) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Upload, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Быстрый экспорт (CSV)", fontWeight = FontWeight.Medium)
-                            Text("Все пароли одним файлом", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Text(">", fontSize = 16.sp)
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { showResetDialog = true },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Сбросить хранилище", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.error)
-                            Text("Удалить все пароли", fontSize = 12.sp, color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
-                        }
-                    }
-                    Text(">", fontSize = 16.sp, color = MaterialTheme.colorScheme.error)
+            Text("Данные", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // ✅ ИСПРАВЛЕНО: убран быстрый экспорт, только переход на ExportImportScreen
+                    SettingsItem(
+                        icon = Icons.Default.Upload,
+                        title = "Экспорт / Импорт",
+                        subtitle = "Резервное копирование (CSV с шифрованием)",
+                        onClick = onNavigateToExport
+                    )
                 }
             }
 
             // О приложении
-            Text("О ПРИЛОЖЕНИИ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text("О приложении", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Безопасность", fontWeight = FontWeight.Medium)
-                            Text("AES-256-GCM · SHA-256", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Версия", fontWeight = FontWeight.Medium)
-                            Text("SecureVault 1.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Science, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Авторские методы", fontWeight = FontWeight.Medium)
-                            Text("6 алгоритмов шифрования", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // ✅ ИСПРАВЛЕНО: корректное описание вместо "6 алгоритмов"
+                    SettingsItem(
+                        icon = Icons.Default.Info,
+                        title = "SecureVault v1.0",
+                        subtitle = "Менеджер паролей с AMPG v1",
+                        onClick = { showAboutDialog = true }
+                    )
+                }
+            }
+
+            // Технологии
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Технологии защиты", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    TechnologyItem("🔐 AES-256-GCM", "Шифрование паролей через Android Keystore")
+                    TechnologyItem("🔑 PBKDF2", "Хеширование мастер-пароля (100,000 итераций)")
+                    TechnologyItem("🧠 AMPG v1", "Авторская мнемоническая генерация")
+                    TechnologyItem("🔄 Управляемая ротация", "Автоматическое напоминание о смене")
+                    TechnologyItem("🛡️ HMAC-SHA256", "Защищённые fingerprint паролей")
+                    TechnologyItem("🚫 BruteForceGuard", "Защита от подбора мастер-пароля")
                 }
             }
         }
     }
 
-    // Диалог темы
-    if (showThemeDialog) {
+    if (showAboutDialog) {
         AlertDialog(
-            onDismissRequest = { showThemeDialog = false },
-            title = { Text("Выберите тему") },
+            onDismissRequest = { showAboutDialog = false },
+            title = { Text("О приложении") },
             text = {
-                Column {
-                    AppTheme.entries.forEach { theme ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = currentTheme == theme,
-                                onClick = {
-                                    currentTheme = theme
-                                    scope.launch { ThemeManager.saveTheme(context, theme) }
-                                    showThemeDialog = false
-                                }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                when (theme) {
-                                    AppTheme.SYSTEM -> "Системная"
-                                    AppTheme.LIGHT -> "Светлая"
-                                    AppTheme.DARK -> "Тёмная"
-                                    else -> "Системная"
-                                }
-                            )
-                        }
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("SecureVault v1.0", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Менеджер паролей с авторским алгоритмом мнемонической генерации AMPG v1.")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Разработано в рамках магистерской диссертации.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            confirmButton = { TextButton(onClick = { showThemeDialog = false }) { Text("Закрыть") } }
-        )
-    }
-
-    // Диалог смены пароля
-    if (showChangePasswordDialog) {
-        ChangePasswordDialog(
-            onDismiss = { showChangePasswordDialog = false },
-            authViewModel = authViewModel,
-            onSuccess = {
-                showChangePasswordDialog = false
-                Toast.makeText(context, "Мастер-пароль изменён!", Toast.LENGTH_SHORT).show()
+            confirmButton = {
+                TextButton(onClick = { showAboutDialog = false }) {
+                    Text("Закрыть")
+                }
             }
         )
     }
 
-    // Диалог сброса
-    if (showResetDialog) {
+    if (showLockConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text("Подтверждение") },
-            text = { Text("Все пароли будут удалены безвозвратно!") },
+            onDismissRequest = { showLockConfirmDialog = false },
+            title = { Text("Заблокировать приложение?") },
+            text = { Text("Для разблокировки потребуется ввести мастер-пароль.") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteAll()
-                        showResetDialog = false
-                        Toast.makeText(context, "Очищено", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Удалить всё") }
+                Button(onClick = {
+                    authViewModel.lock()
+                    showLockConfirmDialog = false
+                }) {
+                    Text("Заблокировать")
+                }
             },
-            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Отмена") } }
+            dismissButton = {
+                TextButton(onClick = { showLockConfirmDialog = false }) {
+                    Text("Отмена")
+                }
+            }
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChangePasswordDialog(
-    onDismiss: () -> Unit,
-    authViewModel: AuthViewModel,
-    onSuccess: () -> Unit
+private fun SettingsItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
 ) {
-    var oldPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onClick) {
+            Icon(Icons.Default.ChevronRight, null)
+        }
+    }
+}
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Смена мастер-пароля") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = oldPassword,
-                    onValueChange = { oldPassword = it; error = null },
-                    label = { Text("Текущий пароль") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = newPassword,
-                    onValueChange = { newPassword = it; error = null },
-                    label = { Text("Новый пароль") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it; error = null },
-                    label = { Text("Подтвердите новый пароль") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                error = null
-                when {
-                    oldPassword.isBlank() -> error = "Введите текущий пароль"
-                    newPassword.length < 4 -> error = "Новый пароль слишком короткий"
-                    newPassword != confirmPassword -> error = "Пароли не совпадают"
-                    oldPassword == newPassword -> error = "Новый пароль должен отличаться"
-                    else -> {
-                        val success = authViewModel.changeMasterPassword(oldPassword, newPassword)
-                        if (success) onSuccess() else error = "Неверный текущий пароль"
-                    }
-                }
-            }) { Text("Сменить") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
-    )
+@Composable
+private fun TechnologyItem(title: String, description: String) {
+    Row(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(title, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.width(140.dp))
+        Text(description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryVariant)
+    }
 }
