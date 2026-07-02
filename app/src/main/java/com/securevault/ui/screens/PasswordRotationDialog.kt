@@ -61,37 +61,36 @@ fun PasswordRotationDialog(
         randomStrength = result.strength
     }
 
-    fun generateMnemonicVariants() {
-        validationError = null
-        
-        if (mnemonicPhrase.isBlank()) {
-            mnemonicVariants = emptyList()
-            validationError = "Введите мнемоническую фразу"
-            return
-        }
-        
-        if (includeServiceCode && serviceName.isBlank()) {
-            mnemonicVariants = emptyList()
-            validationError = "Код сервиса включён, но название сервиса пустое"
-            return
-        }
-        
-        val options = MnemonicPasswordGenerator.GenerationOptions(
-            phrase = mnemonicPhrase,
-            serviceName = serviceName,
-            rotationMonth = rotationMonth,
-            rotationYear = rotationYear,
-            targetLength = 16,
-            includeLeet = includeLeet,
-            includeServiceCode = includeServiceCode,
-            includeRotationCode = includeRotationCode,
-            variantOffset = variantOffset
-        )
-        
-        mnemonicVariants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
-        selectedMnemonicIndex = -1
+ fun generateMnemonicVariants() {
+    validationError = null
+    
+    if (mnemonicPhrase.isBlank()) {
+        mnemonicVariants = emptyList()
+        validationError = "Введите мнемоническую фразу"
+        return
     }
-
+    
+    if (includeServiceCode && serviceName.isBlank()) {
+        mnemonicVariants = emptyList()
+        validationError = "Код сервиса включён, но название сервиса пустое"
+        return
+    }
+    
+    val options = MnemonicPasswordGenerator.GenerationOptions(
+        phrase = mnemonicPhrase,
+        serviceName = serviceName,
+        rotationMonth = rotationMonth,
+        rotationYear = rotationYear,
+        targetLength = 16,
+        includeLeet = includeLeet,
+        includeServiceCode = includeServiceCode,
+        includeRotationCode = includeRotationCode,
+        variantOffset = variantOffset
+    )
+    
+    mnemonicVariants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
+    selectedMnemonicIndex = -1
+}
     LaunchedEffect(Unit) {
         generateRandomPassword()
         if (currentHint != null) {
@@ -425,7 +424,14 @@ fun PasswordRotationDialog(
                         1 -> {
                             if (selectedMnemonicIndex >= 0 && selectedMnemonicIndex < mnemonicVariants.size) {
                                 val selected = mnemonicVariants[selectedMnemonicIndex]
-                                onPasswordReplaced(selected.password, selected.mnemonicHint, "mnemonic")
+                                // ✅ Передаём короткую фразу отдельно
+                                onPasswordReplaced(
+                                    selected.password, 
+                                    selected.mnemonicHint, 
+                                    "mnemonic",
+                                    mnemonicPhrase,  // короткая фраза
+                                    null  // options JSON можно добавить позже
+                                )
                             }
                         }
                         2 -> {
