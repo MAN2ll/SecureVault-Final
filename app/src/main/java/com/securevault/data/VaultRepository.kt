@@ -1,6 +1,7 @@
 package com.securevault.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,10 +35,16 @@ class VaultRepository @Inject constructor(
         return entryDao.getById(entryId)
     }
 
-    // ✅ НОВЫЙ МЕТОД: синхронное получение для ViewModel
     fun getByIdBlocking(entryId: String): Entry? {
         return runBlocking {
             entryDao.getById(entryId)
+        }
+    }
+
+    // ✅ НОВЫЙ МЕТОД для PasswordReminderReceiver
+    fun getAllEntriesSync(): List<Entry> {
+        return runBlocking {
+            entryDao.getAllEntries().first()
         }
     }
 
@@ -63,6 +70,11 @@ class VaultRepository @Inject constructor(
 
     suspend fun deleteProfile(profile: Profile) {
         profileDao.delete(profile)
+    }
+
+    // ✅ ПЕРЕГРУЗКА: удаление по ID (для ProfileViewModel)
+    suspend fun deleteProfile(id: Int) {
+        profileDao.deleteById(id)
     }
 
     suspend fun getProfileById(profileId: Int): Profile? {
