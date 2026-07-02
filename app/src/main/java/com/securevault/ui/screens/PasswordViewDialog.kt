@@ -38,20 +38,24 @@ fun PasswordViewDialog(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
-    var isPasswordRevealed by remember { mutableStateOf(false) }
-    var isHistoryRevealed by remember { mutableStateOf(false) }
-    var showPasswordConfirmDialog by remember { mutableStateOf(false) }
-    var showHistoryConfirmDialog by remember { mutableStateOf(false) }
-    var showOldPasswords by remember { mutableStateOf(false) }
+    // ✅ РАЗДЕЛЬНЫЕ СОСТОЯНИЯ
+    var isCurrentPasswordRevealed by remember { mutableStateOf(false) }
+    var isHistoryVisible by remember { mutableStateOf(false) }
+    var areOldPasswordsRevealed by remember { mutableStateOf(false) }
+    
+    var showCurrentPasswordConfirm by remember { mutableStateOf(false) }
+    var showHistoryConfirm by remember { mutableStateOf(false) }
+    var showOldPasswordsConfirm by remember { mutableStateOf(false) }
 
     val history = entry.getPasswordHistory()
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
 
     AlertDialog(
         onDismissRequest = {
-            isPasswordRevealed = false
-            isHistoryRevealed = false
-            showOldPasswords = false
+            // ✅ При закрытии всё скрывается
+            isCurrentPasswordRevealed = false
+            isHistoryVisible = false
+            areOldPasswordsRevealed = false
             onDismiss()
         },
         title = {
@@ -68,6 +72,7 @@ fun PasswordViewDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Информация
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Информация:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -130,15 +135,23 @@ fun PasswordViewDialog(
                     }
                 }
 
+                // ✅ ТЕКУЩИЙ ПАРОЛЬ (отдельное подтверждение)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isPasswordRevealed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = if (isCurrentPasswordRevealed) 
+                            MaterialTheme.colorScheme.primaryContainer 
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        if (isPasswordRevealed) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        if (isCurrentPasswordRevealed) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text("Текущий пароль:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(entry.password))
@@ -150,12 +163,16 @@ fun PasswordViewDialog(
                             Spacer(Modifier.height(4.dp))
                             Text(entry.password, fontSize = 18.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                         } else {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Текущий пароль:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                     Text("••••••••••••", fontSize = 16.sp, fontFamily = FontFamily.Monospace)
                                 }
-                                Button(onClick = { showPasswordConfirmDialog = true }, modifier = Modifier.padding(start = 8.dp)) {
+                                Button(onClick = { showCurrentPasswordConfirm = true }, modifier = Modifier.padding(start = 8.dp)) {
                                     Text("Показать", fontSize = 11.sp)
                                 }
                             }
@@ -163,21 +180,27 @@ fun PasswordViewDialog(
                     }
                 }
 
+                // ✅ ИСТОРИЯ (отдельное подтверждение, БЕЗ старых паролей)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        if (isHistoryRevealed) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        if (isHistoryVisible) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text("История изменений:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 TextButton(onClick = { 
-                                    isHistoryRevealed = false
-                                    showOldPasswords = false
+                                    isHistoryVisible = false
+                                    areOldPasswordsRevealed = false
                                 }) {
                                     Text("Скрыть", fontSize = 11.sp)
                                 }
                             }
                             
-                            if (history.isNotEmpty() && !showOldPasswords) {
-                                TextButton(onClick = { showPasswordConfirmDialog = true }) {
+                            // ✅ Кнопка "Показать старые пароли" (отдельное подтверждение)
+                            if (history.isNotEmpty() && !areOldPasswordsRevealed) {
+                                TextButton(onClick = { showOldPasswordsConfirm = true }) {
                                     Text("Показать старые пароли", fontSize = 11.sp)
                                 }
                             }
@@ -191,20 +214,24 @@ fun PasswordViewDialog(
                                     HistoryItemCard(
                                         item = item,
                                         dateFormat = dateFormat,
-                                        showOldPassword = showOldPasswords,
+                                        showOldPassword = areOldPasswordsRevealed,
                                         clipboardManager = clipboardManager,
                                         context = context
                                     )
                                 }
                             }
                         } else {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.History, null, Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text("История ротации", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                 }
-                                Button(onClick = { showHistoryConfirmDialog = true }, modifier = Modifier.padding(start = 8.dp)) {
+                                Button(onClick = { showHistoryConfirm = true }, modifier = Modifier.padding(start = 8.dp)) {
                                     Text("Показать", fontSize = 11.sp)
                                 }
                             }
@@ -215,9 +242,9 @@ fun PasswordViewDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                isPasswordRevealed = false
-                isHistoryRevealed = false
-                showOldPasswords = false
+                isCurrentPasswordRevealed = false
+                isHistoryVisible = false
+                areOldPasswordsRevealed = false
                 onDismiss()
             }) {
                 Icon(Icons.Default.Close, null, Modifier.size(18.dp))
@@ -228,27 +255,43 @@ fun PasswordViewDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    if (showPasswordConfirmDialog) {
+    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ ТЕКУЩЕГО ПАРОЛЯ
+    if (showCurrentPasswordConfirm) {
         ConfirmMasterPasswordDialog(
             context = context,
+            title = "Просмотр текущего пароля",
             onConfirmed = {
-                showPasswordConfirmDialog = false
-                isPasswordRevealed = true
-                isHistoryRevealed = true
-                showOldPasswords = true
+                showCurrentPasswordConfirm = false
+                isCurrentPasswordRevealed = true
             },
-            onDismiss = { showPasswordConfirmDialog = false }
+            onDismiss = { showCurrentPasswordConfirm = false }
         )
     }
 
-    if (showHistoryConfirmDialog) {
+    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ ИСТОРИИ (без старых паролей)
+    if (showHistoryConfirm) {
         ConfirmMasterPasswordDialog(
             context = context,
+            title = "Просмотр истории",
             onConfirmed = {
-                showHistoryConfirmDialog = false
-                isHistoryRevealed = true
+                showHistoryConfirm = false
+                isHistoryVisible = true
+                // ✅ Старые пароли НЕ раскрываются
             },
-            onDismiss = { showHistoryConfirmDialog = false }
+            onDismiss = { showHistoryConfirm = false }
+        )
+    }
+
+    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ СТАРЫХ ПАРОЛЕЙ (отдельное)
+    if (showOldPasswordsConfirm) {
+        ConfirmMasterPasswordDialog(
+            context = context,
+            title = "Просмотр старых паролей",
+            onConfirmed = {
+                showOldPasswordsConfirm = false
+                areOldPasswordsRevealed = true
+            },
+            onDismiss = { showOldPasswordsConfirm = false }
         )
     }
 }
@@ -261,7 +304,6 @@ private fun HistoryItemCard(
     clipboardManager: androidx.compose.ui.platform.ClipboardManager,
     context: Context
 ) {
-    // ✅ ИСПРАВЛЕНО: try-catch вынесен из Composable функции
     val decryptedPassword = remember(item.encryptedOldPassword, showOldPassword) {
         if (showOldPassword && item.encryptedOldPassword != null) {
             try {
@@ -312,8 +354,6 @@ private fun HistoryItemCard(
                         Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp))
                     }
                 }
-            } else if (showOldPassword) {
-                Text("Старый пароль скрыт", fontSize = 10.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
             } else {
                 Text("Старый пароль скрыт", fontSize = 10.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
             }
@@ -325,6 +365,7 @@ private fun HistoryItemCard(
 @Composable
 private fun ConfirmMasterPasswordDialog(
     context: Context,
+    title: String,
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -334,10 +375,10 @@ private fun ConfirmMasterPasswordDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Подтверждение") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Для просмотра введите мастер-пароль:", fontSize = 13.sp)
+                Text("Введите мастер-пароль для подтверждения:", fontSize = 13.sp)
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it; error = null },
