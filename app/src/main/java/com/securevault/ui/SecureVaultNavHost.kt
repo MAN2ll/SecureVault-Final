@@ -20,7 +20,7 @@ fun SecureVaultNavHost() {
     val authState by authViewModel.authState.collectAsState()
 
     NavHost(
-        navController = navController, 
+        navController = navController,
         startDestination = "splash",
         enterTransition = { slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(300)) },
         exitTransition = { slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(animationSpec = tween(300)) },
@@ -50,11 +50,11 @@ fun SecureVaultNavHost() {
 
         composable("lock") {
             LockScreen(
-                onUnlocked = { 
-                    navController.navigate("profiles") { popUpTo("lock") { inclusive = true } } 
+                onUnlocked = {
+                    navController.navigate("profiles") { popUpTo("lock") { inclusive = true } }
                 },
-                onSetupRequired = { 
-                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } } 
+                onSetupRequired = {
+                    navController.navigate("setup") { popUpTo("lock") { inclusive = true } }
                 }
             )
         }
@@ -76,25 +76,40 @@ fun SecureVaultNavHost() {
 
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            
+            // ✅ НОВАЯ СИГНАТУРА VaultListScreen
             VaultListScreen(
-                profileId = profileId,
-                onNavigate = { route -> navController.navigate(route) },
-                onBack = { navController.popBackStack() },
-                onLock = {
-                    authViewModel.lock()
-                    navController.navigate("lock") { popUpTo("profiles") { inclusive = true } }
+                onNavigateToEntry = { entryId ->
+                    navController.navigate("editor/$entryId")
+                },
+                onNavigateToNewEntry = {
+                    navController.navigate("editor/new")
+                },
+                onNavigateToAudit = {
+                    navController.navigate("audit")
+                },
+                onNavigateToExport = {
+                    navController.navigate("export")
+                },
+                onNavigateToRotation = {
+                    navController.navigate("rotation")
+                },
+                onNavigateToSettings = {
+                    navController.navigate("settings")
+                },
+                onNavigateToMnemonicGenerator = {
+                    navController.navigate("mnemonic")
                 }
             )
         }
 
         composable("editor/{id}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
-            // ✅ ПРАВИЛЬНОЕ получение profileId
             val vaultEntry = navController.getBackStackEntry("vault/{profileId}")
             val profileId = vaultEntry.arguments?.getString("profileId")?.toIntOrNull()
-            
+
             EntryEditorScreen(
-                id = id, 
+                id = id,
                 profileId = profileId,
                 onBack = { navController.popBackStack() }
             )
@@ -109,9 +124,11 @@ fun SecureVaultNavHost() {
         }
 
         composable("settings") {
+            // ✅ НОВАЯ СИГНАТУРА SettingsScreen
             SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onNavigate = { route -> navController.navigate(route) }
+                onNavigateToExport = { navController.navigate("export") },
+                onNavigateToChangePassword = { /* TODO: добавить экран смены пароля */ }
             )
         }
 
