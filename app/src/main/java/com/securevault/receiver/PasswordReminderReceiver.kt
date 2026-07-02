@@ -19,7 +19,6 @@ class PasswordReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         CoroutineScope(Dispatchers.IO).launch {
-            // ✅ Используем getAllEntriesSync() из VaultRepository
             val entries = repository.getAllEntriesSync()
 
             for (entry in entries) {
