@@ -26,7 +26,7 @@ fun QrCodeDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    
+
     val qrBitmap = remember(entry.id) {
         try {
             val token = SecureQrManager.generateQrToken(entry.id, entry.profileId, context)
@@ -59,7 +59,7 @@ fun QrCodeDialog(
                 } else {
                     Text("Не удалось сгенерировать QR-код", color = MaterialTheme.colorScheme.error)
                 }
-                
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -67,29 +67,13 @@ fun QrCodeDialog(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("🔒 Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            "• QR НЕ содержит пароль",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Text(
-                            "• Работает только на этом устройстве",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Text(
-                            "• Требует мастер-пароль для просмотра",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Text(
-                            "• Срок действия: 24 часа",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                        Text("• QR НЕ содержит пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Работает только на этом устройстве", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Требует мастер-пароль для просмотра", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Срок действия: 24 часа", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                 }
-                
+
                 Text(
                     "Отсканируйте этот QR внутри приложения SecureVault для быстрого доступа к паролю.",
                     fontSize = 11.sp,
