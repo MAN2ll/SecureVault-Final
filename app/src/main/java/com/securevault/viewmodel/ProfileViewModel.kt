@@ -21,11 +21,12 @@ class ProfileViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun insert(name: String, password: String) = viewModelScope.launch {
-        val hash = CryptoUtils.hashPassword(password) // Используем тот же хэш что и мастер-пароль
+        val hash = CryptoUtils.hashPassword(password)
         repository.insertProfile(Profile(name = name, passwordHash = hash))
     }
 
     fun delete(id: Int) = viewModelScope.launch {
+        // ✅ Теперь работает благодаря перегрузке deleteProfile(id: Int)
         repository.deleteProfile(id)
     }
 
