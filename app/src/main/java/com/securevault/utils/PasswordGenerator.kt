@@ -1,5 +1,6 @@
 package com.securevault.utils
 
+import android.content.Context
 import java.security.SecureRandom
 
 object PasswordGenerator {
@@ -18,39 +19,86 @@ object PasswordGenerator {
     private const val DIGITS = "0123456789"
     private const val SPECIAL = "!@#$%^&*()-_=+[]{}|;:,.<>?"
 
+    // ✅ Генерация БЕЗ повторяющихся символов
     fun generate(
         length: Int = 16,
         useUpper: Boolean = true,
         useDigits: Boolean = true,
-        useSpecial: Boolean = true
+        useSpecial: Boolean = true,
+        context: Context? = null
     ): GenerationResult {
         val charset = buildCharset(useUpper, useDigits, useSpecial)
         
         if (charset.isEmpty()) {
             return GenerationResult(generateFromCharset(LOWERCASE, length), Strength.WEAK)
         }
+        
+        // ✅ Проверка: длина не должна превышать размер уникального набора
+        val uniqueChars = charset.toSet()
+        val effectiveLength = minOf(length, uniqueChars.size)
+        
+        if (length > uniqueChars.size) {
+            // Предупреждение: длина ограничена
+            return generateWithUniqueChars(charset, effectiveLength, useUpper, useDigits, useSpecial, context)
+        }
+        
+        return generateWithUniqueChars(charset, length, useUpper, useDigits, useSpecial, context)
+    }
 
-        // Гарантируем наличие хотя бы одного символа каждого выбранного типа
+    private fun generateWithUniqueChars(
+        charset: String,
+        length: Int,
+        useUpper: Boolean,
+        useDigits: Boolean,
+        useSpecial: Boolean,
+        context: Context?
+    ): GenerationResult {
+        val maxAttempts = 100
+        var attempts = 0
+        
+        while (attempts < maxAttempts) {
+            val password = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
+            
+            if (!PasswordValidator.hasDuplicateCharacters(password)) {
+                // Дополнительная проверка через валидатор, если есть context
+                if (context != null) {
+                    val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
+                    if (!uniqueCheck.isValid) {
+                        attempts++
+                        continue
+                    }
+                }
+                return GenerationResult(password, calculateStrength(password))
+            }
+            attempts++
+        }
+        
+        // Fallback: если не удалось, возвращаем последний вариант
+        val fallback = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
+        return GenerationResult(fallback, calculateStrength(fallback))
+    }
+
+    private fun generateCandidate(
+        charset: String,
+        length: Int,
+        useUpper: Boolean,
+        useDigits: Boolean,
+        useSpecial: Boolean
+    ): String {
         val guaranteedChars = mutableListOf<Char>()
         if (useUpper) guaranteedChars.add(UPPERCASE[secureRandom.nextInt(UPPERCASE.length)])
         if (useDigits) guaranteedChars.add(DIGITS[secureRandom.nextInt(DIGITS.length)])
         if (useSpecial) guaranteedChars.add(SPECIAL[secureRandom.nextInt(SPECIAL.length)])
         guaranteedChars.add(LOWERCASE[secureRandom.nextInt(LOWERCASE.length)])
 
-        // Оставшуюся длину заполняем случайными символами
         val remainingLength = (length - guaranteedChars.size).coerceAtLeast(0)
         val randomChars = (1..remainingLength).map {
             charset[secureRandom.nextInt(charset.length)]
         }
 
-        // Объединяем и перемешиваем
         val allChars = (guaranteedChars + randomChars).toMutableList()
         shuffleSecure(allChars)
-
-        val password = allChars.take(length).joinToString("")
-        val strength = calculateStrength(password)
-
-        return GenerationResult(password, strength)
+        return allChars.take(length).joinToString("")
     }
 
     private fun buildCharset(useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String {
