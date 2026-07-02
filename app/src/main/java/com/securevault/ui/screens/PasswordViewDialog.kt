@@ -4,7 +4,9 @@ package com.securevault.ui.screens
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,7 +23,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
+import com.securevault.data.PasswordHistoryItem
 import com.securevault.security.MasterPasswordHasher
+import com.securevault.utils.CryptoUtils
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -34,20 +38,20 @@ fun PasswordViewDialog(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
-    // ✅ РАЗДЕЛЬНЫЕ СОСТОЯНИЯ для пароля и истории
     var isPasswordRevealed by remember { mutableStateOf(false) }
     var isHistoryRevealed by remember { mutableStateOf(false) }
     var showPasswordConfirmDialog by remember { mutableStateOf(false) }
     var showHistoryConfirmDialog by remember { mutableStateOf(false) }
+    var showOldPasswords by remember { mutableStateOf(false) }
 
     val history = entry.getPasswordHistory()
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
 
     AlertDialog(
         onDismissRequest = {
-            // ✅ При закрытии всё скрывается
             isPasswordRevealed = false
             isHistoryRevealed = false
+            showOldPasswords = false
             onDismiss()
         },
         title = {
@@ -58,8 +62,12 @@ fun PasswordViewDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Информация о записи (всегда видна)
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Информация:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -74,8 +82,12 @@ fun PasswordViewDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Тип генерации: ", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             Text(
-                                if (entry.generationType == "mnemonic") "Мнемонический (AMPG)" 
-                                else "Случайный",
+                                when (entry.generationType) {
+                                    "mnemonic" -> "Мнемонический (AMPG)"
+                                    "shuffled" -> "Перемешанный"
+                                    "swapped" -> "Обменянный"
+                                    else -> "Случайный"
+                                },
                                 fontSize = 12.sp
                             )
                         }
@@ -118,7 +130,6 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // ✅ ПАРОЛЬ: показывается только после подтверждения
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -136,7 +147,6 @@ fun PasswordViewDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("Текущий пароль:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                // ✅ Копирование только после подтверждения
                                 IconButton(onClick = {
                                     clipboardManager.setText(AnnotatedString(entry.password))
                                     android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
@@ -165,8 +175,6 @@ fun PasswordViewDialog(
                                     onClick = { showPasswordConfirmDialog = true },
                                     modifier = Modifier.padding(start = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.Visibility, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
                                     Text("Показать", fontSize = 11.sp)
                                 }
                             }
@@ -174,7 +182,6 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // ✅ ИСТОРИЯ: показывается только после отдельного подтверждения
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         if (isHistoryRevealed) {
@@ -184,10 +191,20 @@ fun PasswordViewDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("История изменений:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                TextButton(onClick = { isHistoryRevealed = false }) {
+                                TextButton(onClick = { 
+                                    isHistoryRevealed = false
+                                    showOldPasswords = false
+                                }) {
                                     Text("Скрыть", fontSize = 11.sp)
                                 }
                             }
+                            
+                            if (history.isNotEmpty() && !showOldPasswords) {
+                                TextButton(onClick = { showPasswordConfirmDialog = true }) {
+                                    Text("Показать старые пароли", fontSize = 11.sp)
+                                }
+                            }
+                            
                             Spacer(Modifier.height(8.dp))
                             
                             if (history.isEmpty()) {
@@ -198,36 +215,14 @@ fun PasswordViewDialog(
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                                 )
                             } else {
-                                history.take(5).forEach { item ->
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(
-                                                dateFormat.format(Date(item.date)),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            Text(
-                                                when (item.type) {
-                                                    "mnemonic" -> "Мнемоническая ротация"
-                                                    "random" -> "Случайная ротация"
-                                                    "manual" -> "Ручная замена"
-                                                    "legacy" -> "Старая запись"
-                                                    else -> "Изменение"
-                                                },
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                "Старый пароль скрыт",
-                                                fontSize = 10.sp,
-                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                            )
-                                        }
-                                    }
+                                history.take(10).forEach { item ->
+                                    HistoryItemCard(
+                                        item = item,
+                                        dateFormat = dateFormat,
+                                        showOldPassword = showOldPasswords,
+                                        clipboardManager = clipboardManager,
+                                        context = context
+                                    )
                                 }
                             }
                         } else {
@@ -241,7 +236,6 @@ fun PasswordViewDialog(
                                     Spacer(Modifier.width(8.dp))
                                     Text("История ротации", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                                 }
-                                // ✅ Отдельная кнопка для истории
                                 Button(
                                     onClick = { showHistoryConfirmDialog = true },
                                     modifier = Modifier.padding(start = 8.dp)
@@ -258,6 +252,7 @@ fun PasswordViewDialog(
             TextButton(onClick = {
                 isPasswordRevealed = false
                 isHistoryRevealed = false
+                showOldPasswords = false
                 onDismiss()
             }) {
                 Icon(Icons.Default.Close, null, Modifier.size(18.dp))
@@ -268,30 +263,108 @@ fun PasswordViewDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ ПАРОЛЯ
     if (showPasswordConfirmDialog) {
         ConfirmMasterPasswordDialog(
             context = context,
             onConfirmed = {
                 showPasswordConfirmDialog = false
                 isPasswordRevealed = true
-                // ✅ История НЕ раскрывается автоматически
+                isHistoryRevealed = true
+                showOldPasswords = true
             },
             onDismiss = { showPasswordConfirmDialog = false }
         )
     }
 
-    // ✅ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ДЛЯ ИСТОРИИ
     if (showHistoryConfirmDialog) {
         ConfirmMasterPasswordDialog(
             context = context,
             onConfirmed = {
                 showHistoryConfirmDialog = false
                 isHistoryRevealed = true
-                // ✅ Пароль НЕ раскрывается автоматически
             },
             onDismiss = { showHistoryConfirmDialog = false }
         )
+    }
+}
+
+@Composable
+private fun HistoryItemCard(
+    item: PasswordHistoryItem,
+    dateFormat: SimpleDateFormat,
+    showOldPassword: Boolean,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    context: Context
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Text(
+                dateFormat.format(Date(item.date)),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            
+            val typeLabel = when (item.type) {
+                "mnemonic" -> "Мнемоническая ротация"
+                "random" -> "Случайная ротация"
+                "manual" -> "Ручная замена"
+                "shuffled" -> "Перемешивание"
+                "swapped" -> "Обмен"
+                "legacy" -> "Старая запись"
+                else -> "Изменение"
+            }
+            Text(typeLabel, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            
+            if (item.relatedService != null) {
+                Text(
+                    "Связано с: ${item.relatedService}",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            if (showOldPassword && item.encryptedOldPassword != null) {
+                try {
+                    val oldPassword = CryptoUtils.decrypt(item.encryptedOldPassword)
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Старый: $oldPassword",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(oldPassword))
+                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Text(
+                        "Старый пароль скрыт",
+                        fontSize = 10.sp,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            } else {
+                Text(
+                    "Старый пароль скрыт",
+                    fontSize = 10.sp,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        }
     }
 }
 
