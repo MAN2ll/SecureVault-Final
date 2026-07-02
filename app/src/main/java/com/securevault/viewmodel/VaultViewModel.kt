@@ -1,5 +1,6 @@
 package com.securevault.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
@@ -7,6 +8,7 @@ import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -35,14 +37,15 @@ data class PasswordShuffleResult(
     val errorMessage: String? = null
 )
 
-data class ValidationResult(
-    val isValid: Boolean,
-    val errorMessage: String? = null
-)
+sealed class PasswordOperationResult {
+    object Success : PasswordOperationResult()
+    data class Error(val message: String) : PasswordOperationResult()
+}
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
-    private val repository: VaultRepository
+    private val repository: VaultRepository,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _currentProfileId = MutableStateFlow<Int?>(null)
@@ -81,17 +84,34 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    fun updatePassword(entryId: String, newPassword: String) = viewModelScope.launch {
-        val entry = repository.getById(entryId) ?: return@launch
+    // ✅ Backfill fingerprint для старых записей
+    fun backfillFingerprints() = viewModelScope.launch {
+        val allEntries = repository.allEntries.first()
+        allEntries.forEach { entry ->
+            if (entry.passwordFingerprint == null) {
+                try {
+                    val password = withContext(Dispatchers.Default) { entry.password }
+                    val fingerprint = PasswordValidator.buildPasswordFingerprint(password, appContext)
+                    repository.update(entry.copy(passwordFingerprint = fingerprint))
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    fun updatePassword(entryId: String, newPassword: String): PasswordOperationResult {
+        val entry = repository.getByIdBlocking(entryId) ?: return PasswordOperationResult.Error("Запись не найдена")
+        
+        val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
+        if (!validation.isValid) return PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации")
         
         val now = System.currentTimeMillis()
         val newNextRotationDate = if (entry.rotationEnabled) {
             now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-        } else {
-            null
-        }
+        } else null
         
-        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword)
+        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
         
         val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
@@ -100,6 +120,7 @@ class VaultViewModel @Inject constructor(
             nextRotationDate = newNextRotationDate
         )
         repository.update(updated)
+        return PasswordOperationResult.Success
     }
 
     fun updateRotationSettings(entryId: String, enabled: Boolean, periodMonths: Int) = viewModelScope.launch {
@@ -108,9 +129,7 @@ class VaultViewModel @Inject constructor(
         val now = System.currentTimeMillis()
         val newNextRotationDate = if (enabled) {
             now + (periodMonths * 30L * 24 * 60 * 60 * 1000)
-        } else {
-            null
-        }
+        } else null
         
         val updated = entry.copy(
             rotationEnabled = enabled,
@@ -127,17 +146,18 @@ class VaultViewModel @Inject constructor(
         newGenerationType: String,
         newMnemonicPhraseHint: String? = null,
         newMnemonicOptionsJson: String? = null
-    ) = viewModelScope.launch {
-        val entry = repository.getById(entryId) ?: return@launch
+    ): PasswordOperationResult {
+        val entry = repository.getByIdBlocking(entryId) ?: return PasswordOperationResult.Error("Запись не найдена")
+        
+        val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
+        if (!validation.isValid) return PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации")
         
         val now = System.currentTimeMillis()
         val newNextRotationDate = if (entry.rotationEnabled) {
             now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-        } else {
-            null
-        }
+        } else null
         
-        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword)
+        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
         
         val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
@@ -150,21 +170,27 @@ class VaultViewModel @Inject constructor(
             nextRotationDate = newNextRotationDate
         )
         repository.update(updated)
+        return PasswordOperationResult.Success
     }
 
-    fun bulkReplacePasswords(replacements: List<PasswordReplacement>) = viewModelScope.launch {
+    fun bulkReplacePasswords(replacements: List<PasswordReplacement>): PasswordOperationResult {
         val now = System.currentTimeMillis()
+        val errors = mutableListOf<String>()
         
-        replacements.forEach { replacement ->
-            val entry = repository.getById(replacement.entryId) ?: return@forEach
+        for (replacement in replacements) {
+            val entry = repository.getByIdBlocking(replacement.entryId) ?: continue
+            
+            val validation = PasswordValidator.validateNewPasswordForEntry(entry, replacement.newPassword, appContext)
+            if (!validation.isValid) {
+                errors.add("${entry.service}: ${validation.errorMessage}")
+                continue
+            }
             
             val newNextRotationDate = if (entry.rotationEnabled) {
                 now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-            } else {
-                null
-            }
+            } else null
             
-            val fingerprint = PasswordValidator.buildPasswordFingerprint(replacement.newPassword)
+            val fingerprint = PasswordValidator.buildPasswordFingerprint(replacement.newPassword, appContext)
             
             val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
                 encryptedPassword = CryptoUtils.encrypt(replacement.newPassword),
@@ -178,51 +204,41 @@ class VaultViewModel @Inject constructor(
             )
             repository.update(updated)
         }
+        
+        return if (errors.isEmpty()) {
+            PasswordOperationResult.Success
+        } else {
+            PasswordOperationResult.Error(errors.joinToString("\n"))
+        }
     }
 
-    // ✅ ИСПРАВЛЕНО: без runBlocking и break/continue в inline lambdas
     fun buildPasswordShufflePlan(
         entryIds: List<String>,
         onResult: (PasswordShuffleResult) -> Unit
     ) = viewModelScope.launch {
         if (entryIds.size < 2) {
-            onResult(PasswordShuffleResult(
-                success = false,
-                errorMessage = "Для перемешивания нужно минимум 2 сервиса"
-            ))
+            onResult(PasswordShuffleResult(false, errorMessage = "Для перемешивания нужно минимум 2 сервиса"))
             return@launch
         }
         
         val entries = entryIds.mapNotNull { repository.getById(it) }
         if (entries.size != entryIds.size) {
-            onResult(PasswordShuffleResult(
-                success = false,
-                errorMessage = "Не все записи найдены"
-            ))
+            onResult(PasswordShuffleResult(false, errorMessage = "Не все записи найдены"))
             return@launch
         }
         
         val profileIds = entries.map { it.profileId }.toSet()
         if (profileIds.size > 1) {
-            onResult(PasswordShuffleResult(
-                success = false,
-                errorMessage = "Все записи должны быть из одного профиля"
-            ))
+            onResult(PasswordShuffleResult(false, errorMessage = "Все записи должны быть из одного профиля"))
             return@launch
         }
         
         val assignments = tryBuildPermutation(entries)
         
         if (assignments == null) {
-            onResult(PasswordShuffleResult(
-                success = false,
-                errorMessage = "Не удалось безопасно перемешать пароли. Выберите больше сервисов или используйте другой способ ротации."
-            ))
+            onResult(PasswordShuffleResult(false, errorMessage = "Не удалось безопасно перемешать пароли. Выберите больше сервисов или используйте другой способ ротации."))
         } else {
-            onResult(PasswordShuffleResult(
-                success = true,
-                assignments = assignments
-            ))
+            onResult(PasswordShuffleResult(true, assignments = assignments))
         }
     }
 
@@ -246,18 +262,14 @@ class VaultViewModel @Inject constructor(
                     valid = false
                 } else {
                     val sourcePassword = withContext(Dispatchers.Default) {
-                        try {
-                            sourceEntry.password
-                        } catch (e: Exception) {
-                            null
-                        }
+                        try { sourceEntry.password } catch (e: Exception) { null }
                     }
                     
                     if (sourcePassword == null) {
                         valid = false
                     } else if (PasswordValidator.hasDuplicateCharacters(sourcePassword)) {
                         valid = false
-                    } else if (PasswordValidator.wasPasswordUsedForEntry(targetEntry, sourcePassword)) {
+                    } else if (PasswordValidator.wasPasswordUsedForEntry(targetEntry, sourcePassword, appContext)) {
                         valid = false
                     } else {
                         val lastHistory = targetEntry.getPasswordHistory().firstOrNull()
@@ -268,7 +280,7 @@ class VaultViewModel @Inject constructor(
                                     valid = false
                                 }
                             } catch (e: Exception) {
-                                // Пропускаем проверку
+                                // ignore
                             }
                         }
                         
@@ -294,23 +306,6 @@ class VaultViewModel @Inject constructor(
         return null
     }
 
-    fun validatePasswordShuffleAssignment(
-        targetEntryId: String,
-        sourceEntryId: String,
-        currentAssignments: List<PasswordShuffleAssignment>
-    ): ValidationResult {
-        if (targetEntryId == sourceEntryId) {
-            return ValidationResult(false, "Сервис не может получить свой же пароль")
-        }
-        
-        val usedCount = currentAssignments.count { it.sourceEntryId == sourceEntryId && it.targetEntryId != targetEntryId }
-        if (usedCount > 0) {
-            return ValidationResult(false, "Этот пароль уже назначен другому сервису")
-        }
-        
-        return ValidationResult(true)
-    }
-
     fun applyPasswordShuffle(
         assignments: List<PasswordShuffleAssignment>,
         onResult: (PasswordShuffleResult) -> Unit
@@ -321,22 +316,32 @@ class VaultViewModel @Inject constructor(
         val targetEntries = assignments.mapNotNull { repository.getById(it.targetEntryId) }
         
         if (sourceEntries.size != assignments.size || targetEntries.size != assignments.size) {
-            onResult(PasswordShuffleResult(
-                success = false,
-                errorMessage = "Не все записи найдены"
-            ))
+            onResult(PasswordShuffleResult(false, errorMessage = "Не все записи найдены"))
             return@launch
         }
         
         val sourcePasswords = mutableMapOf<String, String?>()
         for (entry in sourceEntries) {
             sourcePasswords[entry.id] = withContext(Dispatchers.Default) {
-                try {
-                    entry.password
-                } catch (e: Exception) {
-                    null
-                }
+                try { entry.password } catch (e: Exception) { null }
             }
+        }
+        
+        // ✅ Повторная проверка всех назначений
+        val errors = mutableListOf<String>()
+        for (assignment in assignments) {
+            val targetEntry = repository.getByIdBlocking(assignment.targetEntryId) ?: continue
+            val sourcePassword = sourcePasswords[assignment.sourceEntryId] ?: continue
+            
+            val validation = PasswordValidator.validateNewPasswordForEntry(targetEntry, sourcePassword, appContext)
+            if (!validation.isValid) {
+                errors.add("${targetEntry.service}: ${validation.errorMessage}")
+            }
+        }
+        
+        if (errors.isNotEmpty()) {
+            onResult(PasswordShuffleResult(false, errorMessage = errors.joinToString("\n")))
+            return@launch
         }
         
         for (assignment in assignments) {
@@ -344,12 +349,10 @@ class VaultViewModel @Inject constructor(
             val sourcePassword = sourcePasswords[assignment.sourceEntryId] ?: continue
             val sourceEntry = sourceEntries.find { it.id == assignment.sourceEntryId } ?: continue
             
-            val fingerprint = PasswordValidator.buildPasswordFingerprint(sourcePassword)
+            val fingerprint = PasswordValidator.buildPasswordFingerprint(sourcePassword, appContext)
             val newNextRotationDate = if (targetEntry.rotationEnabled) {
                 now + (targetEntry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-            } else {
-                null
-            }
+            } else null
             
             val updated = targetEntry.addToPasswordHistory(
                 oldPassword = targetEntry.password,
