@@ -19,7 +19,6 @@ object PasswordGenerator {
     private const val DIGITS = "0123456789"
     private const val SPECIAL = "!@#$%^&*()-_=+[]{}|;:,.<>?"
 
-    // ✅ Генерация БЕЗ повторяющихся символов
     fun generate(
         length: Int = 16,
         useUpper: Boolean = true,
@@ -28,21 +27,15 @@ object PasswordGenerator {
         context: Context? = null
     ): GenerationResult {
         val charset = buildCharset(useUpper, useDigits, useSpecial)
-        
+
         if (charset.isEmpty()) {
             return GenerationResult(generateFromCharset(LOWERCASE, length), Strength.WEAK)
         }
-        
-        // ✅ Проверка: длина не должна превышать размер уникального набора
+
         val uniqueChars = charset.toSet()
         val effectiveLength = minOf(length, uniqueChars.size)
-        
-        if (length > uniqueChars.size) {
-            // Предупреждение: длина ограничена
-            return generateWithUniqueChars(charset, effectiveLength, useUpper, useDigits, useSpecial, context)
-        }
-        
-        return generateWithUniqueChars(charset, length, useUpper, useDigits, useSpecial, context)
+
+        return generateWithUniqueChars(charset, effectiveLength, useUpper, useDigits, useSpecial, context)
     }
 
     private fun generateWithUniqueChars(
@@ -55,12 +48,11 @@ object PasswordGenerator {
     ): GenerationResult {
         val maxAttempts = 100
         var attempts = 0
-        
+
         while (attempts < maxAttempts) {
             val password = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
-            
+
             if (!PasswordValidator.hasDuplicateCharacters(password)) {
-                // Дополнительная проверка через валидатор, если есть context
                 if (context != null) {
                     val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
                     if (!uniqueCheck.isValid) {
@@ -72,8 +64,7 @@ object PasswordGenerator {
             }
             attempts++
         }
-        
-        // Fallback: если не удалось, возвращаем последний вариант
+
         val fallback = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
         return GenerationResult(fallback, calculateStrength(fallback))
     }
