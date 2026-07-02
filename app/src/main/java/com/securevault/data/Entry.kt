@@ -27,7 +27,6 @@ data class Entry(
     @ColumnInfo(name = "last_changed") val lastChanged: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "password_history_json") val passwordHistoryJson: String? = null,
     @ColumnInfo(name = "generation_type") val generationType: String = "random",
-    // ✅ НОВЫЕ ПОЛЯ для версии 8
     @ColumnInfo(name = "password_fingerprint") val passwordFingerprint: String? = null,
     @ColumnInfo(name = "mnemonic_phrase_hint") val mnemonicPhraseHint: String? = null,
     @ColumnInfo(name = "mnemonic_options_json") val mnemonicOptionsJson: String? = null
@@ -44,21 +43,20 @@ data class Entry(
                 val obj = jsonArray.getJSONObject(i)
                 result.add(
                     PasswordHistoryItem(
-                        encryptedOldPassword = obj.optString("encryptedOldPassword", null),
-                        encryptedNewPassword = obj.optString("encryptedNewPassword", null),
+                        encryptedOldPassword = obj.optString("encryptedOldPassword").takeIf { it != "null" && it.isNotEmpty() },
+                        encryptedNewPassword = obj.optString("encryptedNewPassword").takeIf { it != "null" && it.isNotEmpty() },
                         passwordHash = obj.optString("passwordHash", ""),
                         passwordFingerprint = obj.optString("passwordFingerprint", ""),
                         date = obj.optLong("date", 0L),
                         type = obj.optString("type", "unknown"),
-                        relatedService = obj.optString("relatedService", null),
-                        relatedEntryId = obj.optString("relatedEntryId", null),
-                        hint = obj.optString("hint", null)
+                        relatedService = obj.optString("relatedService").takeIf { it != "null" && it.isNotEmpty() },
+                        relatedEntryId = obj.optString("relatedEntryId").takeIf { it != "null" && it.isNotEmpty() },
+                        hint = obj.optString("hint").takeIf { it != "null" && it.isNotEmpty() }
                     )
                 )
             }
             result
         } catch (e: Exception) {
-            // Обратная совместимость со старым форматом
             parseLegacyHistory(passwordHistoryJson)
         }
     }
@@ -103,8 +101,8 @@ data class Entry(
             null
         }
         
-        val fingerprint = PasswordValidator.buildPasswordFingerprint(oldPassword)
-        val hash = PasswordValidator.buildPasswordFingerprint(oldPassword)
+        val fingerprint = PasswordValidator.buildLegacyFingerprint(oldPassword)
+        val hash = PasswordValidator.buildLegacyFingerprint(oldPassword)
         
         val newItem = PasswordHistoryItem(
             encryptedOldPassword = encryptedOld,
@@ -157,7 +155,7 @@ data class Entry(
             mnemonicOptionsJson: String? = null
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
-            val fingerprint = PasswordValidator.buildPasswordFingerprint(password)
+            val fingerprint = PasswordValidator.buildLegacyFingerprint(password)
             val now = System.currentTimeMillis()
             val nextRotationDate = if (rotationEnabled) {
                 now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
@@ -211,14 +209,10 @@ data class Entry(
             )
         }
 
-        /**
-         * Извлечение короткой фразы из старой подсказки.
-         */
         fun extractShortPhrase(textHint: String?): String? {
             if (textHint.isNullOrBlank()) return null
             val parts = textHint.split("+")
             val first = parts.firstOrNull()?.trim() ?: return null
-            // Убираем служебные слова
             return first.replace(Regex("\\s*\\(.*?\\)\\s*"), "").trim().takeIf { it.isNotBlank() }
         }
     }
