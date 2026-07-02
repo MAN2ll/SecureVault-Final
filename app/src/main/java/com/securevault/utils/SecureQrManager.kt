@@ -2,7 +2,6 @@ package com.securevault.utils
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -10,34 +9,24 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.UUID
 
-/**
- * Менеджер защищённых QR-кодов.
- * QR содержит ТОЛЬКО entryId + токен, но НЕ пароль.
- */
 object SecureQrManager {
 
     private const val QR_TYPE = "securevault_qr_v1"
+    private const val NONCE_LIFETIME_MS = 24 * 60 * 60 * 1000L // 24 часа
 
-    /**
-     * Генерация QR-токена для записи.
-     */
     fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
         val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
         
-        // Привязка к профилю
         val profileIdHash = hashString("profile_$profileId")
         
-        // Привязка к устройству (Android ID)
         val deviceId = android.provider.Settings.Secure.getString(
             context.contentResolver,
             android.provider.Settings.Secure.ANDROID_ID
         ) ?: "unknown"
         val deviceBindingHash = hashString("device_$deviceId")
         
-        // Уникальный nonce
         val nonce = UUID.randomUUID().toString()
         
-        // Сохраняем nonce для проверки
         prefs.edit()
             .putString("qr_nonce_$entryId", nonce)
             .putLong("qr_nonce_time_$entryId", System.currentTimeMillis())
@@ -54,9 +43,6 @@ object SecureQrManager {
         return payload.toString()
     }
 
-    /**
-     * Генерация Bitmap QR-кода.
-     */
     fun generateQrBitmap(content: String, size: Int = 512): Bitmap {
         val writer = QRCodeWriter()
         val hints = mapOf(EncodeHintType.MARGIN to 1)
@@ -75,9 +61,6 @@ object SecureQrManager {
         return bitmap
     }
 
-    /**
-     * Проверка QR-токена.
-     */
     fun validateQrToken(token: String, profileId: Int, context: Context): QrValidationResult {
         return try {
             val json = JSONObject(token)
@@ -95,13 +78,11 @@ object SecureQrManager {
                 return QrValidationResult(false, "QR-код повреждён")
             }
             
-            // Проверка профиля
             val expectedProfileHash = hashString("profile_$profileId")
             if (profileIdHash != expectedProfileHash) {
                 return QrValidationResult(false, "QR-код не принадлежит этому профилю")
             }
             
-            // Проверка устройства
             val deviceId = android.provider.Settings.Secure.getString(
                 context.contentResolver,
                 android.provider.Settings.Secure.ANDROID_ID
@@ -111,11 +92,17 @@ object SecureQrManager {
                 return QrValidationResult(false, "QR-код не принадлежит этому устройству")
             }
             
-            // Проверка nonce
             val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
             val storedNonce = prefs.getString("qr_nonce_$entryId", null)
+            val nonceTime = prefs.getLong("qr_nonce_time_$entryId", 0L)
+            
             if (storedNonce != nonce) {
                 return QrValidationResult(false, "QR-код недействителен")
+            }
+            
+            // ✅ Проверка срока жизни nonce
+            if (System.currentTimeMillis() - nonceTime > NONCE_LIFETIME_MS) {
+                return QrValidationResult(false, "Срок действия QR-кода истёк. Создайте новый.")
             }
             
             QrValidationResult(true, null, entryId)
