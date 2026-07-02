@@ -33,7 +33,6 @@ object CryptoUtils {
         return keyGenerator.generateKey()
     }
 
-    // ✅ ИСПРАВЛЕНО: используем Base64.NO_WRAP для новых значений (без переносов строк)
     fun encrypt(plaintext: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
@@ -42,9 +41,7 @@ object CryptoUtils {
         return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
     }
 
-    // ✅ Совместимость: decrypt понимает и NO_WRAP, и DEFAULT (со старыми записями)
     fun decrypt(ciphertext: String): String {
-        // Удаляем возможные переносы строк из старых записей
         val cleanedCiphertext = ciphertext.replace("\n", "").replace("\r", "").trim()
         val data = Base64.decode(cleanedCiphertext, Base64.DEFAULT)
         val iv = data.sliceArray(0..11)
