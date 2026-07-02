@@ -272,13 +272,15 @@ fun MnemonicGeneratorScreen(
                     
                     val selected = variants[selectedVariantIndex]
                     
-                    val entry = Entry.create(
+                   val entry = Entry.create(
                         service = serviceName,
                         username = "",
                         password = selected.password,
                         profileId = currentProfileId!!,
                         textHint = selected.mnemonicHint,
-                        generationType = "mnemonic"
+                        generationType = "mnemonic",
+                        mnemonicPhraseHint = phrase,  // ✅ Короткая фраза
+                        mnemonicOptionsJson = null
                     )
                     viewModel.insert(entry)
                     onBack()
