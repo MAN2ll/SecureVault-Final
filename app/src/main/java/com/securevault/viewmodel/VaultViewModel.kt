@@ -180,115 +180,110 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // ✅ НОВЫЕ МЕТОДЫ для перемешивания паролей
-
-    fun buildPasswordShufflePlan(entryIds: List<String>): PasswordShuffleResult = runBlocking {
+    // ✅ ИСПРАВЛЕНО: без runBlocking и break/continue в inline lambdas
+    fun buildPasswordShufflePlan(
+        entryIds: List<String>,
+        onResult: (PasswordShuffleResult) -> Unit
+    ) = viewModelScope.launch {
         if (entryIds.size < 2) {
-            return@runBlocking PasswordShuffleResult(
+            onResult(PasswordShuffleResult(
                 success = false,
                 errorMessage = "Для перемешивания нужно минимум 2 сервиса"
-            )
+            ))
+            return@launch
         }
         
         val entries = entryIds.mapNotNull { repository.getById(it) }
         if (entries.size != entryIds.size) {
-            return@runBlocking PasswordShuffleResult(
+            onResult(PasswordShuffleResult(
                 success = false,
                 errorMessage = "Не все записи найдены"
-            )
+            ))
+            return@launch
         }
         
-        // Проверяем, что все записи из одного профиля
         val profileIds = entries.map { it.profileId }.toSet()
         if (profileIds.size > 1) {
-            return@runBlocking PasswordShuffleResult(
+            onResult(PasswordShuffleResult(
                 success = false,
                 errorMessage = "Все записи должны быть из одного профиля"
-            )
+            ))
+            return@launch
         }
         
-        // Пытаемся построить перестановку
         val assignments = tryBuildPermutation(entries)
         
         if (assignments == null) {
-            return@runBlocking PasswordShuffleResult(
+            onResult(PasswordShuffleResult(
                 success = false,
                 errorMessage = "Не удалось безопасно перемешать пароли. Выберите больше сервисов или используйте другой способ ротации."
-            )
+            ))
+        } else {
+            onResult(PasswordShuffleResult(
+                success = true,
+                assignments = assignments
+            ))
         }
-        
-        PasswordShuffleResult(
-            success = true,
-            assignments = assignments
-        )
     }
 
     private suspend fun tryBuildPermutation(entries: List<Entry>): List<PasswordShuffleAssignment>? {
         val n = entries.size
         val sourceIndices = (0 until n).toMutableList()
         
-        // Пробуем несколько вариантов перестановки
         for (attempt in 0 until 100) {
             sourceIndices.shuffle()
             
             val assignments = mutableListOf<PasswordShuffleAssignment>()
             var valid = true
+            var i = 0
             
-            for (i in 0 until n) {
+            while (i < n && valid) {
                 val targetEntry = entries[i]
                 val sourceIndex = sourceIndices[i]
                 val sourceEntry = entries[sourceIndex]
                 
-                // Не должен получать свой пароль
                 if (targetEntry.id == sourceEntry.id) {
                     valid = false
-                    break
-                }
-                
-                val sourcePassword = withContext(Dispatchers.Default) {
-                    try {
-                        sourceEntry.password
-                    } catch (e: Exception) {
-                        null
-                    }
-                } ?: run {
-                    valid = false
-                    break
-                }
-                
-                // Проверка уникальных символов
-                if (PasswordValidator.hasDuplicateCharacters(sourcePassword)) {
-                    valid = false
-                    break
-                }
-                
-                // Проверка повтора пароля
-                if (PasswordValidator.wasPasswordUsedForEntry(targetEntry, sourcePassword)) {
-                    valid = false
-                    break
-                }
-                
-                // Проверка 60% уникальности
-                val lastHistory = targetEntry.getPasswordHistory().firstOrNull()
-                if (lastHistory?.encryptedOldPassword != null) {
-                    try {
-                        val oldPassword = CryptoUtils.decrypt(lastHistory.encryptedOldPassword)
-                        if (!PasswordValidator.isAtLeast60PercentUnique(oldPassword, sourcePassword)) {
-                            valid = false
-                            break
+                } else {
+                    val sourcePassword = withContext(Dispatchers.Default) {
+                        try {
+                            sourceEntry.password
+                        } catch (e: Exception) {
+                            null
                         }
-                    } catch (e: Exception) {
-                        // Пропускаем проверку
+                    }
+                    
+                    if (sourcePassword == null) {
+                        valid = false
+                    } else if (PasswordValidator.hasDuplicateCharacters(sourcePassword)) {
+                        valid = false
+                    } else if (PasswordValidator.wasPasswordUsedForEntry(targetEntry, sourcePassword)) {
+                        valid = false
+                    } else {
+                        val lastHistory = targetEntry.getPasswordHistory().firstOrNull()
+                        if (lastHistory?.encryptedOldPassword != null) {
+                            try {
+                                val oldPassword = CryptoUtils.decrypt(lastHistory.encryptedOldPassword)
+                                if (!PasswordValidator.isAtLeast60PercentUnique(oldPassword, sourcePassword)) {
+                                    valid = false
+                                }
+                            } catch (e: Exception) {
+                                // Пропускаем проверку
+                            }
+                        }
+                        
+                        if (valid) {
+                            assignments.add(
+                                PasswordShuffleAssignment(
+                                    targetEntryId = targetEntry.id,
+                                    sourceEntryId = sourceEntry.id,
+                                    isValid = true
+                                )
+                            )
+                        }
                     }
                 }
-                
-                assignments.add(
-                    PasswordShuffleAssignment(
-                        targetEntryId = targetEntry.id,
-                        sourceEntryId = sourceEntry.id,
-                        isValid = true
-                    )
-                )
+                i++
             }
             
             if (valid && assignments.size == n) {
@@ -308,7 +303,6 @@ class VaultViewModel @Inject constructor(
             return ValidationResult(false, "Сервис не может получить свой же пароль")
         }
         
-        // Проверяем, что source не используется дважды
         val usedCount = currentAssignments.count { it.sourceEntryId == sourceEntryId && it.targetEntryId != targetEntryId }
         if (usedCount > 0) {
             return ValidationResult(false, "Этот пароль уже назначен другому сервису")
@@ -317,25 +311,31 @@ class VaultViewModel @Inject constructor(
         return ValidationResult(true)
     }
 
-    fun applyPasswordShuffle(assignments: List<PasswordShuffleAssignment>): PasswordShuffleResult = runBlocking {
+    fun applyPasswordShuffle(
+        assignments: List<PasswordShuffleAssignment>,
+        onResult: (PasswordShuffleResult) -> Unit
+    ) = viewModelScope.launch {
         val now = System.currentTimeMillis()
         
-        // Получаем все записи
         val sourceEntries = assignments.mapNotNull { repository.getById(it.sourceEntryId) }
         val targetEntries = assignments.mapNotNull { repository.getById(it.targetEntryId) }
         
         if (sourceEntries.size != assignments.size || targetEntries.size != assignments.size) {
-            return@runBlocking PasswordShuffleResult(
+            onResult(PasswordShuffleResult(
                 success = false,
                 errorMessage = "Не все записи найдены"
-            )
+            ))
+            return@launch
         }
         
-        val sourcePasswords = sourceEntries.associate { entry ->
-            entry.id to try {
-                withContext(Dispatchers.Default) { entry.password }
-            } catch (e: Exception) {
-                null
+        val sourcePasswords = mutableMapOf<String, String?>()
+        for (entry in sourceEntries) {
+            sourcePasswords[entry.id] = withContext(Dispatchers.Default) {
+                try {
+                    entry.password
+                } catch (e: Exception) {
+                    null
+                }
             }
         }
         
@@ -366,10 +366,9 @@ class VaultViewModel @Inject constructor(
             repository.update(updated)
         }
         
-        PasswordShuffleResult(success = true, assignments = assignments)
+        onResult(PasswordShuffleResult(success = true, assignments = assignments))
     }
 
-    // ✅ Поиск записей, использующих такой же пароль
     suspend fun findEntriesUsingPasswordFingerprint(profileId: Int, fingerprint: String): List<Entry> {
         return withContext(Dispatchers.IO) {
             repository.allEntries.firstOrNull()
@@ -378,9 +377,4 @@ class VaultViewModel @Inject constructor(
                 ?: emptyList()
         }
     }
-}
-
-// Хелпер для runBlocking
-private fun <T> runBlocking(block: suspend () -> T): T {
-    return kotlinx.coroutines.runBlocking { block() }
 }
