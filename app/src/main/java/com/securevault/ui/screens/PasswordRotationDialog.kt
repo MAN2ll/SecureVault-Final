@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 
+// ✅ ИСПРАВЛЕННАЯ сигнатура: 5 параметров
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
@@ -31,7 +32,13 @@ fun PasswordRotationDialog(
     rotationMonth: Int?,
     rotationYear: Int?,
     onDismiss: () -> Unit,
-    onPasswordReplaced: (newPassword: String, newHint: String?, newGenerationType: String) -> Unit
+    onPasswordReplaced: (
+        newPassword: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?
+    ) -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -61,36 +68,37 @@ fun PasswordRotationDialog(
         randomStrength = result.strength
     }
 
- fun generateMnemonicVariants() {
-    validationError = null
-    
-    if (mnemonicPhrase.isBlank()) {
-        mnemonicVariants = emptyList()
-        validationError = "Введите мнемоническую фразу"
-        return
+    fun generateMnemonicVariants() {
+        validationError = null
+        
+        if (mnemonicPhrase.isBlank()) {
+            mnemonicVariants = emptyList()
+            validationError = "Введите мнемоническую фразу"
+            return
+        }
+        
+        if (includeServiceCode && serviceName.isBlank()) {
+            mnemonicVariants = emptyList()
+            validationError = "Код сервиса включён, но название сервиса пустое"
+            return
+        }
+        
+        val options = MnemonicPasswordGenerator.GenerationOptions(
+            phrase = mnemonicPhrase,
+            serviceName = serviceName,
+            rotationMonth = rotationMonth,
+            rotationYear = rotationYear,
+            targetLength = 16,
+            includeLeet = includeLeet,
+            includeServiceCode = includeServiceCode,
+            includeRotationCode = includeRotationCode,
+            variantOffset = variantOffset
+        )
+        
+        mnemonicVariants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
+        selectedMnemonicIndex = -1
     }
-    
-    if (includeServiceCode && serviceName.isBlank()) {
-        mnemonicVariants = emptyList()
-        validationError = "Код сервиса включён, но название сервиса пустое"
-        return
-    }
-    
-    val options = MnemonicPasswordGenerator.GenerationOptions(
-        phrase = mnemonicPhrase,
-        serviceName = serviceName,
-        rotationMonth = rotationMonth,
-        rotationYear = rotationYear,
-        targetLength = 16,
-        includeLeet = includeLeet,
-        includeServiceCode = includeServiceCode,
-        includeRotationCode = includeRotationCode,
-        variantOffset = variantOffset
-    )
-    
-    mnemonicVariants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
-    selectedMnemonicIndex = -1
-}
+
     LaunchedEffect(Unit) {
         generateRandomPassword()
         if (currentHint != null) {
@@ -140,16 +148,10 @@ fun PasswordRotationDialog(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (selectedMode == 0) 
-                                MaterialTheme.colorScheme.primaryContainer 
-                            else 
-                                MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = if (selectedMode == 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedMode == 0, onClick = { selectedMode = 0 })
                             Spacer(Modifier.width(8.dp))
                             Icon(Icons.Default.Casino, null, tint = if (selectedMode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -164,16 +166,10 @@ fun PasswordRotationDialog(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (selectedMode == 1) 
-                                MaterialTheme.colorScheme.primaryContainer 
-                            else 
-                                MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = if (selectedMode == 1) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedMode == 1, onClick = { selectedMode = 1 })
                             Spacer(Modifier.width(8.dp))
                             Icon(Icons.Default.Lightbulb, null, tint = if (selectedMode == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -188,16 +184,10 @@ fun PasswordRotationDialog(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (selectedMode == 2) 
-                                MaterialTheme.colorScheme.primaryContainer 
-                            else 
-                                MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = if (selectedMode == 2) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedMode == 2, onClick = { selectedMode = 2 })
                             Spacer(Modifier.width(8.dp))
                             Icon(Icons.Default.Edit, null, tint = if (selectedMode == 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -234,10 +224,7 @@ fun PasswordRotationDialog(
                             }
                         }
                         
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
                                 onClick = {
                                     clipboardManager.setText(AnnotatedString(randomPassword))
@@ -294,10 +281,7 @@ fun PasswordRotationDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text("Старая подсказка: $currentHint", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -306,12 +290,7 @@ fun PasswordRotationDialog(
                         }
                         
                         if (mnemonicVariants.isNotEmpty()) {
-                            Text(
-                                "Текущий набор: №${variantOffset + 1}",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
-                            )
+                            Text("Текущий набор: №${variantOffset + 1}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
                         }
                         
                         OutlinedButton(
@@ -331,54 +310,28 @@ fun PasswordRotationDialog(
                         if (mnemonicVariants.isNotEmpty()) {
                             Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             
-                            // ✅ ИСПРАВЛЕНО: явный вынос значений в переменные ПЕРЕД Card
                             mnemonicVariants.forEachIndexed { index, result ->
                                 val isSelected = selectedMnemonicIndex == index
                                 
-                                // Явно извлекаем все значения в String-переменные
                                 val variantNameValue: String = result.variantName
                                 val passwordValue: String = result.password
                                 val strengthNameValue: String = result.strength.name
                                 val hintValue: String = result.mnemonicHint
                                 val combinedTextValue: String = strengthNameValue + " • " + hintValue
                                 
-                                val cardColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                }
+                                val cardColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(containerColor = cardColor)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = variantNameValue,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = passwordValue,
-                                                fontSize = 13.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = combinedTextValue,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            Text(text = variantNameValue, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                            Text(text = passwordValue, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                            Text(text = combinedTextValue, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        RadioButton(
-                                            selected = isSelected,
-                                            onClick = { selectedMnemonicIndex = index }
-                                        )
+                                        RadioButton(selected = isSelected, onClick = { selectedMnemonicIndex = index })
                                     }
                                 }
                             }
@@ -418,25 +371,39 @@ fun PasswordRotationDialog(
                     when (selectedMode) {
                         0 -> {
                             if (randomPassword.isNotEmpty()) {
-                                onPasswordReplaced(randomPassword, "Случайный пароль, создан при ротации", "random")
+                                // ✅ ИСПРАВЛЕНО: 5 параметров
+                                onPasswordReplaced(
+                                    randomPassword,
+                                    "Случайный пароль, создан при ротации",
+                                    "random",
+                                    null,
+                                    null
+                                )
                             }
                         }
                         1 -> {
                             if (selectedMnemonicIndex >= 0 && selectedMnemonicIndex < mnemonicVariants.size) {
                                 val selected = mnemonicVariants[selectedMnemonicIndex]
-                                // ✅ Передаём короткую фразу отдельно
+                                // ✅ ИСПРАВЛЕНО: 5 параметров, передаём короткую фразу
                                 onPasswordReplaced(
-                                    selected.password, 
-                                    selected.mnemonicHint, 
+                                    selected.password,
+                                    selected.mnemonicHint,
                                     "mnemonic",
-                                    mnemonicPhrase,  // короткая фраза
-                                    null  // options JSON можно добавить позже
+                                    mnemonicPhrase,
+                                    null
                                 )
                             }
                         }
                         2 -> {
                             if (manualPassword.isNotEmpty()) {
-                                onPasswordReplaced(manualPassword, null, "manual")
+                                // ✅ ИСПРАВЛЕНО: 5 параметров
+                                onPasswordReplaced(
+                                    manualPassword,
+                                    null,
+                                    "manual",
+                                    null,
+                                    null
+                                )
                             }
                         }
                     }
