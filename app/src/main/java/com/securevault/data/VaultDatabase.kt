@@ -13,14 +13,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-// ✅ Миграция с версии 6 на 7: добавление generation_type
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE entries ADD COLUMN generation_type TEXT NOT NULL DEFAULT 'random'")
     }
 }
 
-// ✅ Миграция с версии 7 на 8: добавление новых полей
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE entries ADD COLUMN password_fingerprint TEXT")
@@ -50,7 +48,6 @@ abstract class VaultDatabase : RoomDatabase() {
                     "vault_db"
                 )
                 .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
-                // ✅ БЕЗ fallbackToDestructiveMigration
                 .build()
                 INSTANCE = instance
                 instance
