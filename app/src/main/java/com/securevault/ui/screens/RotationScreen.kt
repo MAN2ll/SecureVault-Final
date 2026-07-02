@@ -33,6 +33,7 @@ fun RotationScreen(
     val allRotationEntries by viewModel.rotationEntries.collectAsState()
     var selectedEntry by remember { mutableStateOf<Entry?>(null) }
     var showBulkRotation by remember { mutableStateOf(false) }
+    var showShuffleDialog by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
     var daysThreshold by remember { mutableIntStateOf(7) }
 
@@ -82,7 +83,7 @@ fun RotationScreen(
                         onClick = { currentFilter = filter },
                         text = { 
                             Text(
-                                filter.label,
+                                text = filter.label,
                                 fontSize = 11.sp
                             ) 
                         }
@@ -102,7 +103,7 @@ fun RotationScreen(
                         FilterChip(
                             selected = daysThreshold == days,
                             onClick = { daysThreshold = days },
-                            label = { Text("$days дн.", fontSize = 11.sp) }
+                            label = { Text(text = "$days дн.", fontSize = 11.sp) }
                         )
                     }
                 }
@@ -127,7 +128,7 @@ fun RotationScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Найдено: ${filteredEntries.size} записей",
+                        text = "Найдено: ${filteredEntries.size} записей",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -150,7 +151,7 @@ fun RotationScreen(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Нет записей по фильтру",
+                            text = "Нет записей по фильтру",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -170,9 +171,11 @@ fun RotationScreen(
                         )
                     }
                     
-                    // Кнопка массовой ротации
+                    // Кнопки массовых операций
                     item {
                         Spacer(Modifier.height(16.dp))
+                        
+                        // Массовая ротация (случайные пароли)
                         Button(
                             onClick = { showBulkRotation = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -182,6 +185,25 @@ fun RotationScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Массовая ротация (${filteredEntries.size})")
                         }
+                        
+                        Spacer(Modifier.height(8.dp))
+                        
+                        // ✅ НОВАЯ КНОПКА: Перемешивание паролей между сервисами
+                        OutlinedButton(
+                            onClick = { showShuffleDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = filteredEntries.size >= 2
+                        ) {
+                            Icon(Icons.Default.Shuffle, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (filteredEntries.size >= 2) 
+                                    "Перемешать между сервисами (${filteredEntries.size})"
+                                else 
+                                    "Перемешать (выберите 2+ записи)"
+                            )
+                        }
+                        
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -193,13 +215,20 @@ fun RotationScreen(
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
-            currentHint = entry.textHint,
+            currentHint = entry.mnemonicPhraseHint ?: entry.extractShortPhrase(),
             generationType = entry.generationType,
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
-            onPasswordReplaced = { newPassword, newHint, newGenerationType ->
-                viewModel.replacePassword(entry.id, newPassword, newHint, newGenerationType)
+            onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
+                viewModel.replacePassword(
+                    entryId = entry.id,
+                    newPassword = newPassword,
+                    newHint = newHint,
+                    newGenerationType = newGenerationType,
+                    newMnemonicPhraseHint = mnemonicPhrase,
+                    newMnemonicOptionsJson = mnemonicOptions
+                )
                 selectedEntry = null
             }
         )
@@ -213,6 +242,17 @@ fun RotationScreen(
             onBulkReplace = { replacements ->
                 viewModel.bulkReplacePasswords(replacements)
                 showBulkRotation = false
+            }
+        )
+    }
+
+    // ✅ НОВЫЙ ДИАЛОГ: Перемешивание паролей
+    if (showShuffleDialog) {
+        PasswordShuffleDialog(
+            entries = filteredEntries,
+            onDismiss = { showShuffleDialog = false },
+            onShuffleApplied = {
+                showShuffleDialog = false
             }
         )
     }
@@ -265,14 +305,14 @@ private fun RotationEntryCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        entry.service,
+                        text = entry.service,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp
                     )
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    entry.username,
+                    text = entry.username,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -286,7 +326,7 @@ private fun RotationEntryCard(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        statusText,
+                        text = statusText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = statusColor
@@ -303,9 +343,25 @@ private fun RotationEntryCard(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            "Мнемонический",
+                            text = "Мнемонический",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                } else if (entry.generationType == "shuffled") {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Shuffle,
+                            null,
+                            Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Перемешанный",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.secondary
                         )
                     }
                 }
@@ -321,4 +377,9 @@ private fun RotationEntryCard(
             }
         }
     }
+}
+
+// ✅ Вспомогательная функция для извлечения короткой фразы
+private fun Entry.extractShortPhrase(): String? {
+    return com.securevault.data.Entry.extractShortPhrase(this.textHint)
 }
