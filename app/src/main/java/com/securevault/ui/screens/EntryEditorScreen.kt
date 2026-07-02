@@ -30,6 +30,7 @@ import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.utils.PasswordValidator
 
 @Composable
 fun EntryEditorScreen(
@@ -119,8 +120,20 @@ fun EntryEditorScreen(
                         val now = System.currentTimeMillis()
                         
                         val finalEntry = if (existingEntry != null) {
-                            if (passwordChanged) {
+                           if (passwordChanged) {
                                 val finalPassword = if (password.isBlank()) existingEntry.password else password
+                                
+                                // ✅ ВАЛИДАЦИЯ НОВОГО ПАРОЛЯ
+                                val validation = PasswordValidator.validateNewPasswordForEntry(
+                                    entry = existingEntry,
+                                    newPassword = finalPassword,
+                                    checkHistory = true
+                                )
+                                if (!validation.isValid) {
+                                    showError = validation.errorMessage
+                                    return@IconButton
+                                }
+                                
                                 val encryptedPwd = CryptoUtils.encrypt(finalPassword)
                                 val newNextRotationDate = if (rotationEnabled) {
                                     val existingNextDate = existingEntry.nextRotationDate
