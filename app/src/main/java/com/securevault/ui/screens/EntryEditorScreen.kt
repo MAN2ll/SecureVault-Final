@@ -25,21 +25,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.data.Profile
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
-import com.securevault.viewmodel.VaultViewModel
 import com.securevault.utils.PasswordValidator
+import com.securevault.viewmodel.ProfileViewModel
+import com.securevault.viewmodel.VaultViewModel
 
 @Composable
 fun EntryEditorScreen(
     id: String?,
     profileId: Int? = null,
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
     val isNewEntry = id == null || id == "new"
+    val context = LocalContext.current
     
     val allEntries by viewModel.entries.collectAsState()
     val existingEntry = remember(id, allEntries) {
@@ -48,6 +52,13 @@ fun EntryEditorScreen(
     
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     val effectiveProfileId = profileId ?: currentProfileId
+    
+    // ✅ Получаем имя профиля
+    val profiles by profileViewModel.profiles.collectAsState()
+    val profileName = remember(effectiveProfileId, profiles) {
+        val profile = profiles.find { it.id == effectiveProfileId }
+        profile?.name ?: "Профиль #${effectiveProfileId ?: "?"}"
+    }
     
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -113,21 +124,21 @@ fun EntryEditorScreen(
                             return@IconButton
                         }
                         if (effectiveProfileId == null) {
-                            showError = "Профиль не выбран. Вернитесь назад и войдите в профиль."
+                            showError = "Профиль не выбран"
                             return@IconButton
                         }
                         
                         val now = System.currentTimeMillis()
                         
                         val finalEntry = if (existingEntry != null) {
-                           if (passwordChanged) {
+                            if (passwordChanged) {
                                 val finalPassword = if (password.isBlank()) existingEntry.password else password
                                 
                                 // ✅ ВАЛИДАЦИЯ НОВОГО ПАРОЛЯ
                                 val validation = PasswordValidator.validateNewPasswordForEntry(
                                     entry = existingEntry,
                                     newPassword = finalPassword,
-                                    checkHistory = true
+                                    context = context
                                 )
                                 if (!validation.isValid) {
                                     showError = validation.errorMessage
@@ -135,6 +146,7 @@ fun EntryEditorScreen(
                                 }
                                 
                                 val encryptedPwd = CryptoUtils.encrypt(finalPassword)
+                                val fingerprint = PasswordValidator.buildPasswordFingerprint(finalPassword, context)
                                 val newNextRotationDate = if (rotationEnabled) {
                                     val existingNextDate = existingEntry.nextRotationDate
                                     if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
@@ -153,9 +165,11 @@ fun EntryEditorScreen(
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationMonths,
                                     nextRotationDate = newNextRotationDate,
                                     isFavorite = isFavorite, lastChanged = now,
-                                    generationType = generationType
+                                    generationType = generationType,
+                                    passwordFingerprint = fingerprint
                                 )
                             } else {
+                                // ✅ Пароль не менялся — НЕ обновляем encryptedPassword и lastChanged
                                 val newNextRotationDate = if (rotationEnabled) {
                                     val existingNextDate = existingEntry.nextRotationDate
                                     if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
@@ -178,6 +192,13 @@ fun EntryEditorScreen(
                                 )
                             }
                         } else {
+                            // ✅ ВАЛИДАЦИЯ ДЛЯ НОВОЙ ЗАПИСИ
+                            val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
+                            if (!uniqueCheck.isValid) {
+                                showError = uniqueCheck.errorMessage
+                                return@IconButton
+                            }
+                            
                             Entry.create(
                                 service = service, username = username, password = password,
                                 profileId = effectiveProfileId!!,
@@ -240,6 +261,7 @@ fun EntryEditorScreen(
                 showError = null 
             }
             
+            // ✅ Показываем ИМЯ профиля вместо ID
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -251,9 +273,10 @@ fun EntryEditorScreen(
                     Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (effectiveProfileId != null) "Профиль ID: $effectiveProfileId" else "⚠️ Профиль не выбран",
+                        text = profileName,
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -450,7 +473,7 @@ fun EntryEditorScreen(
     
     if (showConfirmPasswordDialog) {
         ConfirmMasterPasswordDialogForEditor(
-            context = LocalContext.current,
+            context = context,
             existingEntry = existingEntry,
             onConfirmed = { decryptedPassword ->
                 password = decryptedPassword
@@ -488,7 +511,6 @@ fun EntryEditorScreen(
     }
 }
 
-// ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ МАСТЕР-ПАРОЛЯ =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConfirmMasterPasswordDialogForEditor(
@@ -553,7 +575,6 @@ private fun ConfirmMasterPasswordDialogForEditor(
     )
 }
 
-// ===== ОБЫЧНЫЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimplePasswordGeneratorDialog(
@@ -572,7 +593,7 @@ private fun SimplePasswordGeneratorDialog(
     var strength by remember { mutableStateOf(PasswordGenerator.Strength.STRONG) }
     
     LaunchedEffect(length, useUpper, useDigits, useSpecial) {
-        val result = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial)
+        val result = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial, context)
         generatedPwd = result.password
         strength = result.strength
     }
@@ -655,7 +676,6 @@ private fun SimplePasswordGeneratorDialog(
                     }
                 }
                 
-                // ✅ КНОПКИ ВЕРТИКАЛЬНО
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -674,7 +694,7 @@ private fun SimplePasswordGeneratorDialog(
                     
                     OutlinedButton(
                         onClick = {
-                            val result = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial)
+                            val result = PasswordGenerator.generate(length, useUpper, useDigits, useSpecial, context)
                             generatedPwd = result.password
                             strength = result.strength
                         },
@@ -699,7 +719,6 @@ private fun SimplePasswordGeneratorDialog(
     )
 }
 
-// ===== МНЕМОНИЧЕСКИЙ ГЕНЕРАТОР =====
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MnemonicGeneratorDialog(
@@ -749,13 +768,11 @@ private fun MnemonicGeneratorDialog(
         selectedVariantIndex = -1
     }
 
-    // ✅ СБРОС НОМЕРА НАБОРА ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
     LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
         variantOffset = 0
         generateVariants()
     }
 
-    // ✅ ГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ variantOffset
     LaunchedEffect(variantOffset) {
         generateVariants()
     }
@@ -814,7 +831,6 @@ private fun MnemonicGeneratorDialog(
                     Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
                 
-                // ✅ ОТОБРАЖЕНИЕ НОМЕРА НАБОРА (с 1, а не с 0)
                 if (variants.isNotEmpty()) {
                     Text(
                         "Текущий набор: №${variantOffset + 1}",
@@ -839,14 +855,18 @@ private fun MnemonicGeneratorDialog(
                     
                     variants.forEachIndexed { index, result ->
                         val isSelected = selectedVariantIndex == index
+                        
+                        val variantNameValue: String = result.variantName
+                        val passwordValue: String = result.password
+                        val strengthNameValue: String = result.strength.name
+                        val hintValue: String = result.mnemonicHint
+                        val combinedTextValue: String = strengthNameValue + " • " + hintValue
+                        
+                        val cardColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) 
-                                    MaterialTheme.colorScheme.primaryContainer 
-                                else 
-                                    MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            colors = CardDefaults.cardColors(containerColor = cardColor)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
@@ -855,40 +875,11 @@ private fun MnemonicGeneratorDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            result.variantName,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
+                                        Text(text = variantNameValue, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
                                         Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            result.password,
-                                            fontSize = 14.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Text(text = passwordValue, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                                         Spacer(Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Сложность: ", fontSize = 10.sp)
-                                            Text(
-                                                result.strength.name,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = when (result.strength) {
-                                                    PasswordGenerator.Strength.VERY_STRONG -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
-                                                    PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-                                                    PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                                    PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-                                                }
-                                            )
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            result.mnemonicHint,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        Text(text = combinedTextValue, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     
                                     Column {
@@ -898,10 +889,7 @@ private fun MnemonicGeneratorDialog(
                                         }) {
                                             Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
                                         }
-                                        RadioButton(
-                                            selected = isSelected,
-                                            onClick = { selectedVariantIndex = index }
-                                        )
+                                        RadioButton(selected = isSelected, onClick = { selectedVariantIndex = index })
                                     }
                                 }
                             }
