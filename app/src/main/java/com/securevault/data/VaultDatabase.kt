@@ -13,17 +13,25 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-// ✅ Миграция с версии 6 на 7: добавление поля generation_type
+// ✅ Миграция с версии 6 на 7: добавление generation_type
 val MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // Добавляем колонку generation_type со значением по умолчанию 'random'
         database.execSQL("ALTER TABLE entries ADD COLUMN generation_type TEXT NOT NULL DEFAULT 'random'")
+    }
+}
+
+// ✅ Миграция с версии 7 на 8: добавление новых полей
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE entries ADD COLUMN password_fingerprint TEXT")
+        database.execSQL("ALTER TABLE entries ADD COLUMN mnemonic_phrase_hint TEXT")
+        database.execSQL("ALTER TABLE entries ADD COLUMN mnemonic_options_json TEXT")
     }
 }
 
 @Database(
     entities = [Entry::class, Profile::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
@@ -41,10 +49,8 @@ abstract class VaultDatabase : RoomDatabase() {
                     VaultDatabase::class.java,
                     "vault_db"
                 )
-                // ✅ ДОБАВЛЕНА НОРМАЛЬНАЯ МИГРАЦИЯ ВМЕСТО DESTRUCTIVE
-                .addMigrations(MIGRATION_6_7)
-                //  УБРАНО: fallbackToDestructiveMigration()
-                // Для приложения с паролями недопустимо удалять данные при миграции
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+                // ✅ БЕЗ fallbackToDestructiveMigration
                 .build()
                 INSTANCE = instance
                 instance
