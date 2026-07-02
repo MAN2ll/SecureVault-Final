@@ -37,7 +37,6 @@ fun RotationScreen(
     var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
     var daysThreshold by remember { mutableIntStateOf(7) }
 
-    // Фильтрация записей
     val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
         val now = System.currentTimeMillis()
         when (currentFilter) {
@@ -75,28 +74,19 @@ fun RotationScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Фильтры
             TabRow(selectedTabIndex = currentFilter.ordinal) {
                 RotationFilter.entries.forEach { filter ->
                     Tab(
                         selected = currentFilter == filter,
                         onClick = { currentFilter = filter },
-                        text = { 
-                            Text(
-                                text = filter.label,
-                                fontSize = 11.sp
-                            ) 
-                        }
+                        text = { Text(text = filter.label, fontSize = 11.sp) }
                     )
                 }
             }
 
-            // Дополнительный фильтр для "Скоро истекают"
             if (currentFilter == RotationFilter.SOON) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     listOf(7, 14, 30).forEach { days ->
@@ -109,58 +99,28 @@ fun RotationScreen(
                 }
             }
 
-            // Информация
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Найдено: ${filteredEntries.size} записей",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    Text(text = "Найдено: ${filteredEntries.size} записей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
 
             if (filteredEntries.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Schedule,
-                            null,
-                            Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
+                        Icon(Icons.Default.Schedule, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            text = "Нет записей по фильтру",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(text = "Нет записей по фильтру", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
@@ -171,11 +131,9 @@ fun RotationScreen(
                         )
                     }
                     
-                    // Кнопки массовых операций
                     item {
                         Spacer(Modifier.height(16.dp))
                         
-                        // Массовая ротация (случайные пароли)
                         Button(
                             onClick = { showBulkRotation = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -188,7 +146,6 @@ fun RotationScreen(
                         
                         Spacer(Modifier.height(8.dp))
                         
-                        // ✅ НОВАЯ КНОПКА: Перемешивание паролей между сервисами
                         OutlinedButton(
                             onClick = { showShuffleDialog = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -211,15 +168,15 @@ fun RotationScreen(
         }
     }
 
-    // Диалог замены пароля для одной записи
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
-            currentHint = entry.mnemonicPhraseHint ?: entry.extractShortPhrase(),
+            currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
             generationType = entry.generationType,
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
+            // ✅ ИСПРАВЛЕНО: 5 параметров в лямбде
             onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
                 viewModel.replacePassword(
                     entryId = entry.id,
@@ -234,7 +191,6 @@ fun RotationScreen(
         )
     }
 
-    // Диалог массовой ротации
     if (showBulkRotation) {
         BulkRotationDialog(
             entries = filteredEntries,
@@ -246,7 +202,6 @@ fun RotationScreen(
         )
     }
 
-    // ✅ НОВЫЙ ДИАЛОГ: Перемешивание паролей
     if (showShuffleDialog) {
         PasswordShuffleDialog(
             entries = filteredEntries,
@@ -282,104 +237,50 @@ private fun RotationEntryCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (isExpired) 
-                MaterialTheme.colorScheme.errorContainer 
-            else 
-                MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (isExpired) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Folder,
-                        null,
-                        Modifier.size(20.dp),
-                        tint = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.Folder, null, Modifier.size(20.dp), tint = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = entry.service,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 16.sp
-                    )
+                    Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = entry.username,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        null,
-                        Modifier.size(12.dp),
-                        tint = statusColor
-                    )
+                    Icon(Icons.Default.Schedule, null, Modifier.size(12.dp), tint = statusColor)
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = statusText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = statusColor
-                    )
+                    Text(text = statusText, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = statusColor)
                 }
                 if (entry.generationType == "mnemonic") {
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Lightbulb,
-                            null,
-                            Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
-                        )
+                        Icon(Icons.Default.Lightbulb, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.tertiary)
                         Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "Мнемонический",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
+                        Text(text = "Мнемонический", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
                     }
                 } else if (entry.generationType == "shuffled") {
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Shuffle,
-                            null,
-                            Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.secondary
-                        )
+                        Icon(Icons.Default.Shuffle, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.secondary)
                         Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "Перемешанный",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
+                        Text(text = "Перемешанный", fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
                     }
                 }
             }
             
-            Button(
-                onClick = onReplace,
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
+            Button(onClick = onReplace, modifier = Modifier.padding(start = 8.dp)) {
                 Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Заменить")
             }
         }
     }
-}
-
-// ✅ Вспомогательная функция для извлечения короткой фразы
-private fun Entry.extractShortPhrase(): String? {
-    return com.securevault.data.Entry.extractShortPhrase(this.textHint)
 }
