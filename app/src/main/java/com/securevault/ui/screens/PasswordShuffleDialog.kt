@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,7 +39,7 @@ fun PasswordShuffleDialog(
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.Shuffle, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Text("Перемешивание паролей", fontWeight = FontWeight.Bold)
             }
@@ -61,24 +60,14 @@ fun PasswordShuffleDialog(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) 
-                                        MaterialTheme.colorScheme.primaryContainer 
-                                    else 
-                                        MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                 )
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(
                                         checked = isSelected,
                                         onCheckedChange = { checked ->
-                                            selectedEntryIds = if (checked) {
-                                                selectedEntryIds + entry.id
-                                            } else {
-                                                selectedEntryIds - entry.id
-                                            }
+                                            selectedEntryIds = if (checked) selectedEntryIds + entry.id else selectedEntryIds - entry.id
                                         }
                                     )
                                     Spacer(Modifier.width(8.dp))
@@ -91,11 +80,7 @@ fun PasswordShuffleDialog(
                         }
                         
                         if (selectedEntryIds.size < 2) {
-                            Text(
-                                "Выбрано ${selectedEntryIds.size}. Нужно минимум 2.",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp
-                            )
+                            Text("Выбрано ${selectedEntryIds.size}. Нужно минимум 2.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
                     
@@ -109,10 +94,7 @@ fun PasswordShuffleDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
                                     Spacer(Modifier.width(8.dp))
                                     Text(errorMessage ?: "", color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
@@ -120,11 +102,7 @@ fun PasswordShuffleDialog(
                             }
                         } else {
                             Text("Схема перемешивания:", fontWeight = FontWeight.Bold)
-                            Text(
-                                "Каждый сервис отдаёт свой пароль другому сервису.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Каждый сервис отдаёт свой пароль другому сервису.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             
                             assignments.forEach { assignment ->
                                 val target = entries.find { it.id == assignment.targetEntryId }
@@ -133,21 +111,16 @@ fun PasswordShuffleDialog(
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (assignment.isValid) 
-                                            MaterialTheme.colorScheme.surfaceVariant 
-                                        else 
-                                            MaterialTheme.colorScheme.errorContainer
+                                        containerColor = if (assignment.isValid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
                                     )
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(source?.service ?: "?", fontWeight = FontWeight.SemiBold)
                                         }
+                                        // ✅ ИСПРАВЛЕНО: Icons.Default.ArrowForward вместо AutoMirrored
                                         Icon(
-                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            Icons.Default.ArrowForward,
                                             null,
                                             Modifier.padding(horizontal = 8.dp),
                                             tint = MaterialTheme.colorScheme.primary
@@ -163,10 +136,7 @@ fun PasswordShuffleDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
@@ -188,15 +158,16 @@ fun PasswordShuffleDialog(
                         onClick = {
                             scope.launch {
                                 isProcessing = true
-                                val result = viewModel.buildPasswordShufflePlan(selectedEntryIds.toList())
-                                if (result.success) {
-                                    assignments = result.assignments
-                                    errorMessage = null
-                                    currentStep = 2
-                                } else {
-                                    errorMessage = result.errorMessage
+                                viewModel.buildPasswordShufflePlan(selectedEntryIds.toList()) { result ->
+                                    if (result.success) {
+                                        assignments = result.assignments
+                                        errorMessage = null
+                                        currentStep = 2
+                                    } else {
+                                        errorMessage = result.errorMessage
+                                    }
+                                    isProcessing = false
                                 }
-                                isProcessing = false
                             }
                         },
                         enabled = selectedEntryIds.size >= 2 && !isProcessing
@@ -209,13 +180,14 @@ fun PasswordShuffleDialog(
                         onClick = {
                             scope.launch {
                                 isProcessing = true
-                                val result = viewModel.applyPasswordShuffle(assignments)
-                                if (result.success) {
-                                    onShuffleApplied()
-                                } else {
-                                    errorMessage = result.errorMessage
+                                viewModel.applyPasswordShuffle(assignments) { result ->
+                                    if (result.success) {
+                                        onShuffleApplied()
+                                    } else {
+                                        errorMessage = result.errorMessage
+                                    }
+                                    isProcessing = false
                                 }
-                                isProcessing = false
                             }
                         },
                         enabled = assignments.isNotEmpty() && !isProcessing
