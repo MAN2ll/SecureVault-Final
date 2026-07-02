@@ -84,7 +84,6 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ Backfill fingerprint для старых записей
     fun backfillFingerprints() = viewModelScope.launch {
         val allEntries = repository.allEntries.first()
         for (entry in allEntries) {
@@ -100,7 +99,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // ✅ updatePassword — внутри viewModelScope.launch
     fun updatePassword(
         entryId: String,
         newPassword: String,
@@ -150,7 +148,6 @@ class VaultViewModel @Inject constructor(
         repository.update(updated)
     }
 
-    // ✅ replacePassword — внутри viewModelScope.launch
     fun replacePassword(
         entryId: String,
         newPassword: String,
@@ -192,7 +189,6 @@ class VaultViewModel @Inject constructor(
         onResult(PasswordOperationResult.Success)
     }
 
-    // ✅ bulkReplacePasswords — внутри viewModelScope.launch
     fun bulkReplacePasswords(
         replacements: List<PasswordReplacement>,
         onResult: (PasswordOperationResult) -> Unit = {}
@@ -235,7 +231,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // ✅ buildPasswordShufflePlan
     fun buildPasswordShufflePlan(
         entryIds: List<String>,
         onResult: (PasswordShuffleResult) -> Unit
@@ -333,7 +328,6 @@ class VaultViewModel @Inject constructor(
         return null
     }
 
-    // ✅ applyPasswordShuffle — внутри viewModelScope.launch
     fun applyPasswordShuffle(
         assignments: List<PasswordShuffleAssignment>,
         onResult: (PasswordShuffleResult) -> Unit
@@ -355,7 +349,6 @@ class VaultViewModel @Inject constructor(
             }
         }
 
-        // Повторная проверка всех назначений
         val errors = mutableListOf<String>()
         for (assignment in assignments) {
             val targetEntry = repository.getById(assignment.targetEntryId) ?: continue
