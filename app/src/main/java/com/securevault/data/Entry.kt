@@ -35,7 +35,7 @@ data class Entry(
 
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
-        
+
         return try {
             val jsonArray = JSONArray(passwordHistoryJson)
             val result = mutableListOf<PasswordHistoryItem>()
@@ -100,10 +100,10 @@ data class Entry(
         } catch (e: Exception) {
             null
         }
-        
+
         val fingerprint = PasswordValidator.buildLegacyFingerprint(oldPassword)
         val hash = PasswordValidator.buildLegacyFingerprint(oldPassword)
-        
+
         val newItem = PasswordHistoryItem(
             encryptedOldPassword = encryptedOld,
             passwordHash = hash,
@@ -114,11 +114,11 @@ data class Entry(
             relatedEntryId = relatedEntryId,
             hint = hint
         )
-        
+
         val currentHistory = getPasswordHistory().toMutableList()
         currentHistory.add(0, newItem)
         val trimmed = currentHistory.take(10)
-        
+
         val jsonArray = JSONArray()
         for (item in trimmed) {
             val obj = JSONObject()
@@ -132,7 +132,7 @@ data class Entry(
             obj.put("hint", item.hint ?: JSONObject.NULL)
             jsonArray.put(obj)
         }
-        
+
         return this.copy(passwordHistoryJson = jsonArray.toString())
     }
 
