@@ -98,13 +98,13 @@ dependencies {
     // ===== ZXing для QR =====
     implementation("com.google.zxing:core:3.5.2")
     
-    // ✅ CameraX для сканирования QR
+    //  CameraX для сканирования QR
     implementation("androidx.camera:camera-core:1.3.1")
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
 
-    // ✅ ML Kit для распознавания QR
+    //  ML Kit для распознавания QR
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
 
 
