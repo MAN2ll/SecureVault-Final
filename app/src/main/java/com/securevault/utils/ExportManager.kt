@@ -13,7 +13,7 @@ import java.util.*
 class ExportManager(private val context: Context) {
 
     companion object {
-        // ✅ CSV v2: добавлены новые поля
+        //  CSV v2: добавлены новые поля
         private const val CSV_HEADER = "id,service,username,encrypted_password,profile_id,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json,generation_type,password_fingerprint,mnemonic_phrase_hint,mnemonic_options_json"
     }
 
@@ -39,7 +39,7 @@ class ExportManager(private val context: Context) {
                 writer.append(entry.lastChanged.toString()).append(",")
                 writer.append(escapeCsv(entry.passwordHistoryJson ?: "")).append(",")
                 writer.append(escapeCsv(entry.generationType)).append(",")
-                // ✅ Новые поля
+                //  Новые поля
                 writer.append(escapeCsv(entry.passwordFingerprint ?: "")).append(",")
                 writer.append(escapeCsv(entry.mnemonicPhraseHint ?: "")).append(",")
                 writer.append(escapeCsv(entry.mnemonicOptionsJson ?: "")).append("\n")
@@ -152,7 +152,7 @@ class ExportManager(private val context: Context) {
 
         val targetProfileId = defaultProfileId
 
-        // ✅ Новые поля (если есть)
+        //  Новые поля (если есть)
         val passwordFingerprint = if (values.size > 16) values[16].takeIf { it.isNotEmpty() } else null
         val mnemonicPhraseHint = if (values.size > 17) values[17].takeIf { it.isNotEmpty() } else null
         val mnemonicOptionsJson = if (values.size > 18) values[18].takeIf { it.isNotEmpty() } else null
