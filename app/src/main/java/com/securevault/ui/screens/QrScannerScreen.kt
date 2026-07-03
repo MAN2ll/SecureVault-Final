@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
@@ -22,13 +24,15 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.view.AndroidView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Entry
+import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.SecureQrManager
 import com.securevault.viewmodel.VaultViewModel
 import java.util.concurrent.Executors
@@ -101,7 +105,7 @@ fun QrScannerScreen(
             } else {
                 Box(modifier = Modifier.weight(1f)) {
                     AndroidView(
-                        factory = { ctx ->
+                        factory = { ctx: Context ->
                             val previewView = PreviewView(ctx)
                             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
@@ -118,7 +122,7 @@ fun QrScannerScreen(
 
                                 val barcodeScanner = BarcodeScanning.getClient(
                                     BarcodeScannerOptions.Builder()
-                                        .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                                        .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
                                         .build()
                                 )
 
@@ -134,14 +138,12 @@ fun QrScannerScreen(
                                                     if (rawValue != null && scannedToken == null) {
                                                         scannedToken = rawValue
 
-                                                        // Валидация токена
                                                         val currentProfileId = viewModel.currentProfileId.value
                                                         if (currentProfileId != null) {
                                                             val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, ctx)
                                                             validationResult = result
 
                                                             if (result.isValid && result.entryId != null) {
-                                                                // Поиск записи
                                                                 viewModel.findEntryById(result.entryId)?.let { entry ->
                                                                     foundEntry = entry
                                                                     showPasswordDialog = true
@@ -165,7 +167,7 @@ fun QrScannerScreen(
                                     }
                                 }
 
-                                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                                val cameraSelector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
 
                                 try {
                                     cameraProvider.unbindAll()
@@ -180,7 +182,6 @@ fun QrScannerScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Индикатор сканирования
                     if (scannedToken == null) {
                         Box(
                             modifier = Modifier
@@ -208,7 +209,6 @@ fun QrScannerScreen(
         }
     }
 
-    // Диалог подтверждения мастер-пароля
     if (showPasswordDialog && foundEntry != null) {
         ConfirmMasterPasswordDialogForQr(
             context = context,
@@ -226,7 +226,6 @@ fun QrScannerScreen(
         )
     }
 
-    // Сообщение об ошибке
     if (errorMessage != null) {
         LaunchedEffect(errorMessage) {
             kotlinx.coroutines.delay(3000)
@@ -278,7 +277,7 @@ private fun ConfirmMasterPasswordDialogForQr(
                 val iterations = prefs.getInt("master_iterations", 100_000)
 
                 if (storedHash != null && storedSalt != null &&
-                    com.securevault.security.MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
+                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
                     onConfirmed()
                 } else {
                     error = "Неверный пароль"
