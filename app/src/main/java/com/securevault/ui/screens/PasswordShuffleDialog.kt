@@ -2,7 +2,7 @@
 
 package com.securevault.ui.screens
 
-import com.securevault.viewmodel.ValidationResult
+import com.securevault.utils.PasswordValidator
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
