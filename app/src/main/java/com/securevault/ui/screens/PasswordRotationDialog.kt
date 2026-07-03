@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 
-// ✅ ИСПРАВЛЕННАЯ сигнатура: 5 параметров
+//  сигнатура: 5 параметров
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
@@ -371,7 +371,7 @@ fun PasswordRotationDialog(
                     when (selectedMode) {
                         0 -> {
                             if (randomPassword.isNotEmpty()) {
-                                // ✅ ИСПРАВЛЕНО: 5 параметров
+                                //  5 параметров
                                 onPasswordReplaced(
                                     randomPassword,
                                     "Случайный пароль, создан при ротации",
@@ -384,7 +384,7 @@ fun PasswordRotationDialog(
                         1 -> {
                             if (selectedMnemonicIndex >= 0 && selectedMnemonicIndex < mnemonicVariants.size) {
                                 val selected = mnemonicVariants[selectedMnemonicIndex]
-                                // ✅ ИСПРАВЛЕНО: 5 параметров, передаём короткую фразу
+                                //  параметров, передаём короткую фразу
                                 onPasswordReplaced(
                                     selected.password,
                                     selected.mnemonicHint,
@@ -396,7 +396,7 @@ fun PasswordRotationDialog(
                         }
                         2 -> {
                             if (manualPassword.isNotEmpty()) {
-                                // ✅ ИСПРАВЛЕНО: 5 параметров
+                                //  5 параметров
                                 onPasswordReplaced(
                                     manualPassword,
                                     null,
