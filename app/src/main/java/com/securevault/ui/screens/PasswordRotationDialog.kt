@@ -26,7 +26,7 @@ import com.securevault.utils.PasswordValidator
 @Composable
 fun PasswordRotationDialog(
     serviceName: String,
-    currentHint: String?,  // ✅ ИСПРАВЛЕНО: String? вместо String
+    currentHint: String?,
     generationType: String,
     rotationMonth: Int?,
     rotationYear: Int?,
@@ -45,8 +45,11 @@ fun PasswordRotationDialog(
     var selectedMode by remember { mutableStateOf(if (generationType == "mnemonic") "mnemonic" else "random") }
     var manualPassword by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
+    
+    // ✅ НОВОЕ: AlertDialog для ошибок
+    var showReplaceErrorDialog by remember { mutableStateOf(false) }
+    var replaceErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    //  используем currentHint ?: "" для инициализации
     var phrase by remember { mutableStateOf(currentHint ?: "") }
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
@@ -55,7 +58,6 @@ fun PasswordRotationDialog(
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
 
-    // Обычный генератор
     var generatedRandomPwd by remember { mutableStateOf("") }
     var randomLength by remember { mutableIntStateOf(16) }
     var useUpper by remember { mutableStateOf(true) }
@@ -87,6 +89,10 @@ fun PasswordRotationDialog(
 
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
+        
+        if (variants.isEmpty()) {
+            showError = "Не удалось сгенерировать варианты без повторов"
+        }
     }
 
     LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
@@ -119,7 +125,6 @@ fun PasswordRotationDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Выбор режима
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -258,13 +263,6 @@ fun PasswordRotationDialog(
                                                         fontFamily = FontFamily.Monospace,
                                                         fontWeight = FontWeight.Bold
                                                     )
-                                                    if (result.hasDuplicates) {
-                                                        Text(
-                                                            "⚠ Есть повторы",
-                                                            fontSize = 9.sp,
-                                                            color = MaterialTheme.colorScheme.tertiary
-                                                        )
-                                                    }
                                                 }
                                                 RadioButton(
                                                     selected = isSelected,
@@ -310,6 +308,14 @@ fun PasswordRotationDialog(
                             return@Button
                         }
                         val selected = variants[selectedVariantIndex]
+                        
+                        //  ФИНАЛЬНАЯ ПРОВЕРКА
+                        if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
+                            replaceErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
+                            showReplaceErrorDialog = true
+                            return@Button
+                        }
+                        
                         onPasswordReplaced(
                             selected.password,
                             selected.mnemonicHint,
@@ -336,4 +342,19 @@ fun PasswordRotationDialog(
             }
         }
     )
+
+    //  AlertDialog для ошибок замены
+    if (showReplaceErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showReplaceErrorDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка замены пароля") },
+            text = { Text(replaceErrorMessage ?: "Неизвестная ошибка") },
+            confirmButton = {
+                TextButton(onClick = { showReplaceErrorDialog = false }) {
+                    Text("Понятно")
+                }
+            }
+        )
+    }
 }
