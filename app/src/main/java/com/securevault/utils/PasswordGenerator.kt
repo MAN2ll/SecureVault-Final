@@ -31,8 +31,15 @@ object PasswordGenerator {
             return GenerationResult(generateFromCharset(LOWERCASE, length), Strength.WEAK)
         }
         
-        //  Генерируем пароль сразу из уникальных символов
-        return generateWithUniqueChars(charset, length, useUpper, useDigits, useSpecial, context)
+        //  Более надёжная генерация с fallback
+        return try {
+            generateWithUniqueChars(charset, length, useUpper, useDigits, useSpecial, context)
+        } catch (e: Exception) {
+            //  Fallback: если не удалось сгенерировать без повторов, генерируем обычный пароль
+            // Это крайний случай, но лучше вернуть пароль с возможными повторами, чем ничего
+            val fallback = generateFromCharset(charset, length)
+            GenerationResult(fallback, calculateStrength(fallback))
+        }
     }
 
     private fun generateWithUniqueChars(
@@ -43,19 +50,19 @@ object PasswordGenerator {
         useSpecial: Boolean,
         context: Context?
     ): GenerationResult {
-        // Группируем символы по "семействам" (A и a — одно семейство)
+        //  Группируем символы по "семействам" (A и a — одно семейство)
         val families = groupIntoFamilies(charset)
         
         //  Ограничиваем длину доступным числом семейств
         val effectiveLength = minOf(length, families.size)
         
-        val maxAttempts = 100
+        val maxAttempts = 500 //  Увеличено с 100 до 500
         var attempts = 0
         
         while (attempts < maxAttempts) {
             val password = generateCandidateFromFamilies(families, effectiveLength, useUpper, useDigits, useSpecial)
             
-            //  Дополнительная проверка (на случай если что-то пошло не так)
+            //  Дополнительная проверка
             if (!PasswordValidator.hasDuplicateCharacters(password)) {
                 if (context != null) {
                     val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
@@ -69,7 +76,8 @@ object PasswordGenerator {
             attempts++
         }
         
-        //  Если не удалось сгенерировать за 100 попыток — возвращаем ошибку
+        //  Если не удалось сгенерировать за 500 попыток — выбрасываем исключение
+        // Оно будет перехвачено в generate() и использован fallback
         throw IllegalStateException("Не удалось сгенерировать пароль без повторяющихся символов")
     }
 
@@ -89,7 +97,7 @@ object PasswordGenerator {
         return familyMap.values.toList()
     }
 
-    //  Генерация из семейств (гарантирует уникальность)
+    // Генерация из семейств (гарантирует уникальность)
     private fun generateCandidateFromFamilies(
         families: List<List<Char>>,
         length: Int,
@@ -100,7 +108,7 @@ object PasswordGenerator {
         val result = mutableListOf<Char>()
         val availableFamilies = families.toMutableList()
         
-        // ✅ Гарантированные символы (по одному из каждого типа)
+        //  Гарантированные символы (по одному из каждого типа)
         val guaranteedFamilies = mutableListOf<List<Char>>()
         
         if (useUpper) {
@@ -156,7 +164,7 @@ object PasswordGenerator {
             result.add(family[secureRandom.nextInt(family.size)])
         }
         
-        //  Перемешиваем результат
+        // Перемешиваем результат
         shuffleSecure(result)
         
         return result.take(length).joinToString("")
