@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 
 enum class RotationFilter(val label: String) {
@@ -36,6 +37,9 @@ fun RotationScreen(
     var showShuffleDialog by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
     var daysThreshold by remember { mutableIntStateOf(7) }
+    
+    //  Состояние для ошибок
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
         val now = System.currentTimeMillis()
@@ -168,6 +172,7 @@ fun RotationScreen(
         }
     }
 
+    //  Обработка результата replacePassword()
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
@@ -176,7 +181,6 @@ fun RotationScreen(
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
-            // ✅ ИСПРАВЛЕНО: 5 параметров в лямбде
             onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
                 viewModel.replacePassword(
                     entryId = entry.id,
@@ -184,20 +188,40 @@ fun RotationScreen(
                     newHint = newHint,
                     newGenerationType = newGenerationType,
                     newMnemonicPhraseHint = mnemonicPhrase,
-                    newMnemonicOptionsJson = mnemonicOptions
+                    newMnemonicOptionsJson = mnemonicOptions,
+                    onResult = { result ->
+                        when (result) {
+                            is PasswordOperationResult.Success -> {
+                                selectedEntry = null
+                            }
+                            is PasswordOperationResult.Error -> {
+                                errorMessage = result.message
+                                // НЕ закрываем диалог — пользователь должен увидеть ошибку
+                            }
+                        }
+                    }
                 )
-                selectedEntry = null
             }
         )
     }
 
+    //  Обработка результата bulkReplacePasswords()
     if (showBulkRotation) {
         BulkRotationDialog(
             entries = filteredEntries,
             onDismiss = { showBulkRotation = false },
             onBulkReplace = { replacements ->
-                viewModel.bulkReplacePasswords(replacements)
-                showBulkRotation = false
+                viewModel.bulkReplacePasswords(replacements) { result ->
+                    when (result) {
+                        is PasswordOperationResult.Success -> {
+                            showBulkRotation = false
+                        }
+                        is PasswordOperationResult.Error -> {
+                            errorMessage = result.message
+                            // НЕ закрываем диалог
+                        }
+                    }
+                }
             }
         )
     }
@@ -208,6 +232,21 @@ fun RotationScreen(
             onDismiss = { showShuffleDialog = false },
             onShuffleApplied = {
                 showShuffleDialog = false
+            }
+        )
+    }
+
+    //  Диалог показа ошибки
+    if (errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { errorMessage = null },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка валидации") },
+            text = { Text(errorMessage ?: "") },
+            confirmButton = {
+                TextButton(onClick = { errorMessage = null }) {
+                    Text("Понятно")
+                }
             }
         )
     }
