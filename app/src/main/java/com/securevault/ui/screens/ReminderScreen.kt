@@ -122,7 +122,7 @@ fun ReminderScreen(
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: новая сигнатура с 5 параметрами
+    //  новая сигнатура с 5 параметрами
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
