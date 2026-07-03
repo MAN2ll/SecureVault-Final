@@ -19,9 +19,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -45,6 +50,7 @@ fun QrScannerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val clipboardManager = LocalClipboardManager.current
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -63,6 +69,10 @@ fun QrScannerScreen(
     var foundEntry by remember { mutableStateOf<Entry?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    
+    //  Состояние для показа результата после подтверждения
+    var showResultDialog by remember { mutableStateOf(false) }
+    var confirmedPassword by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
@@ -209,13 +219,16 @@ fun QrScannerScreen(
         }
     }
 
+    //  Диалог подтверждения мастер-пароля
     if (showPasswordDialog && foundEntry != null) {
         ConfirmMasterPasswordDialogForQr(
             context = context,
             entry = foundEntry!!,
-            onConfirmed = {
+            onConfirmed = { decryptedPassword ->
                 showPasswordDialog = false
-                onBack()
+                //  НЕ закрываем экран, а показываем результат
+                confirmedPassword = decryptedPassword
+                showResultDialog = true
             },
             onDismiss = {
                 showPasswordDialog = false
@@ -226,14 +239,121 @@ fun QrScannerScreen(
         )
     }
 
-    if (errorMessage != null) {
-        LaunchedEffect(errorMessage) {
-            kotlinx.coroutines.delay(3000)
-            errorMessage = null
-            scannedToken = null
-            validationResult = null
-        }
+    //  Диалог результата после подтверждения
+    if (showResultDialog && foundEntry != null && confirmedPassword != null) {
+        QrResultDialog(
+            entry = foundEntry!!,
+            password = confirmedPassword!!,
+            clipboardManager = clipboardManager,
+            onDismiss = {
+                showResultDialog = false
+                confirmedPassword = null
+                scannedToken = null
+                validationResult = null
+                foundEntry = null
+            }
+        )
     }
+
+    //  AlertDialog для ошибок вместо автоматического сброса
+    if (errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                errorMessage = null
+                scannedToken = null
+                validationResult = null
+            },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка сканирования") },
+            text = { Text(errorMessage ?: "") },
+            confirmButton = {
+                Button(onClick = {
+                    errorMessage = null
+                    scannedToken = null
+                    validationResult = null
+                }) {
+                    Text("Сканировать снова")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onBack) {
+                    Text("Закрыть")
+                }
+            }
+        )
+    }
+}
+
+// Показ результата сканирования
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QrResultDialog(
+    entry: Entry,
+    password: String,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Результат сканирования") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Сервис: ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(entry.service, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Логин: ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(entry.username, fontSize = 13.sp)
+                        }
+                    }
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Пароль:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            password,
+                            fontSize = 16.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                
+                OutlinedButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(password))
+                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Скопировать пароль")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -241,7 +361,7 @@ fun QrScannerScreen(
 private fun ConfirmMasterPasswordDialogForQr(
     context: Context,
     entry: Entry,
-    onConfirmed: () -> Unit,
+    onConfirmed: (decryptedPassword: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
@@ -258,8 +378,8 @@ private fun ConfirmMasterPasswordDialogForQr(
                     value = password,
                     onValueChange = { password = it; error = null },
                     label = { Text("Мастер-пароль") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = error != null
@@ -278,7 +398,12 @@ private fun ConfirmMasterPasswordDialogForQr(
 
                 if (storedHash != null && storedSalt != null &&
                     MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                    onConfirmed()
+                    try {
+                        val decrypted = entry.password
+                        onConfirmed(decrypted)
+                    } catch (e: Exception) {
+                        error = "Не удалось расшифровать пароль"
+                    }
                 } else {
                     error = "Неверный пароль"
                 }
