@@ -35,6 +35,15 @@ fun PasswordShuffleDialog(
     var isProcessing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    //  НОВОЕ: Состояние для ручного редактирования
+    var editingAssignmentIndex by remember { mutableIntStateOf(-1) }
+    var showDonorPicker by remember { mutableStateOf(false) }
+
+    //  Проверка валидности всех назначений
+    val allAssignmentsValid = remember(assignments) {
+        assignments.all { it.isValid }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -54,7 +63,7 @@ fun PasswordShuffleDialog(
                 when (currentStep) {
                     1 -> {
                         Text("Выберите сервисы для перемешивания (минимум 2):", fontWeight = FontWeight.Medium)
-                        
+
                         entries.forEach { entry ->
                             val isSelected = selectedEntryIds.contains(entry.id)
                             Card(
@@ -78,12 +87,12 @@ fun PasswordShuffleDialog(
                                 }
                             }
                         }
-                        
+
                         if (selectedEntryIds.size < 2) {
                             Text("Выбрано ${selectedEntryIds.size}. Нужно минимум 2.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
-                    
+
                     2 -> {
                         if (isProcessing) {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -103,35 +112,59 @@ fun PasswordShuffleDialog(
                         } else {
                             Text("Схема перемешивания:", fontWeight = FontWeight.Bold)
                             Text("Каждый сервис отдаёт свой пароль другому сервису.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            
-                            assignments.forEach { assignment ->
+
+                            //  Отображение схемы с возможностью редактирования
+                            assignments.forEachIndexed { index, assignment ->
                                 val target = entries.find { it.id == assignment.targetEntryId }
                                 val source = entries.find { it.id == assignment.sourceEntryId }
-                                
+
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (assignment.isValid) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer
                                     )
                                 ) {
-                                    Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(source?.service ?: "?", fontWeight = FontWeight.SemiBold)
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(source?.service ?: "?", fontWeight = FontWeight.SemiBold)
+                                                Text(source?.username ?: "", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Icon(
+                                                Icons.Default.ArrowForward,
+                                                null,
+                                                Modifier.padding(horizontal = 8.dp),
+                                                tint = if (assignment.isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(target?.service ?: "?", fontWeight = FontWeight.SemiBold)
+                                                Text(target?.username ?: "", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            //  Кнопка редактирования
+                                            IconButton(
+                                                onClick = {
+                                                    editingAssignmentIndex = index
+                                                    showDonorPicker = true
+                                                }
+                                            ) {
+                                                Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
+                                            }
                                         }
-                                        // ✅ ИСПРАВЛЕНО: Icons.Default.ArrowForward вместо AutoMirrored
-                                        Icon(
-                                            Icons.Default.ArrowForward,
-                                            null,
-                                            Modifier.padding(horizontal = 8.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(target?.service ?: "?", fontWeight = FontWeight.SemiBold)
+
+                                        //  Отображение ошибки, если есть
+                                        if (!assignment.isValid && assignment.validationMessage != null) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                " ${assignment.validationMessage}",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontWeight = FontWeight.Medium
+                                            )
                                         }
                                     }
                                 }
                             }
-                            
+
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -139,11 +172,22 @@ fun PasswordShuffleDialog(
                                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "Пароли скрыты. После подтверждения каждый сервис получит новый пароль.",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Пароли скрыты. После подтверждения каждый сервис получит новый пароль.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        if (!allAssignmentsValid) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                " Есть невалидные назначения. Исправьте их перед применением.",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -190,7 +234,8 @@ fun PasswordShuffleDialog(
                                 }
                             }
                         },
-                        enabled = assignments.isNotEmpty() && !isProcessing
+                        //  Отключено, если есть невалидные назначения
+                        enabled = assignments.isNotEmpty() && allAssignmentsValid && !isProcessing
                     ) {
                         Text("Применить")
                     }
@@ -209,5 +254,121 @@ fun PasswordShuffleDialog(
             }
         },
         modifier = Modifier.fillMaxWidth(0.95f)
+    )
+
+    //  Диалог выбора донора
+    if (showDonorPicker && editingAssignmentIndex >= 0) {
+        DonorPickerDialog(
+            assignments = assignments,
+            editingIndex = editingAssignmentIndex,
+            availableEntries = entries.filter { it.id in selectedEntryIds },
+            onDonorSelected = { newSourceEntryId ->
+                val currentAssignment = assignments[editingAssignmentIndex]
+                val targetEntryId = currentAssignment.targetEntryId
+
+                // Валидация через ViewModel
+                val validationResult = viewModel.validatePasswordShuffleAssignment(
+                    targetEntryId = targetEntryId,
+                    sourceEntryId = newSourceEntryId,
+                    currentAssignments = assignments
+                )
+
+                // Обновление assignments
+                assignments = assignments.toMutableList().apply {
+                    set(
+                        editingAssignmentIndex,
+                        PasswordShuffleAssignment(
+                            targetEntryId = targetEntryId,
+                            sourceEntryId = newSourceEntryId,
+                            isValid = validationResult.isValid,
+                            validationMessage = validationResult.errorMessage
+                        )
+                    )
+                }
+
+                showDonorPicker = false
+                editingAssignmentIndex = -1
+            },
+            onDismiss = {
+                showDonorPicker = false
+                editingAssignmentIndex = -1
+            }
+        )
+    }
+}
+
+//  НОВЫЙ ДИАЛОГ: Выбор донора
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DonorPickerDialog(
+    assignments: List<PasswordShuffleAssignment>,
+    editingIndex: Int,
+    availableEntries: List<Entry>,
+    onDonorSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val currentAssignment = assignments[editingIndex]
+    val targetEntry = availableEntries.find { it.id == currentAssignment.targetEntryId }
+
+    // Доступные доноры: все записи, кроме текущей и уже назначенных
+    val usedSourceIds = assignments.mapIndexedNotNull { index, assignment ->
+        if (index != editingIndex) assignment.sourceEntryId else null
+    }
+
+    val availableDonors = availableEntries.filter { entry ->
+        entry.id != currentAssignment.targetEntryId && entry.id !in usedSourceIds
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Выберите донора для ${targetEntry?.service ?: "?"}")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (availableDonors.isEmpty()) {
+                    Text(
+                        "Нет доступных доноров. Все пароли уже назначены.",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    availableDonors.forEach { entry ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(entry.service, fontWeight = FontWeight.SemiBold)
+                                    Text(entry.username, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Button(
+                                    onClick = { onDonorSelected(entry.id) }
+                                ) {
+                                    Text("Выбрать")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
     )
 }
