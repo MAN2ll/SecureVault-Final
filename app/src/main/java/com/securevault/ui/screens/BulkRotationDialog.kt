@@ -40,7 +40,7 @@ fun BulkRotationDialog(
                         entryId = entry.id,
                         newPassword = result.password,
                         newHint = "Случайный пароль, создан при массовой ротации",
-                        // ✅ ИСПРАВЛЕНО: newGenerationType вместо generationType
+                        // newGenerationType вместо generationType
                         newGenerationType = "random",
                         newMnemonicPhraseHint = null,
                         newMnemonicOptionsJson = null
