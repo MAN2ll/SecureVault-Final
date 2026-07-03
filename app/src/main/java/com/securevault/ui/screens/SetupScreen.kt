@@ -25,7 +25,7 @@ fun SetupScreen(
     onCompleted: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
-    // ✅ ИНИЦИАЛИЗАЦИЯ AuthViewModel
+    //  ИНИЦИАЛИЗАЦИЯ AuthViewModel
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         viewModel.init(context)
