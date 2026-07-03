@@ -4,7 +4,6 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.PasswordValidator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -88,9 +87,11 @@ data class Entry(
         return result
     }
 
+    // ✅ ИСПРАВЛЕНО: fingerprint передаётся извне (из ViewModel, где есть Context)
     fun addToPasswordHistory(
         oldPassword: String,
         generationType: String,
+        oldPasswordFingerprint: String,
         relatedService: String? = null,
         relatedEntryId: String? = null,
         hint: String? = null
@@ -101,13 +102,10 @@ data class Entry(
             null
         }
 
-        val fingerprint = PasswordValidator.buildLegacyFingerprint(oldPassword)
-        val hash = PasswordValidator.buildLegacyFingerprint(oldPassword)
-
         val newItem = PasswordHistoryItem(
             encryptedOldPassword = encryptedOld,
-            passwordHash = hash,
-            passwordFingerprint = fingerprint,
+            passwordHash = oldPasswordFingerprint,  // используем fingerprint как hash
+            passwordFingerprint = oldPasswordFingerprint,
             date = System.currentTimeMillis(),
             type = generationType,
             relatedService = relatedService,
@@ -143,46 +141,61 @@ data class Entry(
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
 
     companion object {
+        // ✅ ИСПРАВЛЕНО: fingerprint передаётся как параметр (строится во ViewModel)
         fun create(
-            service: String, username: String, password: String,
+            service: String,
+            username: String,
+            password: String,
             profileId: Int,
-            url: String? = null, notes: String? = null,
+            passwordFingerprint: String,  // ✅ теперь обязательный параметр
+            url: String? = null,
+            notes: String? = null,
             textHint: String? = null,
-            rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            rotationEnabled: Boolean = false,
+            rotationPeriodMonths: Int = 6,
             isFavorite: Boolean = false,
             generationType: String = "random",
             mnemonicPhraseHint: String? = null,
             mnemonicOptionsJson: String? = null
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
-            val fingerprint = PasswordValidator.buildLegacyFingerprint(password)
             val now = System.currentTimeMillis()
             val nextRotationDate = if (rotationEnabled) {
                 now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
             } else null
 
             return Entry(
-                service = service, username = username, encryptedPassword = encryptedPassword,
+                service = service,
+                username = username,
+                encryptedPassword = encryptedPassword,
                 profileId = profileId,
-                url = url, notes = notes,
+                url = url,
+                notes = notes,
                 textHint = textHint,
-                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
+                rotationEnabled = rotationEnabled,
+                rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate,
+                createdAt = now,
+                lastChanged = now,
                 isFavorite = isFavorite,
                 generationType = generationType,
-                passwordFingerprint = fingerprint,
+                passwordFingerprint = passwordFingerprint,
                 mnemonicPhraseHint = mnemonicPhraseHint,
                 mnemonicOptionsJson = mnemonicOptionsJson
             )
         }
 
         fun createWithNewId(
-            service: String, username: String, encryptedPassword: String,
+            service: String,
+            username: String,
+            encryptedPassword: String,
             profileId: Int,
-            url: String? = null, notes: String? = null,
+            url: String? = null,
+            notes: String? = null,
             textHint: String? = null,
             isFavorite: Boolean = false,
-            rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            rotationEnabled: Boolean = false,
+            rotationPeriodMonths: Int = 6,
             nextRotationDate: Long? = null,
             createdAt: Long = System.currentTimeMillis(),
             lastChanged: Long = System.currentTimeMillis(),
@@ -194,12 +207,18 @@ data class Entry(
         ): Entry {
             return Entry(
                 id = UUID.randomUUID().toString(),
-                service = service, username = username, encryptedPassword = encryptedPassword,
+                service = service,
+                username = username,
+                encryptedPassword = encryptedPassword,
                 profileId = profileId,
-                url = url, notes = notes,
+                url = url,
+                notes = notes,
                 textHint = textHint,
-                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate, createdAt = createdAt, lastChanged = lastChanged,
+                rotationEnabled = rotationEnabled,
+                rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate,
+                createdAt = createdAt,
+                lastChanged = lastChanged,
                 isFavorite = isFavorite,
                 passwordHistoryJson = passwordHistoryJson,
                 generationType = generationType,
