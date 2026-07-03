@@ -158,22 +158,27 @@ object MnemonicPasswordGenerator {
         )
     }
 
+    // ✅ ИСПРАВЛЕНО: проверка на повторы символов
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val usedPasswords = mutableSetOf<String>()
         val setIndex = options.variantOffset
         
-        // Генерируем варианты с защитой от дублей
         var variantIndex = 0
         var attempts = 0
-        val maxAttempts = count * 3
+        val maxAttempts = count * 10 // Увеличиваем лимит попыток
         
         while (results.size < count && attempts < maxAttempts) {
             val spec = buildVariantSpec(setIndex, variantIndex, options)
             val result = generateWithStrategies(options, spec)
             
-            // ✅ ЗАЩИТА ОТ ДУБЛЕЙ: проверяем уникальность
-            if (result.password !in usedPasswords) {
+            // ✅ ПРОВЕРКА 1: уникальность пароля
+            val isUniquePassword = result.password !in usedPasswords
+            
+            // ✅ ПРОВЕРКА 2: нет повторяющихся символов (A и a считаются повтором)
+            val hasNoDuplicateChars = !PasswordValidator.hasDuplicateCharacters(result.password)
+            
+            if (isUniquePassword && hasNoDuplicateChars) {
                 results.add(result)
                 usedPasswords.add(result.password)
             }
