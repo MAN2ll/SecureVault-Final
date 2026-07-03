@@ -46,6 +46,10 @@ fun MnemonicGeneratorScreen(
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
     var showError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
+    
+    //  AlertDialog для ошибок сохранения
+    var showSaveErrorDialog by remember { mutableStateOf(false) }
+    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
     fun generateVariants() {
         validationError = null
@@ -76,7 +80,7 @@ fun MnemonicGeneratorScreen(
         selectedVariantIndex = -1
         
         if (variants.isEmpty()) {
-            validationError = "Не удалось сгенерировать варианты. Проверьте фразу."
+            validationError = "Не удалось сгенерировать варианты без повторов. Попробуйте другую фразу."
         }
     }
 
@@ -111,7 +115,7 @@ fun MnemonicGeneratorScreen(
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text("AMPG v2 — Unique Mnemonic Flow", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("Уникальный поток символов из фразы + фиксированные замены", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Гарантированно без повторяющихся символов", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
 
@@ -232,25 +236,7 @@ fun MnemonicGeneratorScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     
-                                    // ✅ НОВОЕ: Предупреждение о повторах
-                                    if (result.hasDuplicates) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                Icons.Default.Warning,
-                                                null,
-                                                Modifier.size(12.dp),
-                                                tint = MaterialTheme.colorScheme.tertiary
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                "Есть повторы символов, но пароль сохранён как мнемонический",
-                                                fontSize = 9.sp,
-                                                color = MaterialTheme.colorScheme.tertiary,
-                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                            )
-                                        }
-                                    }
+                                    //  УБРАНО: Предупреждение о повторах (их больше нет)
                                 }
 
                                 Column {
@@ -292,24 +278,33 @@ fun MnemonicGeneratorScreen(
 
                     val selected = variants[selectedVariantIndex]
 
-                    //  Для мнемонического генератора НЕ блокируем по повторам
-                    // Повторы допустимы, если пароль мнемонический
-                    // Но всё равно проверяем HMAC fingerprint
+                    //  ФИНАЛЬНАЯ ПРОВЕРКА: пароль не должен содержать повторов
+                    if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
+                        saveErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
+                        showSaveErrorDialog = true
+                        return@Button
+                    }
+
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
 
-                    val entry = Entry.create(
-                        service = serviceName,
-                        username = "",
-                        password = selected.password,
-                        profileId = currentProfileId!!,
-                        passwordFingerprint = fingerprint,
-                        textHint = selected.mnemonicHint,
-                        generationType = "mnemonic",
-                        mnemonicPhraseHint = phrase,
-                        mnemonicOptionsJson = null
-                    )
-                    viewModel.insert(entry)
-                    onBack()
+                    try {
+                        val entry = Entry.create(
+                            service = serviceName,
+                            username = "",
+                            password = selected.password,
+                            profileId = currentProfileId!!,
+                            passwordFingerprint = fingerprint,
+                            textHint = selected.mnemonicHint,
+                            generationType = "mnemonic",
+                            mnemonicPhraseHint = phrase,
+                            mnemonicOptionsJson = null
+                        )
+                        viewModel.insert(entry)
+                        onBack()
+                    } catch (e: Exception) {
+                        saveErrorMessage = "Не удалось сохранить пароль: ${e.message}"
+                        showSaveErrorDialog = true
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = variants.isNotEmpty() && selectedVariantIndex >= 0
@@ -319,5 +314,20 @@ fun MnemonicGeneratorScreen(
                 Text("Сохранить")
             }
         }
+    }
+
+    //  AlertDialog для ошибок сохранения
+    if (showSaveErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveErrorDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Не удалось сохранить пароль") },
+            text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
+            confirmButton = {
+                TextButton(onClick = { showSaveErrorDialog = false }) {
+                    Text("Понятно")
+                }
+            }
+        )
     }
 }
