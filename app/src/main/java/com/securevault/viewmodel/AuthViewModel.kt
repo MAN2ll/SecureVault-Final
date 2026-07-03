@@ -96,7 +96,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
         } else {
             BruteForceGuard.recordFailedAttempt()
             
-            if (BruteForceGuard.shouldWipeData()) {
+            if (BruteForceGuard.shouldResetAccess()) {
                 prefs.edit().clear().apply()
                 _authState.value = AuthState.SetupRequired
             } else {
