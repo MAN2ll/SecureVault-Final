@@ -25,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
+import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,14 +37,14 @@ fun MnemonicGeneratorScreen(
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    
+
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
     var variantOffset by remember { mutableIntStateOf(0) }
-    
+
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
     var showError by remember { mutableStateOf<String?>(null) }
@@ -51,19 +52,19 @@ fun MnemonicGeneratorScreen(
 
     fun generateVariants() {
         validationError = null
-        
+
         if (phrase.isBlank()) {
             variants = emptyList()
             validationError = "Введите мнемоническую фразу"
             return
         }
-        
+
         if (includeServiceCode && serviceName.isBlank()) {
             variants = emptyList()
             validationError = "Введите название сервиса для кода сервиса"
             return
         }
-        
+
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
@@ -73,18 +74,16 @@ fun MnemonicGeneratorScreen(
             includeRotationCode = includeRotationCode,
             variantOffset = variantOffset
         )
-        
+
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
     }
 
-    // ✅ СБРОС НОМЕРА НАБОРА ПРИ ИЗМЕНЕНИИ ПАРАМЕТРОВ
     LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
         variantOffset = 0
         generateVariants()
     }
 
-    // ✅ ГЕНЕРАЦИЯ ПРИ ИЗМЕНЕНИИ variantOffset
     LaunchedEffect(variantOffset) {
         generateVariants()
     }
@@ -126,8 +125,8 @@ fun MnemonicGeneratorScreen(
             OutlinedTextField(
                 value = serviceName,
                 onValueChange = { serviceName = it },
-                label = { 
-                    Text(if (includeServiceCode) "Название сервиса *" else "Название сервиса (необяз.)") 
+                label = {
+                    Text(if (includeServiceCode) "Название сервиса *" else "Название сервиса (необяз.)")
                 },
                 placeholder = { Text("например: Gmail") },
                 modifier = Modifier.fillMaxWidth()
@@ -136,7 +135,7 @@ fun MnemonicGeneratorScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Параметры", fontWeight = FontWeight.Bold)
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
                         Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
@@ -156,7 +155,6 @@ fun MnemonicGeneratorScreen(
                 Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
 
-            // ✅ ОТОБРАЖЕНИЕ НОМЕРА НАБОРА
             if (variants.isNotEmpty()) {
                 Text(
                     "Текущий набор: №${variantOffset + 1}",
@@ -178,15 +176,15 @@ fun MnemonicGeneratorScreen(
 
             if (variants.isNotEmpty()) {
                 Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                
+
                 variants.forEachIndexed { index, result ->
                     val isSelected = selectedVariantIndex == index
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) 
-                                MaterialTheme.colorScheme.primaryContainer 
-                            else 
+                            containerColor = if (isSelected)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
                                 MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
@@ -232,7 +230,7 @@ fun MnemonicGeneratorScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                
+
                                 Column {
                                     IconButton(onClick = {
                                         clipboardManager.setText(AnnotatedString(result.password))
@@ -269,17 +267,27 @@ fun MnemonicGeneratorScreen(
                         showError = "Профиль не выбран"
                         return@Button
                     }
-                    
+
                     val selected = variants[selectedVariantIndex]
-                    
-                   val entry = Entry.create(
+
+                    // ✅ Проверка уникальности символов
+                    if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
+                        showError = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
+                        return@Button
+                    }
+
+                    // ✅ HMAC fingerprint для новой записи
+                    val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
+
+                    val entry = Entry.create(
                         service = serviceName,
                         username = "",
                         password = selected.password,
                         profileId = currentProfileId!!,
+                        passwordFingerprint = fingerprint,
                         textHint = selected.mnemonicHint,
                         generationType = "mnemonic",
-                        mnemonicPhraseHint = phrase,  // ✅ Короткая фраза
+                        mnemonicPhraseHint = phrase,
                         mnemonicOptionsJson = null
                     )
                     viewModel.insert(entry)
