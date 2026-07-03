@@ -217,7 +217,7 @@ fun PasswordViewDialog(
                                 }
                             }
                             
-                            // ✅ Кнопка "Показать старые пароли" (отдельное подтверждение)
+                            //  Кнопка "Показать старые пароли" (отдельное подтверждение)
                             if (history.isNotEmpty() && !areOldPasswordsRevealed) {
                                 TextButton(onClick = { showOldPasswordsConfirm = true }) {
                                     Text("Показать старые пароли", fontSize = 11.sp)
