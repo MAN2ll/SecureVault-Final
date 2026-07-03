@@ -60,17 +60,19 @@ fun QrCodeDialog(
                     Text("Не удалось сгенерировать QR-код", color = MaterialTheme.colorScheme.error)
                 }
 
+                //  Полное описание работы QR
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(" Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Spacer(Modifier.height(4.dp))
                         Text("• QR НЕ содержит пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("• Работает только на этом устройстве", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("• Требует мастер-пароль для просмотра", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("• Действует до смены пароля", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Открывается только внутри SecureVault", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Для просмотра нужен мастер-пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• QR действует до смены пароля", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• После смены пароля создайте новый QR", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                 }
 
