@@ -62,12 +62,12 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    // ✅ Поиск
+                    //  Поиск
                     IconButton(onClick = { /* TODO: открыть поле поиска */ }) {
                         Icon(Icons.Default.Search, "Поиск")
                     }
                     
-                    // ✅ Избранное
+                    //  Избранное
                     IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
                         Icon(
                             if (favoritesOnly) Icons.Default.Star else Icons.Outlined.Star,
