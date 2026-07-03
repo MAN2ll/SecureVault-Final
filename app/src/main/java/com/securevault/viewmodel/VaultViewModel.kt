@@ -1,5 +1,6 @@
 package com.securevault.viewmodel
 
+import kotlinx.coroutines.runBlocking
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -362,6 +363,40 @@ class VaultViewModel @Inject constructor(
         }
 
         return null
+    }
+
+    //  НОВЫЙ МЕТОД: Валидация ручного назначения донора
+    fun validatePasswordShuffleAssignment(
+        targetEntryId: String,
+        sourceEntryId: String,
+        currentAssignments: List<PasswordShuffleAssignment>
+    ): ValidationResult {
+        // Проверка: сервис не может получить свой же пароль
+        if (targetEntryId == sourceEntryId) {
+            return ValidationResult(false, "Сервис не может получить свой же пароль")
+        }
+    
+        // Проверка: один source не может быть назначен двум target
+        val usedCount = currentAssignments.count { 
+            it.sourceEntryId == sourceEntryId && it.targetEntryId != targetEntryId 
+        }
+        if (usedCount > 0) {
+            return ValidationResult(false, "Этот пароль уже назначен другому сервису")
+        }
+    
+        // Проверка: все записи из одного профиля
+        val targetEntry = runBlocking { repository.getById(targetEntryId) }
+        val sourceEntry = runBlocking { repository.getById(sourceEntryId) }
+        
+        if (targetEntry == null || sourceEntry == null) {
+            return ValidationResult(false, "Запись не найдена")
+        }
+        
+        if (targetEntry.profileId != sourceEntry.profileId) {
+            return ValidationResult(false, "Записи должны быть из одного профиля")
+        }
+    
+        return ValidationResult(true)
     }
 
     fun applyPasswordShuffle(
