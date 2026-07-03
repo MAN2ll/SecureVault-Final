@@ -97,22 +97,21 @@ dependencies {
 
     // ===== ZXing для QR =====
     implementation("com.google.zxing:core:3.5.2")
-    
-    //  CameraX для сканирования QR
+
+    // ===== CameraX для сканирования QR =====
     implementation("androidx.camera:camera-core:1.3.1")
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
 
-    //  ML Kit для распознавания QR
+    // ===== ML Kit для распознавания QR =====
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
-
 
     // ===== DataStore для ThemeManager =====
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // ===== JSON =====
-    implementation("org.json:json:20231013")
+    //  implementation("org.json:json:20231013")
+    // org.json уже включён в Android SDK (API 1+)
 
     // ===== Testing =====
     testImplementation("junit:junit:4.13.2")
