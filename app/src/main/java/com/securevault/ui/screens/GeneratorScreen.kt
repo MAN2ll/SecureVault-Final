@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.PasswordGenerator
+import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
 
@@ -32,18 +33,18 @@ fun GeneratorScreen(
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     val currentProfileId by viewModel.currentProfileId.collectAsState()
-    
+
     var length by remember { mutableIntStateOf(12) }
     var useUppercase by remember { mutableStateOf(true) }
     var useDigits by remember { mutableStateOf(true) }
     var useSpecial by remember { mutableStateOf(false) }
-    
+
     var generatedPassword by remember { mutableStateOf("") }
     var passwordStrength by remember { mutableStateOf(PasswordGenerator.Strength.MEDIUM) }
-    
+
     var showCopiedHint by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
-    
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -57,12 +58,13 @@ fun GeneratorScreen(
             showError = "Профиль не выбран"
             return
         }
-        
+
         val result = PasswordGenerator.generate(
             length = length,
             useUpper = useUppercase,
             useDigits = useDigits,
-            useSpecial = useSpecial
+            useSpecial = useSpecial,
+            context = context
         )
         generatedPassword = result.password
         passwordStrength = result.strength
@@ -98,7 +100,7 @@ fun GeneratorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 isError = showError != null && service.isBlank()
             )
-            
+
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -107,11 +109,11 @@ fun GeneratorScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Настройки пароля", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $length", modifier = Modifier.weight(1f), fontSize = 14.sp)
                         Slider(
@@ -122,7 +124,7 @@ fun GeneratorScreen(
                             modifier = Modifier.weight(2f)
                         )
                     }
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Checkbox(checked = useUppercase, onCheckedChange = { useUppercase = it })
                         Text("Заглавные буквы (A-Z)", modifier = Modifier.padding(start = 8.dp), fontSize = 14.sp)
@@ -137,7 +139,7 @@ fun GeneratorScreen(
                     }
                 }
             }
-            
+
             Button(
                 onClick = { generatePassword() },
                 modifier = Modifier.fillMaxWidth(),
@@ -147,7 +149,7 @@ fun GeneratorScreen(
                 Spacer(Modifier.size(4.dp))
                 Text("Сгенерировать пароль")
             }
-            
+
             if (generatedPassword.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -177,7 +179,7 @@ fun GeneratorScreen(
                                 Icon(Icons.Default.ContentCopy, contentDescription = "Копировать")
                             }
                         }
-                        
+
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -216,7 +218,7 @@ fun GeneratorScreen(
                         }
                     }
                 }
-                
+
                 if (showCopiedHint) {
                     Box(
                         modifier = Modifier
@@ -230,9 +232,9 @@ fun GeneratorScreen(
                     }
                 }
             }
-            
+
             Spacer(Modifier.weight(1f))
-            
+
             Button(
                 onClick = {
                     if (generatedPassword.isEmpty()) {
@@ -243,14 +245,25 @@ fun GeneratorScreen(
                         showError = "Заполните все поля"
                         return@Button
                     }
-                    
+
+                    // ✅ Проверка уникальности символов
+                    val uniqueCheck = PasswordValidator.validateUniqueCharacters(generatedPassword)
+                    if (!uniqueCheck.isValid) {
+                        showError = uniqueCheck.errorMessage
+                        return@Button
+                    }
+
+                    // ✅ HMAC fingerprint для новой записи
+                    val fingerprint = PasswordValidator.buildPasswordFingerprint(generatedPassword, context)
+
                     val newEntry = Entry.create(
                         service = service,
                         username = username.ifBlank { "user" },
                         password = generatedPassword,
-                        profileId = currentProfileId!!
+                        profileId = currentProfileId!!,
+                        passwordFingerprint = fingerprint
                     )
-                    
+
                     viewModel.insert(newEntry)
                     onBack()
                 },
@@ -262,7 +275,7 @@ fun GeneratorScreen(
                 Spacer(Modifier.size(4.dp))
                 Text("Сохранить в хранилище")
             }
-            
+
             if (showError != null && generatedPassword.isEmpty()) {
                 Text(text = showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
