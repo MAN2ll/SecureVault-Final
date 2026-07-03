@@ -77,7 +77,6 @@ fun SecureVaultNavHost() {
 
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
-
             VaultListScreen(
                 onNavigateToEntry = { entryId ->
                     navController.navigate("editor/$entryId")
@@ -99,6 +98,9 @@ fun SecureVaultNavHost() {
                 },
                 onNavigateToMnemonicGenerator = {
                     navController.navigate("mnemonic")
+                },
+                onNavigateToQrScanner = {  // НОВЫЙ ПАРАМЕТР
+                    navController.navigate("qr_scanner")
                 }
             )
         }
@@ -131,7 +133,7 @@ fun SecureVaultNavHost() {
         )
     }
 
-        // ✅ НОВЫЙ ЭКРАН: Смена мастер-пароля
+        //  НОВЫЙ ЭКРАН: Смена мастер-пароля
         composable("change_password") {
             ChangeMasterPasswordScreen(
                 onBack = { navController.popBackStack() }
@@ -144,6 +146,9 @@ fun SecureVaultNavHost() {
 
         composable("export") {
             ExportImportScreen(onBack = { navController.popBackStack() })
+        }
+        composable("qr_scanner") {
+            QrScannerScreen(onBack = { navController.popBackStack() })
         }
     }
 }
