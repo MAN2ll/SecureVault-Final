@@ -527,7 +527,7 @@ object MnemonicPasswordGenerator {
         return "${parts.joinToString(" + ")} [${blockStrategy.name}, ${orderStrategy.name}]"
     }
 
-    // ✅ УЛУЧШЕННЫЙ МЕТОД: понятные названия вариантов
+    //  УЛУЧШЕННЫЙ МЕТОД: понятные названия вариантов
     private fun buildVariantName(spec: VariantSpec): String {
         val parts = mutableListOf<String>()
         
