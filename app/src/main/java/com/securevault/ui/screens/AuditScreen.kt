@@ -138,26 +138,8 @@ fun AuditScreen(
                 )
             }
 
-            // Приблизительная оценка слабых паролей (по длине зашифрованного текста)
-            if (surfaceAudit.potentiallyWeakCount > 0) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Возможно слабых паролей: ${surfaceAudit.potentiallyWeakCount} (приблизительная оценка по длине)",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                }
-            }
+            //  Убрана метрика "возможно слабые пароли"
+            // Слабость паролей определяется только в глубоком аудите
 
             // Кнопка глубокого аудита
             Card(
@@ -229,7 +211,6 @@ fun AuditScreen(
             onConfirmed = {
                 showDeepAuditDialog = false
                 isDeepAuditLoading = true
-                // Запуск глубокого аудита в фоне
                 deepAuditResults = performDeepAudit(entries)
                 isDeepAuditLoading = false
             },
@@ -255,13 +236,13 @@ fun AuditScreen(
 
 // ===== ПОВЕРХНОСТНЫЙ АУДИТ =====
 
+// Убрано поле potentiallyWeakCount
 data class SurfaceAuditResults(
     val totalEntries: Int,
     val expiredCount: Int,
     val noRotationCount: Int,
     val noFingerprintCount: Int,
-    val duplicateFingerprintCount: Int,
-    val potentiallyWeakCount: Int
+    val duplicateFingerprintCount: Int
 ) {
     val securityScore: Int
         get() {
@@ -271,7 +252,6 @@ data class SurfaceAuditResults(
             penalty += noRotationCount * 5
             penalty += noFingerprintCount * 10
             penalty += duplicateFingerprintCount * 20
-            penalty += potentiallyWeakCount * 8
             return (100 - penalty).coerceAtLeast(0)
         }
 }
@@ -281,35 +261,27 @@ private fun performSurfaceAudit(entries: List<com.securevault.data.Entry>): Surf
     val noRotationCount = entries.count { !it.rotationEnabled }
     val noFingerprintCount = entries.count { it.passwordFingerprint.isNullOrBlank() }
 
-    // Поиск дублирующихся fingerprint
     val fingerprints = entries.mapNotNull { it.passwordFingerprint }
     val duplicateFingerprintCount = fingerprints.size - fingerprints.toSet().size
 
-    // Приблизительная оценка слабых паролей по длине зашифрованного текста
-    // AES-GCM добавляет ~28 байт (IV 12 + tag 16) + base64 overhead (~33%)
-    // Пароль длиной 10 символов → ~52 символа в base64
-    // Пароль длиной 8 символов → ~48 символов в base64
-    val potentiallyWeakCount = entries.count { entry ->
-        entry.encryptedPassword.length < 50  // примерно соответствует паролю < 8 символов
-    }
+    //  Убрана приблизительная оценка слабых паролей по длине encryptedPassword
 
     return SurfaceAuditResults(
         totalEntries = entries.size,
         expiredCount = expiredCount,
         noRotationCount = noRotationCount,
         noFingerprintCount = noFingerprintCount,
-        duplicateFingerprintCount = duplicateFingerprintCount,
-        potentiallyWeakCount = potentiallyWeakCount
+        duplicateFingerprintCount = duplicateFingerprintCount
     )
 }
 
 // ===== ГЛУБОКИЙ АУДИТ =====
 
 data class DeepAuditResults(
-    val shortPasswords: List<String>,        // сервисы с паролем < 10 символов
-    val duplicateChars: List<String>,        // сервисы с повторами символов
-    val similarToPrevious: List<String>,     // сервисы с паролем <60% уникальным от предыдущего
-    val reusedPasswords: List<String>        // сервисы с повторным использованием пароля
+    val shortPasswords: List<String>,
+    val duplicateChars: List<String>,
+    val similarToPrevious: List<String>,
+    val reusedPasswords: List<String>
 )
 
 private fun performDeepAudit(entries: List<com.securevault.data.Entry>): DeepAuditResults {
@@ -322,17 +294,14 @@ private fun performDeepAudit(entries: List<com.securevault.data.Entry>): DeepAud
         try {
             val password = entry.password
 
-            // 1. Проверка длины
             if (password.length < 10) {
                 shortPasswords.add(entry.service)
             }
 
-            // 2. Проверка повторов символов
             if (PasswordValidator.hasDuplicateCharacters(password)) {
                 duplicateChars.add(entry.service)
             }
 
-            // 3. Проверка 60% уникальности от предыдущего пароля
             val history = entry.getPasswordHistory()
             val lastHistoryItem = history.firstOrNull()
             if (lastHistoryItem?.encryptedOldPassword != null) {
@@ -346,10 +315,7 @@ private fun performDeepAudit(entries: List<com.securevault.data.Entry>): DeepAud
                 }
             }
 
-            // 4. Проверка повторного использования пароля
             if (PasswordValidator.wasPasswordUsedForEntry(entry, password, LocalContextProvidedHolder.context)) {
-                // Пароль уже использовался для этой записи
-                // Но текущий пароль — это и есть "используемый", поэтому проверяем историю
                 val historyFingerprints = history.map { it.passwordFingerprint }.filter { it.isNotBlank() }
                 val currentFingerprint = PasswordValidator.buildPasswordFingerprint(password, LocalContextProvidedHolder.context)
                 if (historyFingerprints.contains(currentFingerprint)) {
@@ -357,7 +323,7 @@ private fun performDeepAudit(entries: List<com.securevault.data.Entry>): DeepAud
                 }
             }
         } catch (e: Exception) {
-            // Если не можем расшифровать — пропускаем
+            // ignore
         }
     }
 
@@ -369,7 +335,6 @@ private fun performDeepAudit(entries: List<com.securevault.data.Entry>): DeepAud
     )
 }
 
-// Хелпер для передачи контекста в performDeepAudit
 private object LocalContextProvidedHolder {
     lateinit var context: Context
 }
@@ -520,6 +485,7 @@ private fun AuditIssueItem(
 
 // ===== РЕКОМЕНДАЦИИ =====
 
+//  Убрана рекомендация про potentiallyWeakCount
 private fun buildRecommendations(
     surface: SurfaceAuditResults,
     deep: DeepAuditResults?
@@ -537,9 +503,6 @@ private fun buildRecommendations(
     }
     if (surface.duplicateFingerprintCount > 0) {
         recommendations.add("Проверить ${surface.duplicateFingerprintCount} записей с дублирующимися паролями")
-    }
-    if (surface.potentiallyWeakCount > 0) {
-        recommendations.add("Усилить ${surface.potentiallyWeakCount} потенциально слабых паролей")
     }
 
     if (deep != null) {
@@ -572,7 +535,6 @@ private fun ConfirmMasterPasswordForAudit(
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
-    //  Передаём контекст в holder для глубокого аудита
     LaunchedEffect(Unit) {
         LocalContextProvidedHolder.context = context
     }
