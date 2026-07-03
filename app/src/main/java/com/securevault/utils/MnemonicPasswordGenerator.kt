@@ -28,7 +28,7 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
-    // ✅ НОВАЯ СТРУКТУРА: спецификация варианта
+    //  спецификация варианта
     data class VariantSpec(
         val blockStrategy: BlockStrategy,
         val orderStrategy: OrderStrategy,
@@ -122,7 +122,7 @@ object MnemonicPasswordGenerator {
 
     private val vowels = setOf('a', 'e', 'i', 'o', 'u')
 
-    // ✅ НОВЫЙ МЕТОД: построение спецификации варианта
+    // построение спецификации варианта
     private fun buildVariantSpec(setIndex: Int, variantIndex: Int, options: GenerationOptions): VariantSpec {
         val seed = setIndex * 5 + variantIndex
         
@@ -158,7 +158,7 @@ object MnemonicPasswordGenerator {
         )
     }
 
-    // ✅ ИСПРАВЛЕНО: проверка на повторы символов
+    // проверка на повторы символов
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val usedPasswords = mutableSetOf<String>()
@@ -172,10 +172,10 @@ object MnemonicPasswordGenerator {
             val spec = buildVariantSpec(setIndex, variantIndex, options)
             val result = generateWithStrategies(options, spec)
             
-            // ✅ ПРОВЕРКА 1: уникальность пароля
+            // ПРОВЕРКА 1: уникальность пароля
             val isUniquePassword = result.password !in usedPasswords
             
-            // ✅ ПРОВЕРКА 2: нет повторяющихся символов (A и a считаются повтором)
+            // ПРОВЕРКА 2: нет повторяющихся символов (A и a считаются повтором)
             val hasNoDuplicateChars = !PasswordValidator.hasDuplicateCharacters(result.password)
             
             if (isUniquePassword && hasNoDuplicateChars) {
