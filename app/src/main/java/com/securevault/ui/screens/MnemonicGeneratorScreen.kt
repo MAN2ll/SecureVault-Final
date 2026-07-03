@@ -270,13 +270,13 @@ fun MnemonicGeneratorScreen(
 
                     val selected = variants[selectedVariantIndex]
 
-                    // ✅ Проверка уникальности символов
+                    //  Проверка уникальности символов
                     if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
                         showError = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
                         return@Button
                     }
 
-                    // ✅ HMAC fingerprint для новой записи
+                    //  HMAC fingerprint для новой записи
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
 
                     val entry = Entry.create(
