@@ -72,7 +72,12 @@ class VaultViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
+    fun setCurrentProfile(profileId: Int?) {
+        _currentProfileId.value = profileId
+        // ✅ Запускаем backfill при смене профиля (один раз)
+        backfillFingerprints()
+    }
+
     fun toggleFavoritesOnly() { _favoritesOnly.value = !_favoritesOnly.value }
 
     fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
@@ -84,10 +89,17 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
+    // ✅ Backfill запускается один раз при setCurrentProfile
+    private var backfillDone = mutableSetOf<Int?>()
+
     fun backfillFingerprints() = viewModelScope.launch {
+        val profileId = _currentProfileId.value
+        if (profileId in backfillDone) return@launch
+        backfillDone.add(profileId)
+
         val allEntries = repository.allEntries.first()
         for (entry in allEntries) {
-            if (entry.passwordFingerprint == null) {
+            if (entry.passwordFingerprint.isNullOrBlank()) {
                 try {
                     val password = withContext(Dispatchers.Default) { entry.password }
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(password, appContext)
@@ -120,11 +132,16 @@ class VaultViewModel @Inject constructor(
             now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
         } else null
 
-        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+        val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+        val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
 
-        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+        val updated = entry.addToPasswordHistory(
+            oldPassword = entry.password,
+            generationType = entry.generationType,
+            oldPasswordFingerprint = oldFingerprint
+        ).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
-            passwordFingerprint = fingerprint,
+            passwordFingerprint = newFingerprint,
             lastChanged = now,
             nextRotationDate = newNextRotationDate
         )
@@ -173,13 +190,18 @@ class VaultViewModel @Inject constructor(
             now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
         } else null
 
-        val fingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+        val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+        val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
 
-        val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+        val updated = entry.addToPasswordHistory(
+            oldPassword = entry.password,
+            generationType = entry.generationType,
+            oldPasswordFingerprint = oldFingerprint
+        ).copy(
             encryptedPassword = CryptoUtils.encrypt(newPassword),
             textHint = newHint,
             generationType = newGenerationType,
-            passwordFingerprint = fingerprint,
+            passwordFingerprint = newFingerprint,
             mnemonicPhraseHint = newMnemonicPhraseHint,
             mnemonicOptionsJson = newMnemonicOptionsJson,
             lastChanged = now,
@@ -209,13 +231,18 @@ class VaultViewModel @Inject constructor(
                 now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
             } else null
 
-            val fingerprint = PasswordValidator.buildPasswordFingerprint(replacement.newPassword, appContext)
+            val newFingerprint = PasswordValidator.buildPasswordFingerprint(replacement.newPassword, appContext)
+            val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
 
-            val updated = entry.addToPasswordHistory(entry.password, entry.generationType).copy(
+            val updated = entry.addToPasswordHistory(
+                oldPassword = entry.password,
+                generationType = entry.generationType,
+                oldPasswordFingerprint = oldFingerprint
+            ).copy(
                 encryptedPassword = CryptoUtils.encrypt(replacement.newPassword),
                 textHint = replacement.newHint,
                 generationType = replacement.newGenerationType,
-                passwordFingerprint = fingerprint,
+                passwordFingerprint = newFingerprint,
                 mnemonicPhraseHint = replacement.newMnemonicPhraseHint,
                 mnemonicOptionsJson = replacement.newMnemonicOptionsJson,
                 lastChanged = now,
@@ -370,7 +397,8 @@ class VaultViewModel @Inject constructor(
             val sourcePassword = sourcePasswords[assignment.sourceEntryId] ?: continue
             val sourceEntry = sourceEntries.find { it.id == assignment.sourceEntryId } ?: continue
 
-            val fingerprint = PasswordValidator.buildPasswordFingerprint(sourcePassword, appContext)
+            val newFingerprint = PasswordValidator.buildPasswordFingerprint(sourcePassword, appContext)
+            val oldFingerprint = PasswordValidator.buildPasswordFingerprint(targetEntry.password, appContext)
             val newNextRotationDate = if (targetEntry.rotationEnabled) {
                 now + (targetEntry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
             } else null
@@ -378,11 +406,12 @@ class VaultViewModel @Inject constructor(
             val updated = targetEntry.addToPasswordHistory(
                 oldPassword = targetEntry.password,
                 generationType = "shuffled",
+                oldPasswordFingerprint = oldFingerprint,
                 relatedService = sourceEntry.service,
                 relatedEntryId = sourceEntry.id
             ).copy(
                 encryptedPassword = CryptoUtils.encrypt(sourcePassword),
-                passwordFingerprint = fingerprint,
+                passwordFingerprint = newFingerprint,
                 generationType = "shuffled",
                 lastChanged = now,
                 nextRotationDate = newNextRotationDate
