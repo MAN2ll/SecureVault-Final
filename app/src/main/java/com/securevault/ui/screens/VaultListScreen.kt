@@ -31,15 +31,15 @@ fun VaultListScreen(
     onNavigateToRotation: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToMnemonicGenerator: () -> Unit,
-    onNavigateToQrScanner: () -> Unit,  //  НОВЫЙ ПАРАМЕТР
+    onNavigateToQrScanner: () -> Unit,
     authViewModel: AuthViewModel = hiltViewModel(),
     viewModel: VaultViewModel = hiltViewModel()
-)
-{
+) {
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
     var searchQuery by remember { mutableStateOf("") }
+    var showSearchField by remember { mutableStateOf(false) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
@@ -62,9 +62,15 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    //  Поиск
-                    IconButton(onClick = { /* TODO: открыть поле поиска */ }) {
-                        Icon(Icons.Default.Search, "Поиск")
+                    //  кнопка поиска открывает/закрывает поле
+                    IconButton(onClick = { 
+                        showSearchField = !showSearchField
+                        if (showSearchField.not()) searchQuery = ""
+                    }) {
+                        Icon(
+                            if (showSearchField) Icons.Default.Close else Icons.Default.Search,
+                            if (showSearchField) "Закрыть поиск" else "Поиск"
+                        )
                     }
                     
                     //  Избранное
@@ -162,24 +168,26 @@ fun VaultListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Поле поиска
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Поиск по сервисам") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = {
-                    if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, "Очистить")
+            //  ПОЛЕ ПОИСКА: показывается только при активации
+            if (showSearchField) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Поиск по сервисам") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, "Очистить")
+                            }
                         }
-                    }
-                },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
 
             if (filteredEntries.isEmpty()) {
                 Box(
