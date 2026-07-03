@@ -27,15 +27,12 @@ object PasswordGenerator {
         context: Context? = null
     ): GenerationResult {
         val charset = buildCharset(useUpper, useDigits, useSpecial)
-
         if (charset.isEmpty()) {
             return GenerationResult(generateFromCharset(LOWERCASE, length), Strength.WEAK)
         }
-
-        val uniqueChars = charset.toSet()
-        val effectiveLength = minOf(length, uniqueChars.size)
-
-        return generateWithUniqueChars(charset, effectiveLength, useUpper, useDigits, useSpecial, context)
+        
+        //  Генерируем пароль сразу из уникальных символов
+        return generateWithUniqueChars(charset, length, useUpper, useDigits, useSpecial, context)
     }
 
     private fun generateWithUniqueChars(
@@ -46,12 +43,19 @@ object PasswordGenerator {
         useSpecial: Boolean,
         context: Context?
     ): GenerationResult {
+        // Группируем символы по "семействам" (A и a — одно семейство)
+        val families = groupIntoFamilies(charset)
+        
+        //  Ограничиваем длину доступным числом семейств
+        val effectiveLength = minOf(length, families.size)
+        
         val maxAttempts = 100
         var attempts = 0
-
+        
         while (attempts < maxAttempts) {
-            val password = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
-
+            val password = generateCandidateFromFamilies(families, effectiveLength, useUpper, useDigits, useSpecial)
+            
+            //  Дополнительная проверка (на случай если что-то пошло не так)
             if (!PasswordValidator.hasDuplicateCharacters(password)) {
                 if (context != null) {
                     val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
@@ -64,32 +68,98 @@ object PasswordGenerator {
             }
             attempts++
         }
-
-        val fallback = generateCandidate(charset, length, useUpper, useDigits, useSpecial)
-        return GenerationResult(fallback, calculateStrength(fallback))
+        
+        //  Если не удалось сгенерировать за 100 попыток — возвращаем ошибку
+        throw IllegalStateException("Не удалось сгенерировать пароль без повторяющихся символов")
     }
 
-    private fun generateCandidate(
-        charset: String,
+    //  Группировка символов по семействам
+    private fun groupIntoFamilies(charset: String): List<List<Char>> {
+        val familyMap = mutableMapOf<Char, MutableList<Char>>()
+        
+        for (char in charset) {
+            val familyKey = char.lowercaseChar()
+            if (familyMap.containsKey(familyKey)) {
+                familyMap[familyKey]!!.add(char)
+            } else {
+                familyMap[familyKey] = mutableListOf(char)
+            }
+        }
+        
+        return familyMap.values.toList()
+    }
+
+    //  Генерация из семейств (гарантирует уникальность)
+    private fun generateCandidateFromFamilies(
+        families: List<List<Char>>,
         length: Int,
         useUpper: Boolean,
         useDigits: Boolean,
         useSpecial: Boolean
     ): String {
-        val guaranteedChars = mutableListOf<Char>()
-        if (useUpper) guaranteedChars.add(UPPERCASE[secureRandom.nextInt(UPPERCASE.length)])
-        if (useDigits) guaranteedChars.add(DIGITS[secureRandom.nextInt(DIGITS.length)])
-        if (useSpecial) guaranteedChars.add(SPECIAL[secureRandom.nextInt(SPECIAL.length)])
-        guaranteedChars.add(LOWERCASE[secureRandom.nextInt(LOWERCASE.length)])
-
-        val remainingLength = (length - guaranteedChars.size).coerceAtLeast(0)
-        val randomChars = (1..remainingLength).map {
-            charset[secureRandom.nextInt(charset.length)]
+        val result = mutableListOf<Char>()
+        val availableFamilies = families.toMutableList()
+        
+        // ✅ Гарантированные символы (по одному из каждого типа)
+        val guaranteedFamilies = mutableListOf<List<Char>>()
+        
+        if (useUpper) {
+            val upperFamily = availableFamilies.find { family ->
+                family.any { it.isUpperCase() && it.isLetter() }
+            }
+            if (upperFamily != null) {
+                guaranteedFamilies.add(upperFamily)
+                availableFamilies.remove(upperFamily)
+            }
         }
-
-        val allChars = (guaranteedChars + randomChars).toMutableList()
-        shuffleSecure(allChars)
-        return allChars.take(length).joinToString("")
+        
+        if (useDigits) {
+            val digitFamily = availableFamilies.find { family ->
+                family.any { it.isDigit() }
+            }
+            if (digitFamily != null) {
+                guaranteedFamilies.add(digitFamily)
+                availableFamilies.remove(digitFamily)
+            }
+        }
+        
+        if (useSpecial) {
+            val specialFamily = availableFamilies.find { family ->
+                family.any { !it.isLetterOrDigit() }
+            }
+            if (specialFamily != null) {
+                guaranteedFamilies.add(specialFamily)
+                availableFamilies.remove(specialFamily)
+            }
+        }
+        
+        val lowerFamily = availableFamilies.find { family ->
+            family.any { it.isLowerCase() && it.isLetter() }
+        }
+        if (lowerFamily != null) {
+            guaranteedFamilies.add(lowerFamily)
+            availableFamilies.remove(lowerFamily)
+        }
+        
+        //  Выбираем по одному символу из каждого гарантированного семейства
+        for (family in guaranteedFamilies) {
+            if (result.size >= length) break
+            result.add(family[secureRandom.nextInt(family.size)])
+        }
+        
+        //  Дополняем случайными символами из оставшихся семейств
+        val remainingLength = (length - result.size).coerceAtLeast(0)
+        val shuffledFamilies = availableFamilies.shuffled(secureRandom)
+        
+        for (family in shuffledFamilies) {
+            if (result.size >= length) break
+            result.add(family[secureRandom.nextInt(family.size)])
+        }
+        
+        //  Перемешиваем результат
+        shuffleSecure(result)
+        
+        return result.take(length).joinToString("")
     }
 
     private fun buildCharset(useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String {
@@ -124,7 +194,6 @@ object PasswordGenerator {
         if (password.any { it.isLowerCase() }) score++
         if (password.any { it.isDigit() }) score++
         if (password.any { !it.isLetterOrDigit() }) score++
-
         return when {
             score >= 6 -> Strength.VERY_STRONG
             score >= 4 -> Strength.STRONG
