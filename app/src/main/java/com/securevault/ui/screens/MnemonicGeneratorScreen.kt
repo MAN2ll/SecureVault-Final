@@ -6,10 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,6 +74,10 @@ fun MnemonicGeneratorScreen(
 
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
+        
+        if (variants.isEmpty()) {
+            validationError = "Не удалось сгенерировать варианты. Проверьте фразу."
+        }
     }
 
     LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
@@ -91,7 +92,7 @@ fun MnemonicGeneratorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AMPG Генератор", fontWeight = FontWeight.Bold) },
+                title = { Text("AMPG v2 Генератор", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
@@ -109,8 +110,8 @@ fun MnemonicGeneratorScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text("AMPG v1 — Адаптивная мнемоническая генерация", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("Детерминированный алгоритм: одинаковые входные данные = одинаковый пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("AMPG v2 — Unique Mnemonic Flow", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Уникальный поток символов из фразы + фиксированные замены", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
 
@@ -138,7 +139,7 @@ fun MnemonicGeneratorScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                        Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
+                        Text("Leet-замены (a→@, o→0, e→3...)", Modifier.padding(start = 8.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
@@ -179,6 +180,7 @@ fun MnemonicGeneratorScreen(
 
                 variants.forEachIndexed { index, result ->
                     val isSelected = selectedVariantIndex == index
+                    
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -229,6 +231,26 @@ fun MnemonicGeneratorScreen(
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    
+                                    // ✅ НОВОЕ: Предупреждение о повторах
+                                    if (result.hasDuplicates) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.Warning,
+                                                null,
+                                                Modifier.size(12.dp),
+                                                tint = MaterialTheme.colorScheme.tertiary
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                "Есть повторы символов, но пароль сохранён как мнемонический",
+                                                fontSize = 9.sp,
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Column {
@@ -270,13 +292,9 @@ fun MnemonicGeneratorScreen(
 
                     val selected = variants[selectedVariantIndex]
 
-                    //  Проверка уникальности символов
-                    if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                        showError = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
-                        return@Button
-                    }
-
-                    //  HMAC fingerprint для новой записи
+                    //  Для мнемонического генератора НЕ блокируем по повторам
+                    // Повторы допустимы, если пароль мнемонический
+                    // Но всё равно проверяем HMAC fingerprint
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
 
                     val entry = Entry.create(
