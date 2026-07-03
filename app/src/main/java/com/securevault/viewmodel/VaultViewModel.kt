@@ -74,7 +74,7 @@ class VaultViewModel @Inject constructor(
 
     fun setCurrentProfile(profileId: Int?) {
         _currentProfileId.value = profileId
-        // ✅ Запускаем backfill при смене профиля (один раз)
+        //  Запускаем backfill при смене профиля (один раз)
         backfillFingerprints()
     }
 
@@ -89,7 +89,7 @@ class VaultViewModel @Inject constructor(
         repository.update(entry.copy(isFavorite = !entry.isFavorite))
     }
 
-    // ✅ Backfill запускается один раз при setCurrentProfile
+    //  Backfill запускается один раз при setCurrentProfile
     private var backfillDone = mutableSetOf<Int?>()
 
     fun backfillFingerprints() = viewModelScope.launch {
@@ -109,6 +109,15 @@ class VaultViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    //  Поиск записи по ID (для QR-сканирования)
+    fun findEntryById(entryId: String): Entry? {
+        var result: Entry? = null
+        kotlinx.coroutines.runBlocking {
+            result = repository.getById(entryId)
+        }
+        return result
     }
 
     fun updatePassword(
