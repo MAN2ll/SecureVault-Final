@@ -4,11 +4,14 @@ import java.util.Calendar
 
 /**
  * AMPG v2 — Unique Mnemonic Flow
- * Адаптивная мнемоническая генерация паролей с уникальным потоком символов.
+ * Гарантированная генерация паролей БЕЗ повторяющихся символов.
  * 
- * Идея: алгоритм идёт по фразе слева направо и берёт буквы, которых ещё не было.
- * Некоторые гласные заменяются цифрами/символами по фиксированным правилам.
- * Благодаря этому пароль связан с фразой, но содержит меньше повторов.
+ * Логика:
+ * 1. Строим уникальный поток из фразы
+ * 2. Применяем замены только если символ свободен
+ * 3. Добавляем сервис и ротацию через безопасный механизм
+ * 4. Используем разные разделители
+ * 5. Финальная очистка от повторов
  */
 object MnemonicPasswordGenerator {
 
@@ -17,8 +20,7 @@ object MnemonicPasswordGenerator {
         val mnemonicHint: String,
         val strength: PasswordGenerator.Strength,
         val steps: List<String>,
-        val variantName: String,
-        val hasDuplicates: Boolean = false
+        val variantName: String
     )
 
     data class GenerationOptions(
@@ -33,24 +35,18 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
-    // ===== AMPG v2: фиксированные замены =====
+    // ===== ФИКСИРОВАННЫЕ ЗАМЕНЫ =====
     private val leetMap = mapOf(
-        'a' to '@',
-        'o' to '0',
-        'e' to '3',
-        'i' to '1',
-        'u' to '^',
-        's' to '$',
-        'y' to '7'
+        'a' to '@', 'o' to '0', 'e' to '3', 'i' to '1',
+        'u' to '^', 's' to '$', 'y' to '7'
     )
 
-    // Мягкие замены (только гласные)
     private val softLeetMap = mapOf(
-        'a' to '@',
-        'o' to '0',
-        'e' to '3',
-        'i' to '1'
+        'a' to '@', 'o' to '0', 'e' to '3', 'i' to '1'
     )
+
+    // Разделители (используем по одному)
+    private val separators = listOf('-', '.', '_', '~')
 
     // Суффиксный набор для добивания
     private val paddingChars = "ZXCVBNM2468!#%"
@@ -65,13 +61,12 @@ object MnemonicPasswordGenerator {
         'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // ===== СТРАТЕГИИ ВАРИАНТОВ AMPG v2 =====
     enum class VariantStrategy {
-        UNIQUE_FLOW_SOFT,      // Уникальный поток + мягкие замены
-        UNIQUE_FLOW_FULL,      // Уникальный поток + полные замены
-        SERVICE_FIRST,         // Сервис в начале
-        ROTATION_FIRST,        // Ротация перед сервисом
-        COMPACT_INITIALS       // Компактный из первых букв слов
+        UNIQUE_FLOW_SOFT,
+        UNIQUE_FLOW_FULL,
+        SERVICE_FIRST,
+        ROTATION_FIRST,
+        COMPACT_INITIALS
     }
 
     // ===== ТРАНСЛИТЕРАЦИЯ =====
@@ -90,18 +85,11 @@ object MnemonicPasswordGenerator {
         return result.toString()
     }
 
-    // ===== НОРМАЛИЗАЦИЯ ФРАЗЫ =====
     private fun normalizePhrase(phrase: String): String {
-        return phrase.trim()
-            .replace(Regex("\\s+"), " ")
-            .lowercase()
+        return phrase.trim().replace(Regex("\\s+"), " ").lowercase()
     }
 
-    // ===== ПОСТРОЕНИЕ УНИКАЛЬНОГО ПОТОКА =====
-    /**
-     * Проходит по фразе слева направо и берёт только те буквы, которых ещё не было.
-     * Сравнение без учёта регистра.
-     */
+    // ===== УНИКАЛЬНЫЙ ПОТОК =====
     private fun buildUniqueFlow(transliteratedPhrase: String): String {
         val seen = mutableSetOf<Char>()
         val result = StringBuilder()
@@ -120,135 +108,125 @@ object MnemonicPasswordGenerator {
         return result.toString()
     }
 
-    // ===== ПРИМЕНЕНИЕ LEEТ-ЗАМЕН =====
-    private fun applyLeet(text: String, full: Boolean): String {
-        val map = if (full) leetMap else softLeetMap
-        return text.map { char ->
-            map[char.lowercaseChar()] ?: char
-        }.joinToString("")
-    }
-
-    // ===== КАПИТАЛИЗАЦИЯ =====
-    private fun capitalizeFirst(text: String): String {
-        if (text.isEmpty()) return text
-        return text[0].uppercaseChar() + text.substring(1)
-    }
-
-    private fun capitalizeEachBlock(text: String, separator: Char = '-'): String {
-        return text.split(separator).joinToString(separator.toString()) { part ->
-            if (part.isEmpty()) part else part[0].uppercaseChar() + part.substring(1)
+    // ===== БЕЗОПАСНОЕ ДОБАВЛЕНИЕ СИМВОЛА =====
+    /**
+     * Добавляет символ в builder, если он свободен.
+     * Если занят — пытается добавить замену.
+     * Если замена занята — пропускает.
+     */
+    private fun appendUniqueOrReplacement(
+        builder: StringBuilder,
+        rawChar: Char,
+        usedChars: MutableSet<Char>,
+        leetMap: Map<Char, Char>
+    ) {
+        val lower = rawChar.lowercaseChar()
+        
+        // Если символ свободен — добавляем
+        if (lower !in usedChars && rawChar !in usedChars) {
+            builder.append(rawChar)
+            usedChars.add(lower)
+            usedChars.add(rawChar)
+            return
         }
+        
+        // Если занят — пробуем замену
+        val replacement = leetMap[lower]
+        if (replacement != null && replacement !in usedChars) {
+            builder.append(replacement)
+            usedChars.add(replacement)
+            usedChars.add(replacement.lowercaseChar())
+            return
+        }
+        
+        // Если всё занято — пропускаем
     }
 
-    // ===== КОД СЕРВИСА (уникальные символы) =====
-    private fun buildServiceCode(serviceName: String, usedChars: Set<Char>): String {
-        if (serviceName.isBlank()) return ""
-        
-        val transliterated = transliterate(serviceName.lowercase())
-        val cleaned = transliterated.filter { it.isLetterOrDigit() }
-        if (cleaned.isEmpty()) return ""
-        
-        val result = StringBuilder()
-        val localUsed = usedChars.toMutableSet()
-        
-        // Берём уникальные буквы сервиса
-        for (char in cleaned) {
-            val lower = char.lowercaseChar()
-            if (lower !in localUsed && result.length < 3) {
-                result.append(lower)
-                localUsed.add(lower)
+    // ===== БЕЗОПАСНОЕ ДОБАВЛЕНИЕ РАЗДЕЛИТЕЛЯ =====
+    private fun appendUniqueSeparator(
+        builder: StringBuilder,
+        usedChars: MutableSet<Char>
+    ) {
+        for (sep in separators) {
+            if (sep !in usedChars) {
+                builder.append(sep)
+                usedChars.add(sep)
+                return
             }
         }
-        
-        // Добавляем длину сервиса, если цифра ещё не использовалась
-        val lengthDigit = cleaned.length.toString().first()
-        if (lengthDigit !in localUsed) {
-            result.append(lengthDigit)
-            localUsed.add(lengthDigit)
-        } else {
-            // Берём ближайшую свободную цифру
-            for (d in 1..9) {
-                val dChar = d.toString().first()
-                if (dChar !in localUsed) {
-                    result.append(dChar)
-                    localUsed.add(dChar)
-                    break
-                }
-            }
-        }
-        
-        return result.toString()
-    }
-
-    // ===== КОД РОТАЦИИ =====
-    private fun buildRotationCode(month: Int?, year: Int?, usedChars: Set<Char>): String {
-        val currentMonth = month ?: Calendar.getInstance().get(Calendar.MONTH) + 1
-        val currentYear = year ?: (Calendar.getInstance().get(Calendar.YEAR) % 100)
-        
-        val mm = String.format("%02d", currentMonth)
-        val yy = String.format("%02d", currentYear)
-        
-        // Проверяем, есть ли эти цифры уже в пароле
-        val allDigits = mm + yy
-        val hasConflict = allDigits.any { it in usedChars }
-        
-        return if (hasConflict) {
-            // Используем формат QYY (квартал + год)
-            val quarter = ((currentMonth - 1) / 3) + 1
-            "Q$quarter$yy"
-        } else {
-            "$mm$yy"
-        }
+        // Если все разделители заняты — не добавляем
     }
 
     // ===== ДОБИВАНИЕ ДО TARGET LENGTH =====
-    private fun padToLength(password: String, targetLength: Int, usedChars: Set<Char>): String {
+    private fun padToLength(
+        password: String,
+        targetLength: Int,
+        usedChars: MutableSet<Char>
+    ): String {
         if (password.length >= targetLength) return password
         
-        val localUsed = usedChars.toMutableSet()
-        val result = StringBuilder(password)
+        val builder = StringBuilder(password)
         
         for (char in paddingChars) {
-            if (result.length >= targetLength) break
+            if (builder.length >= targetLength) break
             val lower = char.lowercaseChar()
-            if (lower !in localUsed && char !in localUsed) {
-                result.append(char)
-                localUsed.add(char)
-                localUsed.add(lower)
+            if (lower !in usedChars && char !in usedChars) {
+                builder.append(char)
+                usedChars.add(char)
+                usedChars.add(lower)
             }
         }
         
-        return result.toString()
+        return builder.toString()
     }
 
-    // ===== ПОДСЧЁТ ПОВТОРОВ =====
-    private fun countDuplicates(password: String): Boolean {
-        val seen = mutableSetOf<Char>()
+    // ===== ФИНАЛЬНАЯ ОЧИСТКА =====
+    /**
+     * Проходит по паролю и удаляет/заменяет повторы.
+     * Гарантирует отсутствие дубликатов.
+     */
+    private fun sanitizeToUniquePassword(
+        password: String,
+        targetLength: Int
+    ): String {
+        val usedChars = mutableSetOf<Char>()
+        val builder = StringBuilder()
+        
         for (char in password) {
             val lower = char.lowercaseChar()
-            if (lower in seen) return true
-            seen.add(lower)
+            
+            if (lower !in usedChars && char !in usedChars) {
+                builder.append(char)
+                usedChars.add(lower)
+                usedChars.add(char)
+            } else {
+                // Пытаемся заменить
+                val replacement = leetMap[lower]
+                if (replacement != null && replacement !in usedChars) {
+                    builder.append(replacement)
+                    usedChars.add(replacement)
+                    usedChars.add(replacement.lowercaseChar())
+                }
+                // Если замена невозможна — пропускаем
+            }
         }
-        return false
+        
+        // Добиваем до targetLength, если нужно
+        return padToLength(builder.toString(), targetLength, usedChars)
     }
 
     // ===== ГЛАВНЫЙ МЕТОД: ГЕНЕРАЦИЯ ВАРИАНТОВ =====
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         
-        // 1. Нормализация
         val normalizedPhrase = normalizePhrase(options.phrase)
         if (normalizedPhrase.isBlank()) return emptyList()
         
-        // 2. Транслитерация
         val transliterated = transliterate(normalizedPhrase)
         val words = normalizedPhrase.split(" ").filter { it.isNotBlank() }
         val transliteratedWords = words.map { transliterate(it) }
-        
-        // 3. Уникальный поток
         val uniqueFlow = buildUniqueFlow(transliterated)
         
-        // 4. Генерируем 5 вариантов разными стратегиями
         val strategies = listOf(
             VariantStrategy.UNIQUE_FLOW_SOFT,
             VariantStrategy.UNIQUE_FLOW_FULL,
@@ -269,15 +247,16 @@ object MnemonicPasswordGenerator {
                 uniqueFlow = uniqueFlow
             )
             
-            if (result != null) {
+            //  принимаем только варианты без повторов
+            if (result != null && !PasswordValidator.hasDuplicateCharacters(result.password)) {
                 results.add(result)
             }
         }
         
-        // Если вариантов меньше 5, пробуем с variantOffset
+        // Если вариантов меньше 5, пробуем fallback
         var offset = options.variantOffset
         var attempts = 0
-        while (results.size < count && attempts < 10) {
+        while (results.size < count && attempts < 20) {
             val fallback = generateFallbackVariant(
                 options = options,
                 normalizedPhrase = normalizedPhrase,
@@ -286,7 +265,10 @@ object MnemonicPasswordGenerator {
                 uniqueFlow = uniqueFlow,
                 offset = offset
             )
-            if (fallback != null && results.none { it.password == fallback.password }) {
+            
+            if (fallback != null && 
+                !PasswordValidator.hasDuplicateCharacters(fallback.password) &&
+                results.none { it.password == fallback.password }) {
                 results.add(fallback)
             }
             offset++
@@ -296,7 +278,7 @@ object MnemonicPasswordGenerator {
         return results
     }
 
-    // ===== ГЕНЕРАЦИЯ С КОНКРЕТНОЙ СТРАТЕГИЕЙ =====
+    // ===== ГЕНЕРАЦИЯ С СТРАТЕГИЕЙ =====
     private fun generateWithStrategy(
         options: GenerationOptions,
         strategy: VariantStrategy,
@@ -311,182 +293,260 @@ object MnemonicPasswordGenerator {
         steps.add("3. Уникальный поток: '$uniqueFlow'")
         
         val usedChars = mutableSetOf<Char>()
+        val builder = StringBuilder()
+        val activeLeetMap = if (options.includeLeet) leetMap else emptyMap()
         
         return when (strategy) {
             VariantStrategy.UNIQUE_FLOW_SOFT -> {
-                // Мягкие замены (только гласные)
-                val leeted = applyLeet(uniqueFlow, full = false)
-                steps.add("4. Мягкие замены: '$leeted'")
+                // Обрабатываем uniqueFlow посимвольно
+                for (char in uniqueFlow) {
+                    appendUniqueOrReplacement(builder, char, usedChars, softLeetMap)
+                }
+                steps.add("4. Уникальный поток + мягкие замены: '${builder}'")
                 
-                for (c in leeted) usedChars.add(c.lowercaseChar())
-                
-                val capitalized = capitalizeFirst(leeted)
-                val parts = mutableListOf(capitalized)
-                
-                if (options.includeServiceCode && options.serviceName.isNotBlank()) {
-                    val serviceCode = buildServiceCode(options.serviceName, usedChars)
-                    if (serviceCode.isNotBlank()) {
-                        parts.add(serviceCode)
-                        for (c in serviceCode) usedChars.add(c.lowercaseChar())
+                // Заглавная первая буква
+                if (builder.isNotEmpty()) {
+                    val firstChar = builder[0]
+                    if (firstChar.isLetter() && firstChar.isLowerCase()) {
+                        builder.setCharAt(0, firstChar.uppercaseChar())
+                        usedChars.remove(firstChar)
+                        usedChars.add(firstChar.uppercaseChar())
                     }
-                    steps.add("5. Код сервиса: '$serviceCode'")
                 }
                 
+                // Добавляем сервис
+                if (options.includeServiceCode && options.serviceName.isNotBlank()) {
+                    appendUniqueSeparator(builder, usedChars)
+                    appendServiceCode(builder, options.serviceName, usedChars)
+                }
+                
+                // Добавляем ротацию
                 if (options.includeRotationCode) {
-                    val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-                    parts.add(rotationCode)
-                    for (c in rotationCode) usedChars.add(c.lowercaseChar())
-                    steps.add("6. Код ротации: '$rotationCode'")
+                    appendUniqueSeparator(builder, usedChars)
+                    appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
                 }
                 
-                var password = parts.joinToString("-")
-                password = padToLength(password, options.targetLength, usedChars)
-                steps.add("7. Сборка: '$password'")
+                var password = builder.toString()
+                password = sanitizeToUniquePassword(password, options.targetLength)
+                steps.add("5. Финальная сборка: '$password'")
                 
-                val hasDuplicates = countDuplicates(password)
+                //  ФИНАЛЬНАЯ ПРОВЕРКА
+                if (PasswordValidator.hasDuplicateCharacters(password)) {
+                    return null
+                }
+                
                 val hint = buildHint(normalizedPhrase, options, "мягкие замены")
                 val variantName = "AMPG v2 — Уникальный поток + мягкие замены"
                 
-                GenerationResult(password, hint, calculateStrength(password), steps, variantName, hasDuplicates)
+                GenerationResult(password, hint, calculateStrength(password), steps, variantName)
             }
             
             VariantStrategy.UNIQUE_FLOW_FULL -> {
-                // Полные замены (гласные + s, y)
-                val leeted = applyLeet(uniqueFlow, full = true)
-                steps.add("4. Полные замены: '$leeted'")
+                for (char in uniqueFlow) {
+                    appendUniqueOrReplacement(builder, char, usedChars, leetMap)
+                }
+                steps.add("4. Уникальный поток + полные замены: '${builder}'")
                 
-                for (c in leeted) usedChars.add(c.lowercaseChar())
-                
-                val capitalized = capitalizeFirst(leeted)
-                val parts = mutableListOf(capitalized)
+                if (builder.isNotEmpty()) {
+                    val firstChar = builder[0]
+                    if (firstChar.isLetter() && firstChar.isLowerCase()) {
+                        builder.setCharAt(0, firstChar.uppercaseChar())
+                        usedChars.remove(firstChar)
+                        usedChars.add(firstChar.uppercaseChar())
+                    }
+                }
                 
                 if (options.includeServiceCode && options.serviceName.isNotBlank()) {
-                    val serviceCode = buildServiceCode(options.serviceName, usedChars)
-                    if (serviceCode.isNotBlank()) {
-                        parts.add(serviceCode)
-                        for (c in serviceCode) usedChars.add(c.lowercaseChar())
-                    }
-                    steps.add("5. Код сервиса: '$serviceCode'")
+                    appendUniqueSeparator(builder, usedChars)
+                    appendServiceCode(builder, options.serviceName, usedChars)
                 }
                 
                 if (options.includeRotationCode) {
-                    val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-                    parts.add(rotationCode)
-                    for (c in rotationCode) usedChars.add(c.lowercaseChar())
-                    steps.add("6. Код ротации: '$rotationCode'")
+                    appendUniqueSeparator(builder, usedChars)
+                    appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
                 }
                 
-                var password = parts.joinToString("-")
-                password = padToLength(password, options.targetLength, usedChars)
-                steps.add("7. Сборка: '$password'")
+                var password = builder.toString()
+                password = sanitizeToUniquePassword(password, options.targetLength)
+                steps.add("5. Финальная сборка: '$password'")
                 
-                val hasDuplicates = countDuplicates(password)
+                if (PasswordValidator.hasDuplicateCharacters(password)) {
+                    return null
+                }
+                
                 val hint = buildHint(normalizedPhrase, options, "полные замены")
                 val variantName = "AMPG v2 — Уникальный поток + полные замены"
                 
-                GenerationResult(password, hint, calculateStrength(password), steps, variantName, hasDuplicates)
+                GenerationResult(password, hint, calculateStrength(password), steps, variantName)
             }
             
             VariantStrategy.SERVICE_FIRST -> {
-                // Сервис в начале
                 if (options.serviceName.isNotBlank()) {
-                    val serviceCode = buildServiceCode(options.serviceName, usedChars)
-                    if (serviceCode.isNotBlank()) {
-                        val capitalizedService = capitalizeFirst(serviceCode)
-                        for (c in capitalizedService) usedChars.add(c.lowercaseChar())
-                        
-                        val leeted = applyLeet(uniqueFlow, full = true)
-                        for (c in leeted) usedChars.add(c.lowercaseChar())
-                        
-                        val parts = mutableListOf(capitalizedService, capitalizeFirst(leeted))
-                        
-                        if (options.includeRotationCode) {
-                            val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-                            parts.add(rotationCode)
-                            for (c in rotationCode) usedChars.add(c.lowercaseChar())
+                    appendServiceCode(builder, options.serviceName, usedChars)
+                    
+                    // Заглавная первая буква
+                    if (builder.isNotEmpty()) {
+                        val firstChar = builder[0]
+                        if (firstChar.isLetter() && firstChar.isLowerCase()) {
+                            builder.setCharAt(0, firstChar.uppercaseChar())
+                            usedChars.remove(firstChar)
+                            usedChars.add(firstChar.uppercaseChar())
                         }
-                        
-                        var password = parts.joinToString("-")
-                        password = padToLength(password, options.targetLength, usedChars)
-                        
-                        val hasDuplicates = countDuplicates(password)
-                        val hint = buildHint(normalizedPhrase, options, "сервис в начале")
-                        val variantName = "AMPG v2 — Сервис в начале"
-                        
-                        return GenerationResult(password, hint, calculateStrength(password), steps, variantName, hasDuplicates)
                     }
+                    
+                    appendUniqueSeparator(builder, usedChars)
+                    
+                    for (char in uniqueFlow) {
+                        appendUniqueOrReplacement(builder, char, usedChars, leetMap)
+                    }
+                    
+                    if (options.includeRotationCode) {
+                        appendUniqueSeparator(builder, usedChars)
+                        appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
+                    }
+                    
+                    var password = builder.toString()
+                    password = sanitizeToUniquePassword(password, options.targetLength)
+                    
+                    if (PasswordValidator.hasDuplicateCharacters(password)) {
+                        return null
+                    }
+                    
+                    val hint = buildHint(normalizedPhrase, options, "сервис в начале")
+                    val variantName = "AMPG v2 — Сервис в начале"
+                    
+                    return GenerationResult(password, hint, calculateStrength(password), steps, variantName)
                 }
                 null
             }
             
             VariantStrategy.ROTATION_FIRST -> {
-                // Ротация в начале
                 if (options.includeRotationCode) {
-                    val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-                    for (c in rotationCode) usedChars.add(c.lowercaseChar())
+                    appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
                     
-                    val leeted = applyLeet(uniqueFlow, full = true)
-                    for (c in leeted) usedChars.add(c.lowercaseChar())
+                    appendUniqueSeparator(builder, usedChars)
                     
-                    val parts = mutableListOf(rotationCode, capitalizeFirst(leeted))
-                    
-                    if (options.includeServiceCode && options.serviceName.isNotBlank()) {
-                        val serviceCode = buildServiceCode(options.serviceName, usedChars)
-                        if (serviceCode.isNotBlank()) {
-                            parts.add(capitalizeFirst(serviceCode))
-                        }
+                    for (char in uniqueFlow) {
+                        appendUniqueOrReplacement(builder, char, usedChars, leetMap)
                     }
                     
-                    var password = parts.joinToString("-")
-                    password = padToLength(password, options.targetLength, usedChars)
+                    if (options.includeServiceCode && options.serviceName.isNotBlank()) {
+                        appendUniqueSeparator(builder, usedChars)
+                        appendServiceCode(builder, options.serviceName, usedChars)
+                    }
                     
-                    val hasDuplicates = countDuplicates(password)
+                    var password = builder.toString()
+                    password = sanitizeToUniquePassword(password, options.targetLength)
+                    
+                    if (PasswordValidator.hasDuplicateCharacters(password)) {
+                        return null
+                    }
+                    
                     val hint = buildHint(normalizedPhrase, options, "ротация в начале")
                     val variantName = "AMPG v2 — Ротация в начале"
                     
-                    return GenerationResult(password, hint, calculateStrength(password), steps, variantName, hasDuplicates)
+                    return GenerationResult(password, hint, calculateStrength(password), steps, variantName)
                 }
                 null
             }
             
             VariantStrategy.COMPACT_INITIALS -> {
-                // Компактный: первые буквы слов + замены
                 val initials = transliteratedWords.mapNotNull { it.firstOrNull() }.joinToString("")
                 steps.add("4. Инициалы: '$initials'")
                 
-                val leeted = applyLeet(initials, full = true)
-                for (c in leeted) usedChars.add(c.lowercaseChar())
+                for (char in initials) {
+                    appendUniqueOrReplacement(builder, char, usedChars, leetMap)
+                }
                 
-                val capitalized = capitalizeFirst(leeted)
-                val parts = mutableListOf(capitalized)
-                
-                if (options.includeServiceCode && options.serviceName.isNotBlank()) {
-                    val serviceCode = buildServiceCode(options.serviceName, usedChars)
-                    if (serviceCode.isNotBlank()) {
-                        parts.add(serviceCode)
-                        for (c in serviceCode) usedChars.add(c.lowercaseChar())
+                if (builder.isNotEmpty()) {
+                    val firstChar = builder[0]
+                    if (firstChar.isLetter() && firstChar.isLowerCase()) {
+                        builder.setCharAt(0, firstChar.uppercaseChar())
+                        usedChars.remove(firstChar)
+                        usedChars.add(firstChar.uppercaseChar())
                     }
                 }
                 
-                if (options.includeRotationCode) {
-                    val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-                    parts.add(rotationCode)
-                    for (c in rotationCode) usedChars.add(c.lowercaseChar())
+                if (options.includeServiceCode && options.serviceName.isNotBlank()) {
+                    appendUniqueSeparator(builder, usedChars)
+                    appendServiceCode(builder, options.serviceName, usedChars)
                 }
                 
-                var password = parts.joinToString("-")
-                password = padToLength(password, options.targetLength, usedChars)
+                if (options.includeRotationCode) {
+                    appendUniqueSeparator(builder, usedChars)
+                    appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
+                }
                 
-                val hasDuplicates = countDuplicates(password)
+                var password = builder.toString()
+                password = sanitizeToUniquePassword(password, options.targetLength)
+                
+                if (PasswordValidator.hasDuplicateCharacters(password)) {
+                    return null
+                }
+                
                 val hint = buildHint(normalizedPhrase, options, "инициалы слов")
                 val variantName = "AMPG v2 — Инициалы слов"
                 
-                GenerationResult(password, hint, calculateStrength(password), steps, variantName, hasDuplicates)
+                GenerationResult(password, hint, calculateStrength(password), steps, variantName)
             }
         }
     }
 
-    // ===== FALLBACK ВАРИАНТ (с offset) =====
+    // ===== ДОБАВЛЕНИЕ КОДА СЕРВИСА =====
+    private fun appendServiceCode(
+        builder: StringBuilder,
+        serviceName: String,
+        usedChars: MutableSet<Char>
+    ) {
+        val transliterated = transliterate(serviceName.lowercase())
+        val cleaned = transliterated.filter { it.isLetterOrDigit() }
+        if (cleaned.isEmpty()) return
+        
+        // Берём уникальные буквы сервиса
+        for (char in cleaned) {
+            if (builder.length >= 4) break
+            appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
+        }
+        
+        // Добавляем длину сервиса
+        val lengthDigit = cleaned.length.toString().first()
+        appendUniqueOrReplacement(builder, lengthDigit, usedChars, emptyMap())
+    }
+
+    // ===== ДОБАВЛЕНИЕ КОДА РОТАЦИИ =====
+    private fun appendRotationCode(
+        builder: StringBuilder,
+        month: Int?,
+        year: Int?,
+        usedChars: MutableSet<Char>
+    ) {
+        val currentMonth = month ?: Calendar.getInstance().get(Calendar.MONTH) + 1
+        val currentYear = year ?: (Calendar.getInstance().get(Calendar.YEAR) % 100)
+        
+        val mm = String.format("%02d", currentMonth)
+        val yy = String.format("%02d", currentYear)
+        
+        // Проверяем, есть ли эти цифры уже в пароле
+        val allDigits = mm + yy
+        val hasConflict = allDigits.any { it in usedChars }
+        
+        if (hasConflict) {
+            // Используем формат QYY
+            val quarter = ((currentMonth - 1) / 3) + 1
+            appendUniqueOrReplacement(builder, 'Q', usedChars, emptyMap())
+            appendUniqueOrReplacement(builder, quarter.toString().first(), usedChars, emptyMap())
+            for (char in yy) {
+                appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
+            }
+        } else {
+            // Используем формат MMYY
+            for (char in mm + yy) {
+                appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
+            }
+        }
+    }
+
+    // ===== FALLBACK ВАРИАНТ =====
     private fun generateFallbackVariant(
         options: GenerationOptions,
         normalizedPhrase: String,
@@ -495,49 +555,45 @@ object MnemonicPasswordGenerator {
         uniqueFlow: String,
         offset: Int
     ): GenerationResult? {
-        // Применяем разные комбинации в зависимости от offset
         val useFullLeet = offset % 2 == 0
         val serviceFirst = offset % 3 == 0
         
         val usedChars = mutableSetOf<Char>()
-        val leeted = applyLeet(uniqueFlow, full = useFullLeet)
-        for (c in leeted) usedChars.add(c.lowercaseChar())
-        
-        val parts = mutableListOf<String>()
+        val builder = StringBuilder()
+        val activeLeetMap = if (useFullLeet) leetMap else softLeetMap
         
         if (serviceFirst && options.serviceName.isNotBlank()) {
-            val serviceCode = buildServiceCode(options.serviceName, usedChars)
-            if (serviceCode.isNotBlank()) {
-                parts.add(capitalizeFirst(serviceCode))
-                for (c in serviceCode) usedChars.add(c.lowercaseChar())
-            }
+            appendServiceCode(builder, options.serviceName, usedChars)
+            appendUniqueSeparator(builder, usedChars)
         }
         
-        parts.add(capitalizeFirst(leeted))
+        for (char in uniqueFlow) {
+            appendUniqueOrReplacement(builder, char, usedChars, activeLeetMap)
+        }
         
         if (!serviceFirst && options.includeServiceCode && options.serviceName.isNotBlank()) {
-            val serviceCode = buildServiceCode(options.serviceName, usedChars)
-            if (serviceCode.isNotBlank()) {
-                parts.add(serviceCode)
-                for (c in serviceCode) usedChars.add(c.lowercaseChar())
-            }
+            appendUniqueSeparator(builder, usedChars)
+            appendServiceCode(builder, options.serviceName, usedChars)
         }
         
         if (options.includeRotationCode) {
-            val rotationCode = buildRotationCode(options.rotationMonth, options.rotationYear, usedChars)
-            parts.add(rotationCode)
+            appendUniqueSeparator(builder, usedChars)
+            appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
         }
         
-        var password = parts.joinToString("-")
-        password = padToLength(password, options.targetLength, usedChars)
+        var password = builder.toString()
+        password = sanitizeToUniquePassword(password, options.targetLength)
         
-        val hasDuplicates = countDuplicates(password)
+        if (PasswordValidator.hasDuplicateCharacters(password)) {
+            return null
+        }
+        
         val hint = buildHint(normalizedPhrase, options, "вариант №${offset + 1}")
         val variantName = "AMPG v2 — Вариант №${offset + 1}"
         
         return GenerationResult(
             password, hint, calculateStrength(password),
-            emptyList(), variantName, hasDuplicates
+            emptyList(), variantName
         )
     }
 
@@ -588,7 +644,6 @@ object MnemonicPasswordGenerator {
         }
     }
 
-    // ===== СТАРЫЙ МЕТОД generate (для обратной совместимости) =====
     fun generate(options: GenerationOptions): GenerationResult {
         val variants = generateVariants(options, count = 1)
         return variants.firstOrNull() ?: GenerationResult(
