@@ -87,7 +87,7 @@ data class Entry(
         return result
     }
 
-    // ✅ ИСПРАВЛЕНО: fingerprint передаётся извне (из ViewModel, где есть Context)
+    //  fingerprint передаётся извне (из ViewModel, где есть Context)
     fun addToPasswordHistory(
         oldPassword: String,
         generationType: String,
@@ -141,13 +141,13 @@ data class Entry(
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
 
     companion object {
-        // ✅ ИСПРАВЛЕНО: fingerprint передаётся как параметр (строится во ViewModel)
+        // fingerprint передаётся как параметр (строится во ViewModel)
         fun create(
             service: String,
             username: String,
             password: String,
             profileId: Int,
-            passwordFingerprint: String,  // ✅ теперь обязательный параметр
+            passwordFingerprint: String,  // обязательный параметр
             url: String? = null,
             notes: String? = null,
             textHint: String? = null,
