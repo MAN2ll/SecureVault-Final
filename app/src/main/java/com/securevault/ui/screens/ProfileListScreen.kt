@@ -56,7 +56,6 @@ fun ProfileListScreen(
         }
     ) { padding ->
         if (profiles.isEmpty()) {
-            // Пустой экран
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -92,7 +91,6 @@ fun ProfileListScreen(
         }
     }
 
-    // Диалог создания профиля
     if (showCreateDialog) {
         CreateProfileDialog(
             onDismiss = { showCreateDialog = false },
@@ -100,7 +98,6 @@ fun ProfileListScreen(
         )
     }
 
-    // Диалог ввода пароля профиля
     if (selectedProfile != null) {
         UnlockProfileDialog(
             profile = selectedProfile!!,
@@ -134,11 +131,12 @@ private fun ProfileCard(profile: Profile, onClick: () -> Unit) {
     }
 }
 
+
 @Composable
 private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val viewModel: ProfileViewModel = hiltViewModel()
 
@@ -147,29 +145,84 @@ private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
         title = { Text("Новый профиль", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it; error = null }, label = { Text("Название профиля") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = password, onValueChange = { password = it; error = null }, label = { Text("Пароль профиля") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = confirmPassword, onValueChange = { confirmPassword = it; error = null }, label = { Text("Подтвердите пароль") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true, isError = error != null)
-                if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+           
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "PIN профиля — короткий пароль для локального разделения профилей. Мастер-пароль защищает всё хранилище.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = name, 
+                    onValueChange = { name = it; error = null }, 
+                    label = { Text("Название профиля") }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    singleLine = true
+                )
+                
+                OutlinedTextField(
+                    value = pin, 
+                    onValueChange = { pin = it; error = null }, 
+                    label = { Text("PIN профиля (4-8 символов)") }, 
+                    visualTransformation = PasswordVisualTransformation(), 
+                    modifier = Modifier.fillMaxWidth(), 
+                    singleLine = true
+                )
+                
+                OutlinedTextField(
+                    value = confirmPin, 
+                    onValueChange = { confirmPin = it; error = null }, 
+                    label = { Text("Подтвердите PIN") }, 
+                    visualTransformation = PasswordVisualTransformation(), 
+                    modifier = Modifier.fillMaxWidth(), 
+                    singleLine = true, 
+                    isError = error != null
+                )
+                
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
                 when {
                     name.isBlank() -> error = "Введите название"
-                    password.length < 4 -> error = "Пароль слишком короткий"
-                    password != confirmPassword -> error = "Пароли не совпадают"
-                    else -> { viewModel.insert(name, password); onCreated() }
+                    pin.length < 4 -> error = "PIN слишком короткий (минимум 4 символа)"
+                    pin.length > 8 -> error = "PIN слишком длинный (максимум 8 символов)"
+                    pin != confirmPin -> error = "PIN не совпадают"
+                    else -> { 
+                        viewModel.insert(name, pin)
+                        onCreated() 
+                    }
                 }
-            }) { Text("Создать") }
+            }) { 
+                Text("Создать") 
+            }
         },
-        dismissButton = { TextButton(onDismiss) { Text("Отмена") } }
+        dismissButton = { 
+            TextButton(onDismiss) { 
+                Text("Отмена") 
+            } 
+        }
     )
 }
 
+
 @Composable
 private fun UnlockProfileDialog(profile: Profile, onDismiss: () -> Unit, onUnlocked: () -> Unit) {
-    var password by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     val viewModel: ProfileViewModel = hiltViewModel()
 
@@ -178,17 +231,37 @@ private fun UnlockProfileDialog(profile: Profile, onDismiss: () -> Unit, onUnloc
         title = { Text("Профиль: ${profile.name}", fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Введите пароль профиля", fontSize = 14.sp)
+                Text("Введите PIN профиля", fontSize = 14.sp)
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it; error = false }, label = { Text("Пароль") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true, isError = error)
-                if (error) Text("Неверный пароль", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                OutlinedTextField(
+                    value = pin, 
+                    onValueChange = { pin = it; error = false }, 
+                    label = { Text("PIN") }, 
+                    visualTransformation = PasswordVisualTransformation(), 
+                    modifier = Modifier.fillMaxWidth(), 
+                    singleLine = true, 
+                    isError = error
+                )
+                if (error) {
+                    Text("Неверный PIN", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (viewModel.verifyPassword(profile, password)) onUnlocked() else error = true
-            }) { Text("Войти") }
+                if (viewModel.verifyPassword(profile, pin)) {
+                    onUnlocked()
+                } else {
+                    error = true
+                }
+            }) { 
+                Text("Войти") 
+            }
         },
-        dismissButton = { TextButton(onDismiss) { Text("Отмена") } }
+        dismissButton = { 
+            TextButton(onDismiss) { 
+                Text("Отмена") 
+            } 
+        }
     )
 }
