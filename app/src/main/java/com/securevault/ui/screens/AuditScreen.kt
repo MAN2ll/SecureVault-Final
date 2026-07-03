@@ -39,7 +39,7 @@ fun AuditScreen(
     var deepAuditResults by remember { mutableStateOf<DeepAuditResults?>(null) }
     var isDeepAuditLoading by remember { mutableStateOf(false) }
 
-    // ✅ ПОВЕРХНОСТНЫЙ АУДИТ (без расшифровки паролей)
+    //  ПОВЕРХНОСТНЫЙ АУДИТ (без расшифровки паролей)
     val surfaceAudit = remember(entries) {
         performSurfaceAudit(entries)
     }
@@ -572,7 +572,7 @@ private fun ConfirmMasterPasswordForAudit(
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
-    // ✅ Передаём контекст в holder для глубокого аудита
+    //  Передаём контекст в holder для глубокого аудита
     LaunchedEffect(Unit) {
         LocalContextProvidedHolder.context = context
     }
