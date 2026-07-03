@@ -122,14 +122,21 @@ fun SecureVaultNavHost() {
             RotationScreen(onBack = { navController.popBackStack() })
         }
 
-        composable("settings") {
-            SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onNavigateToExport = { navController.navigate("export") },
-                onNavigateToChangePassword = { /* TODO */ }
+       composable("settings") {
+        SettingsScreen(
+            onBack = { navController.popBackStack() },
+            onNavigateToExport = { navController.navigate("export") },
+            onNavigateToChangePassword = { navController.navigate("change_password") }
+        )
+    }
+
+        // ✅ НОВЫЙ ЭКРАН: Смена мастер-пароля
+        composable("change_password") {
+            ChangeMasterPasswordScreen(
+                onBack = { navController.popBackStack() }
             )
         }
-
+        
         composable("audit") {
             AuditScreen(onBack = { navController.popBackStack() })
         }
