@@ -13,14 +13,15 @@ import java.util.*
 class ExportManager(private val context: Context) {
 
     companion object {
-        private const val CSV_HEADER = "id,service,username,encrypted_password,profile_id,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json,generation_type"
+        // ✅ CSV v2: добавлены новые поля
+        private const val CSV_HEADER = "id,service,username,encrypted_password,profile_id,url,notes,is_favorite,text_hint,rotation_enabled,rotation_period_months,next_rotation_date,created_at,last_changed,password_history_json,generation_type,password_fingerprint,mnemonic_phrase_hint,mnemonic_options_json"
     }
 
     fun exportToCsv(entries: List<Entry>, outputStream: OutputStream): Boolean {
         return try {
             val writer = OutputStreamWriter(outputStream, Charsets.UTF_8)
             writer.append(CSV_HEADER).append("\n")
-            
+
             entries.forEach { entry ->
                 writer.append(escapeCsv(entry.id)).append(",")
                 writer.append(escapeCsv(entry.service)).append(",")
@@ -37,9 +38,13 @@ class ExportManager(private val context: Context) {
                 writer.append(entry.createdAt.toString()).append(",")
                 writer.append(entry.lastChanged.toString()).append(",")
                 writer.append(escapeCsv(entry.passwordHistoryJson ?: "")).append(",")
-                writer.append(escapeCsv(entry.generationType)).append("\n")
+                writer.append(escapeCsv(entry.generationType)).append(",")
+                // ✅ Новые поля
+                writer.append(escapeCsv(entry.passwordFingerprint ?: "")).append(",")
+                writer.append(escapeCsv(entry.mnemonicPhraseHint ?: "")).append(",")
+                writer.append(escapeCsv(entry.mnemonicOptionsJson ?: "")).append("\n")
             }
-            
+
             writer.flush()
             writer.close()
             true
@@ -53,7 +58,7 @@ class ExportManager(private val context: Context) {
         val importedEntries = mutableListOf<Entry>()
         val errors = mutableListOf<String>()
         var keystoreErrors = 0
-        
+
         try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
@@ -62,7 +67,7 @@ class ExportManager(private val context: Context) {
                     reader.close()
                     return ImportResult(emptyList(), listOf("Неверный формат CSV-файла"), 0)
                 }
-                
+
                 val lines = readAllCsvRecords(reader)
                 for ((index, line) in lines.withIndex()) {
                     try {
@@ -88,7 +93,7 @@ class ExportManager(private val context: Context) {
         } catch (e: Exception) {
             errors.add("Ошибка чтения файла: ${e.message}")
         }
-        
+
         return ImportResult(importedEntries, errors, keystoreErrors)
     }
 
@@ -104,16 +109,16 @@ class ExportManager(private val context: Context) {
         val records = mutableListOf<String>()
         val currentRecord = StringBuilder()
         var inQuotes = false
-        
+
         var line: String?
         while (reader.readLine().also { line = it } != null) {
             val currentLine = line!!
-            
+
             if (currentRecord.isNotEmpty()) {
                 currentRecord.append("\n")
             }
             currentRecord.append(currentLine)
-            
+
             var i = 0
             while (i < currentLine.length) {
                 val char = currentLine[i]
@@ -127,17 +132,17 @@ class ExportManager(private val context: Context) {
                 }
                 i++
             }
-            
+
             if (!inQuotes) {
                 records.add(currentRecord.toString())
                 currentRecord.clear()
             }
         }
-        
+
         if (currentRecord.isNotEmpty()) {
             records.add(currentRecord.toString())
         }
-        
+
         return records
     }
 
@@ -145,8 +150,12 @@ class ExportManager(private val context: Context) {
         val values = parseCsvValues(line)
         if (values.size < 15) return null
 
-        // ✅ ВСЕГДА используем defaultProfileId (выбранный при импорте)
         val targetProfileId = defaultProfileId
+
+        // ✅ Новые поля (если есть)
+        val passwordFingerprint = if (values.size > 16) values[16].takeIf { it.isNotEmpty() } else null
+        val mnemonicPhraseHint = if (values.size > 17) values[17].takeIf { it.isNotEmpty() } else null
+        val mnemonicOptionsJson = if (values.size > 18) values[18].takeIf { it.isNotEmpty() } else null
 
         return if (generateNewIds) {
             Entry.createWithNewId(
@@ -164,7 +173,10 @@ class ExportManager(private val context: Context) {
                 createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
                 lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
                 passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
-                generationType = if (values.size > 15) values[15] else "random"
+                generationType = if (values.size > 15) values[15] else "random",
+                passwordFingerprint = passwordFingerprint,
+                mnemonicPhraseHint = mnemonicPhraseHint,
+                mnemonicOptionsJson = mnemonicOptionsJson
             )
         } else {
             Entry(
@@ -183,7 +195,10 @@ class ExportManager(private val context: Context) {
                 createdAt = values[12].toLongOrNull() ?: System.currentTimeMillis(),
                 lastChanged = values[13].toLongOrNull() ?: System.currentTimeMillis(),
                 passwordHistoryJson = values[14].takeIf { it.isNotEmpty() },
-                generationType = if (values.size > 15) values[15] else "random"
+                generationType = if (values.size > 15) values[15] else "random",
+                passwordFingerprint = passwordFingerprint,
+                mnemonicPhraseHint = mnemonicPhraseHint,
+                mnemonicOptionsJson = mnemonicOptionsJson
             )
         }
     }
@@ -192,7 +207,7 @@ class ExportManager(private val context: Context) {
         val values = mutableListOf<String>()
         var current = StringBuilder()
         var inQuotes = false
-        
+
         var i = 0
         while (i < line.length) {
             val char = line[i]
@@ -219,7 +234,7 @@ class ExportManager(private val context: Context) {
             i++
         }
         values.add(current.toString())
-        
+
         return values
     }
 
