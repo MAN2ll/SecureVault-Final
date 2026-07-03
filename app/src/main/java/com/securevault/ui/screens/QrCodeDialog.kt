@@ -27,9 +27,9 @@ fun QrCodeDialog(
 ) {
     val context = LocalContext.current
 
-    val qrBitmap = remember(entry.id) {
+    val qrBitmap = remember(entry.id, entry.lastChanged) {
         try {
-            val token = SecureQrManager.generateQrToken(entry.id, entry.profileId, context)
+            val token = SecureQrManager.generateQrToken(entry.id, entry.profileId, entry.lastChanged, context)
             SecureQrManager.generateQrBitmap(token, 512)
         } catch (e: Exception) {
             null
@@ -70,7 +70,7 @@ fun QrCodeDialog(
                         Text("• QR НЕ содержит пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text("• Работает только на этом устройстве", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text("• Требует мастер-пароль для просмотра", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                        Text("• Срок действия: 24 часа", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Text("• Действует до смены пароля", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                     }
                 }
 
