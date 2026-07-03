@@ -65,7 +65,7 @@ fun QrCodeDialog(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("🔒 Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Spacer(Modifier.height(4.dp))
                         Text("• QR НЕ содержит пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text("• Работает только на этом устройстве", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
