@@ -26,7 +26,7 @@ import com.securevault.utils.PasswordValidator
 @Composable
 fun PasswordRotationDialog(
     serviceName: String,
-    currentHint: String,
+    currentHint: String?,  // ✅ ИСПРАВЛЕНО: String? вместо String
     generationType: String,
     rotationMonth: Int?,
     rotationYear: Int?,
@@ -46,8 +46,8 @@ fun PasswordRotationDialog(
     var manualPassword by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
 
-    // Мнемонические параметры
-    var phrase by remember { mutableStateOf(currentHint) }
+    //  используем currentHint ?: "" для инициализации
+    var phrase by remember { mutableStateOf(currentHint ?: "") }
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
@@ -310,7 +310,6 @@ fun PasswordRotationDialog(
                             return@Button
                         }
                         val selected = variants[selectedVariantIndex]
-                        //  Для мнемонического НЕ блокируем по повторам
                         onPasswordReplaced(
                             selected.password,
                             selected.mnemonicHint,
