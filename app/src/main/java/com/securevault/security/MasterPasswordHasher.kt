@@ -24,7 +24,7 @@ object MasterPasswordHasher {
         val salt = ByteArray(SALT_LENGTH).also { secureRandom.nextBytes(it) }
         val hash = hashWithSalt(password, salt, ITERATIONS)
         
-        // ✅ ИСПОЛЬЗУЕМ android.util.Base64 вместо java.util.Base64
+        //  ИСПОЛЬЗУЕМ android.util.Base64 вместо java.util.Base64
         return HashResult(
             hash = Base64.encodeToString(hash, Base64.NO_WRAP),
             salt = Base64.encodeToString(salt, Base64.NO_WRAP),
@@ -37,11 +37,11 @@ object MasterPasswordHasher {
         val computedHash = hashWithSalt(password, salt, iterations)
         val computedHashBase64 = Base64.encodeToString(computedHash, Base64.NO_WRAP)
         
-        // ✅ CONSTANT-TIME COMPARE для защиты от timing attacks
+        // CONSTANT-TIME COMPARE для защиты от timing attacks
         return constantTimeEquals(computedHashBase64, storedHash)
     }
 
-    // ✅ Constant-time comparison
+    //  Constant-time comparison
     private fun constantTimeEquals(a: String, b: String): Boolean {
         if (a.length != b.length) return false
         
@@ -53,14 +53,14 @@ object MasterPasswordHasher {
     }
 
     private fun hashWithSalt(password: String, salt: ByteArray, iterations: Int): ByteArray {
-        // ✅ Очищаем charArray после использования для безопасности
+        //  Очищаем charArray после использования для безопасности
         val passwordChars = password.toCharArray()
         try {
             val spec = PBEKeySpec(passwordChars, salt, iterations, KEY_LENGTH)
             val factory = SecretKeyFactory.getInstance(ALGORITHM)
             return factory.generateSecret(spec).encoded
         } finally {
-            // ✅ Очищаем массив символов пароля
+            // Очищаем массив символов пароля
             for (i in passwordChars.indices) {
                 passwordChars[i] = '\u0000'
             }
