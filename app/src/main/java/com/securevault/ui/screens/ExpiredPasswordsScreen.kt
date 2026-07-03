@@ -79,7 +79,7 @@ fun ExpiredEntryCard(entry: Entry, onClick: () -> Unit) {
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
-                // ✅ ИСПРАВЛЕНО: безопасная обработка null
+                // безопасная обработка null
                 val days = entry.getDaysUntilRotation() ?: 0
                 Text(
                     text = "Просрочен на ${-days} д.",
