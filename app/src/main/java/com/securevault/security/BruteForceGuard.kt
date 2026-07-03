@@ -35,7 +35,7 @@ object BruteForceGuard {
         prefs.edit().putInt(KEY_ATTEMPTS, attempts).apply()
         prefs.edit().putInt(KEY_TOTAL_FAILURES, getTotalFailures() + 1).apply()
 
-        // ✅ ИСПРАВЛЕНО: честные комментарии
+        //  честные комментарии
         val lockoutMillis = when {
             attempts >= 10 -> 0L // Сброс доступа (мастер-пароля) после 10 попыток
             attempts >= 7 -> 60_000L // 1 минута блокировки
@@ -68,4 +68,4 @@ object BruteForceGuard {
             else -> null
         }
     }
-}
+} 
