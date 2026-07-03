@@ -31,9 +31,11 @@ fun VaultListScreen(
     onNavigateToRotation: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToMnemonicGenerator: () -> Unit,
+    onNavigateToQrScanner: () -> Unit,  //  НОВЫЙ ПАРАМЕТР
     authViewModel: AuthViewModel = hiltViewModel(),
     viewModel: VaultViewModel = hiltViewModel()
-) {
+)
+{
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
@@ -74,7 +76,7 @@ fun VaultListScreen(
                         )
                     }
                     
-                    // ✅ Меню "⋮"
+                    //  Меню "⋮"
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Меню")
@@ -115,6 +117,14 @@ fun VaultListScreen(
                                     onNavigateToMnemonicGenerator()
                                 },
                                 leadingIcon = { Icon(Icons.Default.Lightbulb, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Сканировать QR") },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToQrScanner()
+                                },
+                                leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Настройки") },
