@@ -55,7 +55,7 @@ fun SplashScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // ✅ Новая иконка
+                
                 Icon(
                     painter = painterResource(id = R.drawable.ic_app_logo),
                     contentDescription = "SecureVault Logo",
