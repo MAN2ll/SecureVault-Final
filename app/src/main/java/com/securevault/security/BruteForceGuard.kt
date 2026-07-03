@@ -35,11 +35,11 @@ object BruteForceGuard {
         prefs.edit().putInt(KEY_ATTEMPTS, attempts).apply()
         prefs.edit().putInt(KEY_TOTAL_FAILURES, getTotalFailures() + 1).apply()
 
-        // Прогрессивная блокировка
+        // ✅ ИСПРАВЛЕНО: честные комментарии
         val lockoutMillis = when {
-            attempts >= 10 -> 0L // Сброс данных после 10 попыток
-            attempts >= 7 -> 60_000L // 1 минута
-            attempts >= 5 -> 30_000L // 30 секунд
+            attempts >= 10 -> 0L // Сброс доступа (мастер-пароля) после 10 попыток
+            attempts >= 7 -> 60_000L // 1 минута блокировки
+            attempts >= 5 -> 30_000L // 30 секунд блокировки
             else -> 0L
         }
 
@@ -55,14 +55,16 @@ object BruteForceGuard {
             .apply()
     }
 
-    fun shouldWipeData(): Boolean = getFailedAttempts() >= 10
+    //  более точное имя метода
+    fun shouldResetAccess(): Boolean = getFailedAttempts() >= 10
 
+    //  честные тексты предупреждений
     fun getAttemptsWarning(): String? {
         val attempts = getFailedAttempts()
         return when {
-            attempts >= 10 -> "Слишком много попыток. Данные будут удалены."
-            attempts >= 7 -> "Блокировка на 1 минуту."
-            attempts >= 5 -> "Блокировка на 30 секунд."
+            attempts >= 10 -> "Слишком много попыток. Доступ будет сброшен. Потребуется повторная настройка мастер-пароля."
+            attempts >= 7 -> "Блокировка на 1 минуту после этой попытки."
+            attempts >= 5 -> "Блокировка на 30 секунд после этой попытки."
             else -> null
         }
     }
