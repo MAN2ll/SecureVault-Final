@@ -1,5 +1,6 @@
 package com.securevault.ui
 
+import com.securevault.ui.screens.ChangeMasterPasswordScreen
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
