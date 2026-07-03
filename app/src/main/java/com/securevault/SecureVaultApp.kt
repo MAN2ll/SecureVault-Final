@@ -12,13 +12,13 @@ class SecureVaultApp : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // ✅ Инициализация AutoLockManager
+        //  Инициализация AutoLockManager
         AutoLockManager.init(applicationContext)
         
-        // ✅ Создание канала уведомлений
+        //  Создание канала уведомлений
         NotificationHelper.createNotificationChannel(applicationContext)
         
-        // ✅ Инициализация BruteForceGuard (ОБЯЗАТЕЛЬНО!)
+        //  Инициализация BruteForceGuard (ОБЯЗАТЕЛЬНО!)
         BruteForceGuard.init(applicationContext)
     }
 }
