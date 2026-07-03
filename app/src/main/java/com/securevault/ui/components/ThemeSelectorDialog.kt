@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 
-// ✅ Режимы темы
+// Режимы темы
 enum class ThemeMode {
     SYSTEM,   // Как в системе
     LIGHT,    // Светлая
