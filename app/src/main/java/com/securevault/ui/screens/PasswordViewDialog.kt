@@ -38,7 +38,7 @@ fun PasswordViewDialog(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
-    // ✅ РАЗДЕЛЬНЫЕ СОСТОЯНИЯ
+    //  РАЗДЕЛЬНЫЕ СОСТОЯНИЯ
     var isCurrentPasswordRevealed by remember { mutableStateOf(false) }
     var isHistoryVisible by remember { mutableStateOf(false) }
     var areOldPasswordsRevealed by remember { mutableStateOf(false) }
@@ -52,7 +52,7 @@ fun PasswordViewDialog(
 
     AlertDialog(
         onDismissRequest = {
-            // ✅ При закрытии всё скрывается
+            //  При закрытии всё скрывается
             isCurrentPasswordRevealed = false
             isHistoryVisible = false
             areOldPasswordsRevealed = false
@@ -135,7 +135,26 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // ✅ ТЕКУЩИЙ ПАРОЛЬ (отдельное подтверждение)
+                //  КНОПКА QR-КОДА
+                var showQrDialog by remember { mutableStateOf(false) }
+                
+                OutlinedButton(
+                    onClick = { showQrDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.QrCode, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Показать QR-код")
+                }
+                
+                if (showQrDialog) {
+                    QrCodeDialog(
+                        entry = entry,
+                        onDismiss = { showQrDialog = false }
+                    )
+                }
+
+                //  ТЕКУЩИЙ ПАРОЛЬ (отдельное подтверждение)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -180,7 +199,7 @@ fun PasswordViewDialog(
                     }
                 }
 
-                // ✅ ИСТОРИЯ (отдельное подтверждение, БЕЗ старых паролей)
+                //  ИСТОРИЯ (отдельное подтверждение, БЕЗ старых паролей)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         if (isHistoryVisible) {
@@ -255,7 +274,7 @@ fun PasswordViewDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ ТЕКУЩЕГО ПАРОЛЯ
+    //  ПОДТВЕРЖДЕНИЕ ДЛЯ ТЕКУЩЕГО ПАРОЛЯ
     if (showCurrentPasswordConfirm) {
         ConfirmMasterPasswordDialog(
             context = context,
@@ -268,7 +287,7 @@ fun PasswordViewDialog(
         )
     }
 
-    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ ИСТОРИИ (без старых паролей)
+    //  ПОДТВЕРЖДЕНИЕ ДЛЯ ИСТОРИИ (без старых паролей)
     if (showHistoryConfirm) {
         ConfirmMasterPasswordDialog(
             context = context,
@@ -276,13 +295,13 @@ fun PasswordViewDialog(
             onConfirmed = {
                 showHistoryConfirm = false
                 isHistoryVisible = true
-                // ✅ Старые пароли НЕ раскрываются
+                //  Старые пароли НЕ раскрываются
             },
             onDismiss = { showHistoryConfirm = false }
         )
     }
 
-    // ✅ ПОДТВЕРЖДЕНИЕ ДЛЯ СТАРЫХ ПАРОЛЕЙ (отдельное)
+    //  ПОДТВЕРЖДЕНИЕ ДЛЯ СТАРЫХ ПАРОЛЕЙ (отдельное)
     if (showOldPasswordsConfirm) {
         ConfirmMasterPasswordDialog(
             context = context,
