@@ -12,9 +12,12 @@ import java.util.UUID
 object SecureQrManager {
 
     private const val QR_TYPE = "securevault_qr_v1"
-    private const val NONCE_LIFETIME_MS = 24 * 60 * 60 * 1000L
 
-    fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
+    /**
+     * Генерация QR-токена для записи.
+     * QR действует до смены пароля (привязан к lastChanged).
+     */
+    fun generateQrToken(entryId: String, profileId: Int, lastChanged: Long, context: Context): String {
         val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
 
         val profileIdHash = hashString("profile_$profileId")
@@ -27,9 +30,10 @@ object SecureQrManager {
 
         val nonce = UUID.randomUUID().toString()
 
+        // Сохраняем nonce и lastChanged для проверки
         prefs.edit()
             .putString("qr_nonce_$entryId", nonce)
-            .putLong("qr_nonce_time_$entryId", System.currentTimeMillis())
+            .putLong("qr_last_changed_$entryId", lastChanged)
             .apply()
 
         val payload = JSONObject().apply {
@@ -38,6 +42,7 @@ object SecureQrManager {
             put("profileIdHash", profileIdHash)
             put("deviceBindingHash", deviceBindingHash)
             put("nonce", nonce)
+            put("lastChanged", lastChanged)
         }
 
         return payload.toString()
@@ -61,6 +66,10 @@ object SecureQrManager {
         return bitmap
     }
 
+    /**
+     * Валидация QR-токена.
+     * Проверяет: тип, профиль, устройство, nonce, lastChanged.
+     */
     fun validateQrToken(token: String, profileId: Int, context: Context): QrValidationResult {
         return try {
             val json = JSONObject(token)
@@ -73,6 +82,7 @@ object SecureQrManager {
             val profileIdHash = json.optString("profileIdHash", "")
             val deviceBindingHash = json.optString("deviceBindingHash", "")
             val nonce = json.optString("nonce", "")
+            val lastChanged = json.optLong("lastChanged", 0L)
 
             if (entryId.isBlank()) {
                 return QrValidationResult(false, "QR-код повреждён")
@@ -94,14 +104,15 @@ object SecureQrManager {
 
             val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
             val storedNonce = prefs.getString("qr_nonce_$entryId", null)
-            val nonceTime = prefs.getLong("qr_nonce_time_$entryId", 0L)
+            val storedLastChanged = prefs.getLong("qr_last_changed_$entryId", 0L)
 
             if (storedNonce != nonce) {
                 return QrValidationResult(false, "QR-код недействителен")
             }
 
-            if (System.currentTimeMillis() - nonceTime > NONCE_LIFETIME_MS) {
-                return QrValidationResult(false, "Срок действия QR-кода истёк. Создайте новый.")
+            //  Проверка: пароль не изменился
+            if (storedLastChanged != lastChanged) {
+                return QrValidationResult(false, "Пароль был изменён. Создайте новый QR-код.")
             }
 
             QrValidationResult(true, null, entryId)
