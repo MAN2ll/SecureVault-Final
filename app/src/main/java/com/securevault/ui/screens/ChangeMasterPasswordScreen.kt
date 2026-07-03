@@ -12,10 +12,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,8 +27,6 @@ fun ChangeMasterPasswordScreen(
     onBack: () -> Unit,
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmNewPassword by remember { mutableStateOf("") }
@@ -61,7 +59,6 @@ fun ChangeMasterPasswordScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Информация
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -80,12 +77,14 @@ fun ChangeMasterPasswordScreen(
                 }
             }
 
-            // Текущий пароль
             OutlinedTextField(
                 value = currentPassword,
-                onValueChange = { currentPassword = it; errorMessage = null },
+                onValueChange = { 
+                    currentPassword = it
+                    errorMessage = null 
+                },
                 label = { Text("Текущий мастер-пароль") },
-                visualTransformation = if (showCurrentPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                visualTransformation = if (showCurrentPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -100,12 +99,14 @@ fun ChangeMasterPasswordScreen(
                 isError = errorMessage != null && errorMessage?.contains("текущий") == true
             )
 
-            // Новый пароль
             OutlinedTextField(
                 value = newPassword,
-                onValueChange = { newPassword = it; errorMessage = null },
+                onValueChange = { 
+                    newPassword = it
+                    errorMessage = null 
+                },
                 label = { Text("Новый мастер-пароль (минимум 12 символов)") },
-                visualTransformation = if (showNewPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                visualTransformation = if (showNewPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -120,12 +121,14 @@ fun ChangeMasterPasswordScreen(
                 isError = errorMessage != null && errorMessage?.contains("новый") == true
             )
 
-            // Подтверждение нового пароля
             OutlinedTextField(
                 value = confirmNewPassword,
-                onValueChange = { confirmNewPassword = it; errorMessage = null },
+                onValueChange = { 
+                    confirmNewPassword = it
+                    errorMessage = null 
+                },
                 label = { Text("Подтвердите новый пароль") },
-                visualTransformation = if (showConfirmPassword) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                visualTransformation = if (showConfirmPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -140,7 +143,6 @@ fun ChangeMasterPasswordScreen(
                 isError = errorMessage != null && errorMessage?.contains("подтверждение") == true
             )
 
-            // Сообщение об ошибке
             if (errorMessage != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -152,12 +154,15 @@ fun ChangeMasterPasswordScreen(
                     ) {
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(errorMessage!!, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 13.sp)
+                        Text(
+                            errorMessage!!, 
+                            color = MaterialTheme.colorScheme.onErrorContainer, 
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
 
-            // Сообщение об успехе
             if (showSuccess) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -180,10 +185,8 @@ fun ChangeMasterPasswordScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // Кнопка сохранения
             Button(
                 onClick = {
-                    // Валидация
                     if (currentPassword.isBlank()) {
                         errorMessage = "Введите текущий мастер-пароль"
                         return@Button
@@ -204,7 +207,33 @@ fun ChangeMasterPasswordScreen(
                     isProcessing = true
                     errorMessage = null
 
-                    // Смена пароля
                     val success = authViewModel.changeMasterPassword(currentPassword, newPassword)
 
                     if (success) {
+                        showSuccess = true
+                        currentPassword = ""
+                        newPassword = ""
+                        confirmNewPassword = ""
+                    } else {
+                        errorMessage = "Неверный текущий мастер-пароль"
+                    }
+
+                    isProcessing = false
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isProcessing
+            ) {
+                if (isProcessing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp), 
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Сохранить")
+                }
+            }
+        }
+    }
+}
