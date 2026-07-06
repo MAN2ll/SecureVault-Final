@@ -2,23 +2,28 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
+import com.securevault.security.MasterPasswordHasher
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 
@@ -30,9 +35,13 @@ fun ProfileListScreen(
     profileViewModel: ProfileViewModel = hiltViewModel(),
     vaultViewModel: VaultViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val profiles by profileViewModel.profiles.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<Profile?>(null) }
+    
+    //  Состояние для удаления профиля
+    var profileToDelete by remember { mutableStateOf<Profile?>(null) }
 
     LaunchedEffect(Unit) {
         vaultViewModel.setCurrentProfile(null)
@@ -84,7 +93,8 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     ProfileCard(
                         profile = profile,
-                        onClick = { selectedProfile = profile }
+                        onClick = { selectedProfile = profile },
+                        onDeleteClick = { profileToDelete = profile } // 
                     )
                 }
             }
@@ -109,28 +119,78 @@ fun ProfileListScreen(
             }
         )
     }
+    
+    //  Диалог удаления профиля с подтверждением мастер-паролем
+    if (profileToDelete != null) {
+        ConfirmDeleteProfileDialog(
+            profile = profileToDelete!!,
+            context = context,
+            onDismiss = { profileToDelete = null },
+            onConfirmed = {
+                // Удаляем все записи профиля
+                vaultViewModel.deleteEntriesByProfile(profileToDelete!!.id)
+                // Удаляем сам профиль
+                profileViewModel.delete(profileToDelete!!.id)
+                profileToDelete = null
+            }
+        )
+    }
 }
 
 @Composable
-private fun ProfileCard(profile: Profile, onClick: () -> Unit) {
+private fun ProfileCard(
+    profile: Profile, 
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit 
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    
     Card(
-        onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(140.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
-            Column {
-                Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
-                Text("Нажмите для входа", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .clickable(onClick = onClick),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+                Column {
+                    Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
+                    Text("Нажмите для входа", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            
+            // ✅ НОВОЕ: Меню профиля в правом верхнем углу
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+            ) {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.MoreVert, "Меню профиля", modifier = Modifier.size(20.dp))
+                }
+                
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Удалить профиль", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showMenu = false
+                            onDeleteClick()
+                        },
+                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                    )
+                }
             }
         }
     }
 }
-
 
 @Composable
 private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
@@ -145,7 +205,6 @@ private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
         title = { Text("Новый профиль", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-           
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
@@ -219,7 +278,6 @@ private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
     )
 }
 
-
 @Composable
 private fun UnlockProfileDialog(profile: Profile, onDismiss: () -> Unit, onUnlocked: () -> Unit) {
     var pin by remember { mutableStateOf("") }
@@ -262,6 +320,76 @@ private fun UnlockProfileDialog(profile: Profile, onDismiss: () -> Unit, onUnloc
             TextButton(onDismiss) { 
                 Text("Отмена") 
             } 
+        }
+    )
+}
+
+//  Подтверждение удаления профиля с мастер-паролем
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConfirmDeleteProfileDialog(
+    profile: Profile,
+    context: Context,
+    onDismiss: () -> Unit,
+    onConfirmed: () -> Unit
+) {
+    var masterPassword by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Удалить профиль?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Вы уверены, что хотите удалить профиль \"${profile.name}\"?")
+                Text(
+                    "Будут удалены ВСЕ записи этого профиля. Это действие необратимо.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Для подтверждения введите мастер-пароль:", fontSize = 13.sp)
+                OutlinedTextField(
+                    value = masterPassword,
+                    onValueChange = { masterPassword = it; error = null },
+                    label = { Text("Мастер-пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                    val storedHash = prefs.getString("master_hash", null)
+                    val storedSalt = prefs.getString("master_salt", null)
+                    val iterations = prefs.getInt("master_iterations", 100_000)
+
+                    if (storedHash != null && storedSalt != null &&
+                        MasterPasswordHasher.verify(masterPassword, storedHash, storedSalt, iterations)) {
+                        onConfirmed()
+                    } else {
+                        error = "Неверный мастер-пароль"
+                    }
+                    masterPassword = ""
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Удалить профиль")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
         }
     )
 }
