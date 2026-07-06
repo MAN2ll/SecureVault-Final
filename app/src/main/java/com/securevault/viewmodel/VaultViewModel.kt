@@ -100,6 +100,12 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    fun deleteEntriesByProfile(profileId: Int) {
+    viewModelScope.launch {
+        repository.deleteEntriesByProfileId(profileId)
+        }
+    }
+
     fun toggleFavorite(entry: Entry) {
         viewModelScope.launch {
             val updated = entry.copy(isFavorite = !entry.isFavorite)
