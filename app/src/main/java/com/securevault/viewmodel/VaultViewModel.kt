@@ -180,45 +180,57 @@ class VaultViewModel @Inject constructor(
         newPassword: String,
         newHint: String?,
         newGenerationType: String,
-        newMnemonicPhraseHint: String? = null,
-        newMnemonicOptionsJson: String? = null,
-        onResult: (PasswordOperationResult) -> Unit = {}
-    ) = viewModelScope.launch {
-        val entry = repository.getById(entryId) ?: run {
-            onResult(PasswordOperationResult.Error("Запись не найдена"))
-            return@launch
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?,
+        onResult: ((PasswordOperationResult) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val entry = repository.getById(entryId)
+                if (entry == null) {
+                    onResult?.invoke(PasswordOperationResult.Error("Запись не найдена"))
+                    return@launch
+                }
+    
+                // Валидация нового пароля
+                val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, getApplication())
+                if (!validation.isValid) {
+                    onResult?.invoke(PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации"))
+                    return@launch
+                }
+    
+                val now = System.currentTimeMillis()
+                val encryptedPwd = CryptoUtils.encrypt(newPassword)
+                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, getApplication())
+                val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, getApplication())
+    
+                //  Обновляем все поля, включая подсказки
+                val updatedEntry = entry.addToPasswordHistory(
+                    oldPassword = entry.password,
+                    generationType = entry.generationType,
+                    oldPasswordFingerprint = oldFingerprint
+                ).copy(
+                    encryptedPassword = encryptedPwd,
+                    passwordFingerprint = newFingerprint,
+                    lastChanged = now,
+                    generationType = newGenerationType,
+                    // Обновляем подсказки
+                    textHint = newHint ?: entry.textHint,
+                    mnemonicPhraseHint = newMnemonicPhraseHint ?: entry.mnemonicPhraseHint,
+                    mnemonicOptionsJson = newMnemonicOptionsJson ?: entry.mnemonicOptionsJson,
+                    nextRotationDate = if (entry.rotationEnabled) {
+                        now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                    } else {
+                        null
+                    }
+                )
+    
+                repository.update(updatedEntry)
+                onResult?.invoke(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
-
-        val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
-        if (!validation.isValid) {
-            onResult(PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации"))
-            return@launch
-        }
-
-        val now = System.currentTimeMillis()
-        val newNextRotationDate = if (entry.rotationEnabled) {
-            now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-        } else null
-
-        val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-        val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-
-        val updated = entry.addToPasswordHistory(
-            oldPassword = entry.password,
-            generationType = entry.generationType,
-            oldPasswordFingerprint = oldFingerprint
-        ).copy(
-            encryptedPassword = CryptoUtils.encrypt(newPassword),
-            textHint = newHint,
-            generationType = newGenerationType,
-            passwordFingerprint = newFingerprint,
-            mnemonicPhraseHint = newMnemonicPhraseHint,
-            mnemonicOptionsJson = newMnemonicOptionsJson,
-            lastChanged = now,
-            nextRotationDate = newNextRotationDate
-        )
-        repository.update(updated)
-        onResult(PasswordOperationResult.Success)
     }
 
     fun bulkReplacePasswords(
