@@ -123,7 +123,7 @@ fun ReminderScreen(
     }
 
     //  новая сигнатура с 5 параметрами
-    selectedEntry?.let { entry ->
+   selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
             currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
@@ -131,7 +131,7 @@ fun ReminderScreen(
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
-            onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
+            onPasswordReplaced = { newPassword: String, newHint: String?, newGenerationType: String, mnemonicPhrase: String?, mnemonicOptions: String? ->
                 viewModel.replacePassword(
                     entryId = entry.id,
                     newPassword = newPassword,
