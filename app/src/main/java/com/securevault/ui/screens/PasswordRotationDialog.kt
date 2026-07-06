@@ -46,7 +46,6 @@ fun PasswordRotationDialog(
     var manualPassword by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
     
-    // ✅ НОВОЕ: AlertDialog для ошибок
     var showReplaceErrorDialog by remember { mutableStateOf(false) }
     var replaceErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -91,7 +90,7 @@ fun PasswordRotationDialog(
         selectedVariantIndex = -1
         
         if (variants.isEmpty()) {
-            showError = "Не удалось сгенерировать варианты без повторов"
+            showError = "Не удалось создать варианты без повторов. Измените фразу или параметры."
         }
     }
 
@@ -259,102 +258,4 @@ fun PasswordRotationDialog(
                                                     Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
                                                     Text(
                                                         result.password,
-                                                        fontSize = 12.sp,
-                                                        fontFamily = FontFamily.Monospace,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = { selectedVariantIndex = index }
-                                                )
-                                            }
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    "manual" -> {
-                        OutlinedTextField(
-                            value = manualPassword,
-                            onValueChange = { manualPassword = it; showError = null },
-                            label = { Text("Новый пароль") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
-                if (showError != null) {
-                    Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                when (selectedMode) {
-                    "random" -> {
-                        if (generatedRandomPwd.isBlank()) {
-                            showError = "Сгенерируйте пароль"
-                            return@Button
-                        }
-                        onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
-                    }
-                    "mnemonic" -> {
-                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                            showError = "Выберите вариант"
-                            return@Button
-                        }
-                        val selected = variants[selectedVariantIndex]
-                        
-                        //  ФИНАЛЬНАЯ ПРОВЕРКА
-                        if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                            replaceErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
-                            showReplaceErrorDialog = true
-                            return@Button
-                        }
-                        
-                        onPasswordReplaced(
-                            selected.password,
-                            selected.mnemonicHint,
-                            "mnemonic",
-                            phrase,
-                            null
-                        )
-                    }
-                    "manual" -> {
-                        if (manualPassword.isBlank()) {
-                            showError = "Введите пароль"
-                            return@Button
-                        }
-                        onPasswordReplaced(manualPassword, null, "manual", null, null)
-                    }
-                }
-            }) {
-                Text("Заменить")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
-            }
-        }
-    )
-
-    //  AlertDialog для ошибок замены
-    if (showReplaceErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showReplaceErrorDialog = false },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка замены пароля") },
-            text = { Text(replaceErrorMessage ?: "Неизвестная ошибка") },
-            confirmButton = {
-                TextButton(onClick = { showReplaceErrorDialog = false }) {
-                    Text("Понятно")
-                }
-            }
-        )
-    }
-}
+                                                        fontSize
