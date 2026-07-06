@@ -3,356 +3,317 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.securevault.utils.MnemonicPasswordGenerator
-import com.securevault.utils.PasswordGenerator
-import com.securevault.utils.PasswordValidator
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.Entry
+import com.securevault.viewmodel.PasswordOperationResult
+import com.securevault.viewmodel.VaultViewModel
+
+enum class RotationFilter(val label: String) {
+    EXPIRED("Просроченные"),
+    SOON("Скоро истекают"),
+    ALL("Все с ротацией")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PasswordRotationDialog(
-    serviceName: String,
-    currentHint: String?,
-    generationType: String,
-    rotationMonth: Int?,
-    rotationYear: Int?,
-    onDismiss: () -> Unit,
-    onPasswordReplaced: (
-        newPassword: String,
-        newHint: String?,
-        newGenerationType: String,
-        mnemonicPhrase: String?,
-        mnemonicOptions: String?
-    ) -> Unit
+fun RotationScreen(
+    onBack: () -> Unit,
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
+    val allRotationEntries by viewModel.rotationEntries.collectAsState()
+    var selectedEntry by remember { mutableStateOf<Entry?>(null) }
+    var showBulkRotation by remember { mutableStateOf(false) }
+    var showShuffleDialog by remember { mutableStateOf(false) }
+    var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
+    var daysThreshold by remember { mutableIntStateOf(7) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    var selectedMode by remember { mutableStateOf(if (generationType == "mnemonic") "mnemonic" else "random") }
-    var manualPassword by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf<String?>(null) }
-    
-    var showReplaceErrorDialog by remember { mutableStateOf(false) }
-    var replaceErrorMessage by remember { mutableStateOf<String?>(null) }
-
-    var phrase by remember { mutableStateOf(currentHint ?: "") }
-    var includeLeet by remember { mutableStateOf(true) }
-    var includeServiceCode by remember { mutableStateOf(true) }
-    var includeRotationCode by remember { mutableStateOf(true) }
-    var variantOffset by remember { mutableIntStateOf(0) }
-    var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
-    var selectedVariantIndex by remember { mutableIntStateOf(-1) }
-
-    var generatedRandomPwd by remember { mutableStateOf("") }
-    var randomLength by remember { mutableIntStateOf(16) }
-    var useUpper by remember { mutableStateOf(true) }
-    var useDigits by remember { mutableStateOf(true) }
-    var useSpecial by remember { mutableStateOf(true) }
-
-    fun generateRandom() {
-        val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
-        generatedRandomPwd = result.password
-    }
-
-    fun generateMnemonicVariants() {
-        if (phrase.isBlank()) {
-            variants = emptyList()
-            return
-        }
-
-        val options = MnemonicPasswordGenerator.GenerationOptions(
-            phrase = phrase,
-            serviceName = serviceName,
-            targetLength = 16,
-            includeLeet = includeLeet,
-            includeServiceCode = includeServiceCode,
-            includeRotationCode = includeRotationCode,
-            rotationMonth = rotationMonth,
-            rotationYear = rotationYear,
-            variantOffset = variantOffset
-        )
-
-        variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
-        selectedVariantIndex = -1
-        
-        if (variants.isEmpty()) {
-            showError = "Не удалось создать варианты без повторов. Измените фразу или параметры."
-        }
-    }
-
-    LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
-        if (selectedMode == "mnemonic") {
-            generateMnemonicVariants()
-        }
-    }
-
-    LaunchedEffect(selectedMode) {
-        if (selectedMode == "random") {
-            generateRandom()
-        } else {
-            generateMnemonicVariants()
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
-                Text("Ротация: $serviceName", fontWeight = FontWeight.Bold)
+    val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
+        val now = System.currentTimeMillis()
+        when (currentFilter) {
+            RotationFilter.EXPIRED -> {
+                allRotationEntries.filter { it.nextRotationDate != null && it.nextRotationDate <= now }
             }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            RotationFilter.SOON -> {
+                val threshold = now + (daysThreshold * 24L * 60 * 60 * 1000)
+                allRotationEntries.filter { 
+                    it.nextRotationDate != null && 
+                    it.nextRotationDate > now && 
+                    it.nextRotationDate <= threshold 
+                }
+            }
+            RotationFilter.ALL -> {
+                allRotationEntries
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Ротация паролей", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Назад")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            TabRow(selectedTabIndex = currentFilter.ordinal) {
+                RotationFilter.entries.forEach { filter ->
+                    Tab(
+                        selected = currentFilter == filter,
+                        onClick = { currentFilter = filter },
+                        text = { Text(text = filter.label, fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            if (currentFilter == RotationFilter.SOON) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(7, 14, 30).forEach { days ->
+                        FilterChip(
+                            selected = daysThreshold == days,
+                            onClick = { daysThreshold = days },
+                            label = { Text(text = "$days дн.", fontSize = 11.sp) }
+                        )
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = "Найдено: ${filteredEntries.size} записей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+
+            if (filteredEntries.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Schedule, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                        Spacer(Modifier.height(16.dp))
+                        Text(text = "Нет записей по фильтру", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(filteredEntries, key = { it.id }) { entry ->
+                        RotationEntryCard(
+                            entry = entry,
+                            onReplace = { selectedEntry = entry }
+                        )
+                    }
+                    
+                    item {
+                        Spacer(Modifier.height(16.dp))
+                        
+                        Button(
+                            onClick = { showBulkRotation = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = filteredEntries.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Group, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Массовая ротация (${filteredEntries.size})")
+                        }
+                        
                         Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "random", onClick = { selectedMode = "random" })
-                            Text("Случайный пароль", Modifier.padding(start = 8.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "mnemonic", onClick = { selectedMode = "mnemonic" })
-                            Text("Мнемонический (AMPG v2)", Modifier.padding(start = 8.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "manual", onClick = { selectedMode = "manual" })
-                            Text("Ввести вручную", Modifier.padding(start = 8.dp))
-                        }
-                    }
-                }
-
-                when (selectedMode) {
-                    "random" -> {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Параметры", fontWeight = FontWeight.Bold)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Длина: $randomLength", modifier = Modifier.weight(1f))
-                                    Slider(
-                                        value = randomLength.toFloat(),
-                                        onValueChange = { randomLength = it.toInt() },
-                                        valueRange = 8f..32f,
-                                        steps = 24,
-                                        modifier = Modifier.weight(2f)
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
-                                    Text("Заглавные", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
-                                    Text("Цифры", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
-                                    Text("Спецсимволы", Modifier.padding(start = 8.dp))
-                                }
-                                
-                                if (generatedRandomPwd.isNotEmpty()) {
-                                    Text(
-                                        generatedRandomPwd,
-                                        fontSize = 16.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                
-                                Row {
-                                    OutlinedButton(onClick = { generateRandom() }) {
-                                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Ещё раз")
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    OutlinedButton(onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedRandomPwd))
-                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Копировать")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    "mnemonic" -> {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Уникальный поток", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                
-                                OutlinedTextField(
-                                    value = phrase,
-                                    onValueChange = { phrase = it },
-                                    label = { Text("Мнемоническая фраза") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Leet-замены", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                                    Text("Код сервиса", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                                    Text("Код ротации", Modifier.padding(start = 8.dp))
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = { variantOffset++ },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ещё варианты (набор №${variantOffset + 1})")
-                                }
-                                
-                                if (variants.isNotEmpty()) {
-                                    Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
-                                    
-                                    variants.forEachIndexed { index, result ->
-                                        val isSelected = selectedVariantIndex == index
-                                        
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) 
-                                                    MaterialTheme.colorScheme.primaryContainer 
-                                                else 
-                                                    MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(8.dp).fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                                    Text(
-                                                        result.password,
-                                                        fontSize = 12.sp,
-                                                        fontFamily = FontFamily.Monospace,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = { selectedVariantIndex = index }
-                                                )
-                                            }
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    "manual" -> {
-                        OutlinedTextField(
-                            value = manualPassword,
-                            onValueChange = { manualPassword = it; showError = null },
-                            label = { Text("Новый пароль") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
-                if (showError != null) {
-                    Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                when (selectedMode) {
-                    "random" -> {
-                        if (generatedRandomPwd.isBlank()) {
-                            showError = "Сгенерируйте пароль"
-                            return@Button
-                        }
-                        onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
-                    }
-                    "mnemonic" -> {
-                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                            showError = "Выберите вариант"
-                            return@Button
-                        }
-                        val selected = variants[selectedVariantIndex]
                         
-                        if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                            replaceErrorMessage = "Вариант содержит повторяющиеся символы. Нажмите 'Ещё варианты'."
-                            showReplaceErrorDialog = true
-                            return@Button
+                        OutlinedButton(
+                            onClick = { showShuffleDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = filteredEntries.size >= 2
+                        ) {
+                            Icon(Icons.Default.Shuffle, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (filteredEntries.size >= 2) 
+                                    "Перемешать между сервисами (${filteredEntries.size})"
+                                else 
+                                    "Перемешать (выберите 2+ записи)"
+                            )
                         }
                         
-                        onPasswordReplaced(
-                            selected.password,
-                            selected.mnemonicHint,
-                            "mnemonic",
-                            phrase,
-                            null
-                        )
-                    }
-                    "manual" -> {
-                        if (manualPassword.isBlank()) {
-                            showError = "Введите пароль"
-                            return@Button
-                        }
-                        onPasswordReplaced(manualPassword, null, "manual", null, null)
+                        Spacer(Modifier.height(16.dp))
                     }
                 }
-            }) {
-                Text("Заменить")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
             }
         }
-    )
+    }
 
-    // AlertDialog для ошибок замены
-    if (showReplaceErrorDialog) {
+    // ✅ ИСПРАВЛЕНО: явные типы параметров в лямбде
+    selectedEntry?.let { entry ->
+        PasswordRotationDialog(
+            serviceName = entry.service,
+            currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
+            generationType = entry.generationType,
+            rotationMonth = null,
+            rotationYear = null,
+            onDismiss = { selectedEntry = null },
+            onPasswordReplaced = { newPassword: String, newHint: String?, newGenerationType: String, mnemonicPhrase: String?, mnemonicOptions: String? ->
+                viewModel.replacePassword(
+                    entryId = entry.id,
+                    newPassword = newPassword,
+                    newHint = newHint,
+                    newGenerationType = newGenerationType,
+                    newMnemonicPhraseHint = mnemonicPhrase,
+                    newMnemonicOptionsJson = mnemonicOptions,
+                    onResult = { result ->
+                        when (result) {
+                            is PasswordOperationResult.Success -> {
+                                selectedEntry = null
+                            }
+                            is PasswordOperationResult.Error -> {
+                                errorMessage = result.message
+                            }
+                        }
+                    }
+                )
+            }
+        )
+    }
+
+    if (showBulkRotation) {
+        BulkRotationDialog(
+            entries = filteredEntries,
+            onDismiss = { showBulkRotation = false },
+            onBulkReplace = { replacements ->
+                viewModel.bulkReplacePasswords(replacements) { result ->
+                    when (result) {
+                        is PasswordOperationResult.Success -> {
+                            showBulkRotation = false
+                        }
+                        is PasswordOperationResult.Error -> {
+                            errorMessage = result.message
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showShuffleDialog) {
+        PasswordShuffleDialog(
+            entries = filteredEntries,
+            onDismiss = { showShuffleDialog = false },
+            onShuffleApplied = {
+                showShuffleDialog = false
+            }
+        )
+    }
+
+    if (errorMessage != null) {
         AlertDialog(
-            onDismissRequest = { showReplaceErrorDialog = false },
+            onDismissRequest = { errorMessage = null },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка замены пароля") },
-            text = { Text(replaceErrorMessage ?: "Неизвестная ошибка") },
+            title = { Text("Ошибка валидации") },
+            text = { Text(errorMessage ?: "") },
             confirmButton = {
-                TextButton(onClick = { showReplaceErrorDialog = false }) {
+                TextButton(onClick = { errorMessage = null }) {
                     Text("Понятно")
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun RotationEntryCard(
+    entry: Entry,
+    onReplace: () -> Unit
+) {
+    val daysLeft = entry.getDaysUntilRotation()
+    val isExpired = entry.isPasswordExpired()
+    
+    val statusColor = when {
+        isExpired -> MaterialTheme.colorScheme.error
+        daysLeft != null && daysLeft <= 3 -> MaterialTheme.colorScheme.error
+        daysLeft != null && daysLeft <= 7 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    
+    val statusText = when {
+        isExpired -> "Просрочено"
+        daysLeft != null -> "Осталось $daysLeft дн."
+        else -> "Неизвестно"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isExpired) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Folder, null, Modifier.size(20.dp), tint = if (isExpired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = entry.service, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(text = entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, null, Modifier.size(12.dp), tint = statusColor)
+                    Spacer(Modifier.width(4.dp))
+                    Text(text = statusText, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = statusColor)
+                }
+                if (entry.generationType == "mnemonic") {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Lightbulb, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.tertiary)
+                        Spacer(Modifier.width(4.dp))
+                        Text(text = "Мнемонический", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
+                    }
+                } else if (entry.generationType == "shuffled") {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Shuffle, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.width(4.dp))
+                        Text(text = "Перемешанный", fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+            }
+            
+            Button(onClick = onReplace, modifier = Modifier.padding(start = 8.dp)) {
+                Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Заменить")
+            }
+        }
     }
 }
