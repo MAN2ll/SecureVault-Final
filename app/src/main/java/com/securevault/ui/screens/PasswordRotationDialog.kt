@@ -170,7 +170,7 @@ fun RotationScreen(
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: явные типы параметров в лямбде
+    //  явные типы параметров в лямбде
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
