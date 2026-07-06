@@ -51,7 +51,9 @@ fun EntryEditorScreen(
     }
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
-    val effectiveProfileId = profileId ?: currentProfileId
+    
+    // Используем ТОЛЬКО currentProfileId, игнорируем profileId из route
+    val effectiveProfileId = currentProfileId
 
     val profiles by profileViewModel.profiles.collectAsState()
     val profileName = remember(effectiveProfileId, profiles) {
@@ -78,6 +80,10 @@ fun EntryEditorScreen(
     var showMnemonicDialog by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
+    
+    // AlertDialog для ошибок
+    var showSaveErrorDialog by remember { mutableStateOf(false) }
+    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(existingEntry) {
         existingEntry?.let { entry ->
@@ -119,15 +125,18 @@ fun EntryEditorScreen(
                     }
                     IconButton(onClick = {
                         if (service.isBlank()) {
-                            showError = "Заполните название сервиса"
+                            saveErrorMessage = "Заполните название сервиса"
+                            showSaveErrorDialog = true
                             return@IconButton
                         }
                         if (isNewEntry && password.isBlank()) {
-                            showError = "Введите или сгенерируйте пароль"
+                            saveErrorMessage = "Введите или сгенерируйте пароль"
+                            showSaveErrorDialog = true
                             return@IconButton
                         }
                         if (effectiveProfileId == null) {
-                            showError = "Профиль не выбран"
+                            saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей и войдите в профиль."
+                            showSaveErrorDialog = true
                             return@IconButton
                         }
 
@@ -143,7 +152,8 @@ fun EntryEditorScreen(
                                     context = context
                                 )
                                 if (!validation.isValid) {
-                                    showError = validation.errorMessage
+                                    saveErrorMessage = validation.errorMessage
+                                    showSaveErrorDialog = true
                                     return@IconButton
                                 }
 
@@ -208,7 +218,8 @@ fun EntryEditorScreen(
                         } else {
                             val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
                             if (!uniqueCheck.isValid) {
-                                showError = uniqueCheck.errorMessage
+                                saveErrorMessage = uniqueCheck.errorMessage
+                                showSaveErrorDialog = true
                                 return@IconButton
                             }
 
@@ -230,9 +241,14 @@ fun EntryEditorScreen(
                             )
                         }
 
-                        viewModel.insert(finalEntry)
-                        showSuccess = true
-                        onBack()
+                        try {
+                            viewModel.insert(finalEntry)
+                            showSuccess = true
+                            onBack()
+                        } catch (e: Exception) {
+                            saveErrorMessage = "Не удалось сохранить запись: ${e.message}"
+                            showSaveErrorDialog = true
+                        }
                     }) {
                         Icon(Icons.Default.Check, "Сохранить")
                     }
@@ -399,7 +415,7 @@ fun EntryEditorScreen(
                     Spacer(Modifier.width(8.dp))
                     Column {
                         Text(
-                            if (generationType == "mnemonic") "Мнемонический пароль (AMPG v1)" else "Случайный пароль",
+                            if (generationType == "mnemonic") "Мнемонический пароль (AMPG v2)" else "Случайный пароль",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -492,6 +508,21 @@ fun EntryEditorScreen(
                 }
             }
         }
+    }
+
+    // AlertDialog для ошибок сохранения
+    if (showSaveErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveErrorDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка сохранения") },
+            text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
+            confirmButton = {
+                TextButton(onClick = { showSaveErrorDialog = false }) {
+                    Text("Понятно")
+                }
+            }
+        )
     }
 
     if (showConfirmPasswordDialog) {
@@ -812,7 +843,7 @@ private fun MnemonicGeneratorDialog(
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("Мнемонический генератор", fontWeight = FontWeight.Bold)
-                    Text("AMPG v1 — 5 вариантов на выбор", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("AMPG v2 — 5 вариантов на выбор", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
