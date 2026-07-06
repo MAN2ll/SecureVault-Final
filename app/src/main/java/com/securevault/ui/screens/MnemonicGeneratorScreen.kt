@@ -47,7 +47,6 @@ fun MnemonicGeneratorScreen(
     var showError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
     
-    //  AlertDialog для ошибок сохранения
     var showSaveErrorDialog by remember { mutableStateOf(false) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -80,7 +79,7 @@ fun MnemonicGeneratorScreen(
         selectedVariantIndex = -1
         
         if (variants.isEmpty()) {
-            validationError = "Не удалось сгенерировать варианты без повторов. Попробуйте другую фразу."
+            validationError = "Не удалось создать варианты без повторов. Измените фразу или параметры."
         }
     }
 
@@ -235,8 +234,6 @@ fun MnemonicGeneratorScreen(
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    
-                                    //  УБРАНО: Предупреждение о повторах (их больше нет)
                                 }
 
                                 Column {
@@ -264,23 +261,25 @@ fun MnemonicGeneratorScreen(
             Button(
                 onClick = {
                     if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                        showError = "Выберите вариант из списка"
+                        saveErrorMessage = "Выберите вариант из списка"
+                        showSaveErrorDialog = true
                         return@Button
                     }
                     if (serviceName.isBlank()) {
-                        showError = "Введите название сервиса для записи"
+                        saveErrorMessage = "Введите название сервиса для записи"
+                        showSaveErrorDialog = true
                         return@Button
                     }
                     if (currentProfileId == null) {
-                        showError = "Профиль не выбран"
+                        saveErrorMessage = "Профиль не выбран"
+                        showSaveErrorDialog = true
                         return@Button
                     }
 
                     val selected = variants[selectedVariantIndex]
 
-                    //  ФИНАЛЬНАЯ ПРОВЕРКА: пароль не должен содержать повторов
                     if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                        saveErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
+                        saveErrorMessage = "Вариант содержит повторяющиеся символы. Нажмите 'Ещё варианты'."
                         showSaveErrorDialog = true
                         return@Button
                     }
@@ -316,12 +315,11 @@ fun MnemonicGeneratorScreen(
         }
     }
 
-    //  AlertDialog для ошибок сохранения
     if (showSaveErrorDialog) {
         AlertDialog(
             onDismissRequest = { showSaveErrorDialog = false },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Не удалось сохранить пароль") },
+            title = { Text("Ошибка сохранения") },
             text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
             confirmButton = {
                 TextButton(onClick = { showSaveErrorDialog = false }) {
