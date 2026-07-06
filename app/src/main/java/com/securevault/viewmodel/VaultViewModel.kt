@@ -62,7 +62,8 @@ class VaultViewModel @Inject constructor(
 
     private fun loadEntriesForProfile(profileId: Int) {
         viewModelScope.launch {
-            _entries.value = repository.getByProfile(profileId)
+            //  getByProfileId вместо getByProfile
+            _entries.value = repository.getByProfileId(profileId)
             updateRotationEntries()
         }
     }
@@ -70,7 +71,8 @@ class VaultViewModel @Inject constructor(
     private fun updateRotationEntries() {
         val profileId = _currentProfileId.value ?: return
         viewModelScope.launch {
-            _rotationEntries.value = repository.getByProfile(profileId).filter { it.rotationEnabled }
+            // getByProfileId вместо getByProfile
+            _rotationEntries.value = repository.getByProfileId(profileId).filter { it.rotationEnabled }
         }
     }
 
@@ -91,7 +93,8 @@ class VaultViewModel @Inject constructor(
     fun deleteAll() {
         viewModelScope.launch {
             _currentProfileId.value?.let { profileId ->
-                repository.deleteByProfile(profileId)
+                //  deleteEntriesByProfileId вместо deleteByProfile
+                repository.deleteEntriesByProfileId(profileId)
                 loadEntriesForProfile(profileId)
             }
         }
