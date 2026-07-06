@@ -34,6 +34,7 @@ import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryEditorScreen(
     id: String?,
@@ -52,8 +53,15 @@ fun EntryEditorScreen(
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     
-    // Используем ТОЛЬКО currentProfileId, игнорируем profileId из route
-    val effectiveProfileId = currentProfileId
+    // ✅ ИСПРАВЛЕНО: Используем profileId из параметров как fallback, если currentProfileId ещё null
+    val effectiveProfileId = currentProfileId ?: profileId
+
+    // ✅ ИСПРАВЛЕНО: Если profileId передан, но currentProfileId ещё null, устанавливаем его
+    LaunchedEffect(profileId) {
+        if (profileId != null && currentProfileId == null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
 
     val profiles by profileViewModel.profiles.collectAsState()
     val profileName = remember(effectiveProfileId, profiles) {
@@ -81,7 +89,7 @@ fun EntryEditorScreen(
     var showError by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
     
-    // AlertDialog для ошибок
+    // ✅ НОВОЕ: Состояние для AlertDialog ошибок
     var showSaveErrorDialog by remember { mutableStateOf(false) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -134,8 +142,10 @@ fun EntryEditorScreen(
                             showSaveErrorDialog = true
                             return@IconButton
                         }
-                        if (effectiveProfileId == null) {
-                            saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей и войдите в профиль."
+                        
+                        val finalProfileId = effectiveProfileId
+                        if (finalProfileId == null) {
+                            saveErrorMessage = "Профиль не выбран"
                             showSaveErrorDialog = true
                             return@IconButton
                         }
@@ -229,7 +239,7 @@ fun EntryEditorScreen(
                                 service = service,
                                 username = username,
                                 password = password,
-                                profileId = effectiveProfileId!!,
+                                profileId = finalProfileId,
                                 passwordFingerprint = fingerprint,
                                 url = url.ifBlank { null },
                                 notes = notes.ifBlank { null },
@@ -510,21 +520,6 @@ fun EntryEditorScreen(
         }
     }
 
-    // AlertDialog для ошибок сохранения
-    if (showSaveErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveErrorDialog = false },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка сохранения") },
-            text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
-            confirmButton = {
-                TextButton(onClick = { showSaveErrorDialog = false }) {
-                    Text("Понятно")
-                }
-            }
-        )
-    }
-
     if (showConfirmPasswordDialog) {
         ConfirmMasterPasswordDialogForEditor(
             context = context,
@@ -560,6 +555,21 @@ fun EntryEditorScreen(
                 textHint = hint
                 generationType = "mnemonic"
                 showMnemonicDialog = false
+            }
+        )
+    }
+
+    // ✅ НОВОЕ: AlertDialog для ошибок сохранения
+    if (showSaveErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveErrorDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка сохранения") },
+            text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
+            confirmButton = {
+                TextButton(onClick = { showSaveErrorDialog = false }) {
+                    Text("Понятно")
+                }
             }
         )
     }
@@ -824,6 +834,10 @@ private fun MnemonicGeneratorDialog(
 
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
+        
+        if (variants.isEmpty()) {
+            validationError = "Не удалось сгенерировать варианты без повторов"
+        }
     }
 
     LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
