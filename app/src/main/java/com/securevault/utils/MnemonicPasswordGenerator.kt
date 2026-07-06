@@ -2,17 +2,6 @@ package com.securevault.utils
 
 import java.util.Calendar
 
-/**
- * AMPG v2 — Unique Mnemonic Flow
- * Гарантированная генерация паролей БЕЗ повторяющихся символов.
- * 
- * Логика:
- * 1. Строим уникальный поток из фразы
- * 2. Применяем замены только если символ свободен
- * 3. Добавляем сервис и ротацию через безопасный механизм
- * 4. Используем разные разделители
- * 5. Финальная очистка от повторов
- */
 object MnemonicPasswordGenerator {
 
     data class GenerationResult(
@@ -35,7 +24,6 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
-    // ===== ФИКСИРОВАННЫЕ ЗАМЕНЫ =====
     private val leetMap = mapOf(
         'a' to '@', 'o' to '0', 'e' to '3', 'i' to '1',
         'u' to '^', 's' to '$', 'y' to '7'
@@ -45,10 +33,13 @@ object MnemonicPasswordGenerator {
         'a' to '@', 'o' to '0', 'e' to '3', 'i' to '1'
     )
 
-    // Разделители (используем по одному)
-    private val separators = listOf('-', '.', '_', '~')
+    private val extendedLeetMap = mapOf(
+        'a' to '@', 'o' to '0', 'e' to '3', 'i' to '1',
+        'u' to '^', 's' to '$', 'y' to '7', 't' to '+',
+        'l' to '!', 'b' to '8', 'g' to '9', 'z' to '2'
+    )
 
-    // Суффиксный набор для добивания
+    private val separators = listOf('-', '.', '_', '~')
     private val paddingChars = "ZXCVBNM2468!#%"
 
     private val translitMap = mapOf(
@@ -69,7 +60,6 @@ object MnemonicPasswordGenerator {
         COMPACT_INITIALS
     }
 
-    // ===== ТРАНСЛИТЕРАЦИЯ =====
     private fun transliterate(text: String): String {
         val result = StringBuilder()
         for (char in text) {
@@ -89,7 +79,6 @@ object MnemonicPasswordGenerator {
         return phrase.trim().replace(Regex("\\s+"), " ").lowercase()
     }
 
-    // ===== УНИКАЛЬНЫЙ ПОТОК =====
     private fun buildUniqueFlow(transliteratedPhrase: String): String {
         val seen = mutableSetOf<Char>()
         val result = StringBuilder()
@@ -108,12 +97,6 @@ object MnemonicPasswordGenerator {
         return result.toString()
     }
 
-    // ===== БЕЗОПАСНОЕ ДОБАВЛЕНИЕ СИМВОЛА =====
-    /**
-     * Добавляет символ в builder, если он свободен.
-     * Если занят — пытается добавить замену.
-     * Если замена занята — пропускает.
-     */
     private fun appendUniqueOrReplacement(
         builder: StringBuilder,
         rawChar: Char,
@@ -122,7 +105,6 @@ object MnemonicPasswordGenerator {
     ) {
         val lower = rawChar.lowercaseChar()
         
-        // Если символ свободен — добавляем
         if (lower !in usedChars && rawChar !in usedChars) {
             builder.append(rawChar)
             usedChars.add(lower)
@@ -130,7 +112,6 @@ object MnemonicPasswordGenerator {
             return
         }
         
-        // Если занят — пробуем замену
         val replacement = leetMap[lower]
         if (replacement != null && replacement !in usedChars) {
             builder.append(replacement)
@@ -138,11 +119,8 @@ object MnemonicPasswordGenerator {
             usedChars.add(replacement.lowercaseChar())
             return
         }
-        
-        // Если всё занято — пропускаем
     }
 
-    // ===== БЕЗОПАСНОЕ ДОБАВЛЕНИЕ РАЗДЕЛИТЕЛЯ =====
     private fun appendUniqueSeparator(
         builder: StringBuilder,
         usedChars: MutableSet<Char>
@@ -154,10 +132,72 @@ object MnemonicPasswordGenerator {
                 return
             }
         }
-        // Если все разделители заняты — не добавляем
     }
 
-    // ===== ДОБИВАНИЕ ДО TARGET LENGTH =====
+    // Распределённые замены по всему паролю
+    private fun applyDistributedReplacements(
+        source: String,
+        usedChars: MutableSet<Char>,
+        targetRatio: Double = 0.30,
+        variantOffset: Int = 0
+    ): String {
+        if (source.isEmpty()) return source
+        
+        val targetReplacementCount = maxOf(1, (source.length * targetRatio).toInt())
+        val result = StringBuilder()
+        val localUsed = usedChars.toMutableSet()
+        
+        val positions = mutableListOf<Int>()
+        val third = source.length / 3
+        
+        for (i in 0 until third) {
+            if ((i + variantOffset) % 3 == 0 && positions.size < targetReplacementCount) {
+                positions.add(i)
+            }
+        }
+        
+        for (i in third until 2 * third) {
+            if ((i + variantOffset) % 3 == 0 && positions.size < targetReplacementCount) {
+                positions.add(i)
+            }
+        }
+        
+        for (i in 2 * third until source.length) {
+            if ((i + variantOffset) % 3 == 0 && positions.size < targetReplacementCount) {
+                positions.add(i)
+            }
+        }
+        
+        for (i in source.indices) {
+            val char = source[i]
+            val lower = char.lowercaseChar()
+            
+            if (i in positions) {
+                val replacement = extendedLeetMap[lower]
+                if (replacement != null && replacement !in localUsed) {
+                    result.append(replacement)
+                    localUsed.add(replacement)
+                    localUsed.add(replacement.lowercaseChar())
+                } else if (lower !in localUsed) {
+                    result.append(char)
+                    localUsed.add(lower)
+                    localUsed.add(char)
+                }
+            } else {
+                if (lower !in localUsed && char !in localUsed) {
+                    result.append(char)
+                    localUsed.add(lower)
+                    localUsed.add(char)
+                }
+            }
+        }
+        
+        usedChars.clear()
+        usedChars.addAll(localUsed)
+        
+        return result.toString()
+    }
+
     private fun padToLength(
         password: String,
         targetLength: Int,
@@ -180,11 +220,6 @@ object MnemonicPasswordGenerator {
         return builder.toString()
     }
 
-    // ===== ФИНАЛЬНАЯ ОЧИСТКА =====
-    /**
-     * Проходит по паролю и удаляет/заменяет повторы.
-     * Гарантирует отсутствие дубликатов.
-     */
     private fun sanitizeToUniquePassword(
         password: String,
         targetLength: Int
@@ -200,22 +235,18 @@ object MnemonicPasswordGenerator {
                 usedChars.add(lower)
                 usedChars.add(char)
             } else {
-                // Пытаемся заменить
-                val replacement = leetMap[lower]
+                val replacement = extendedLeetMap[lower]
                 if (replacement != null && replacement !in usedChars) {
                     builder.append(replacement)
                     usedChars.add(replacement)
                     usedChars.add(replacement.lowercaseChar())
                 }
-                // Если замена невозможна — пропускаем
             }
         }
         
-        // Добиваем до targetLength, если нужно
         return padToLength(builder.toString(), targetLength, usedChars)
     }
 
-    // ===== ГЛАВНЫЙ МЕТОД: ГЕНЕРАЦИЯ ВАРИАНТОВ =====
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         
@@ -247,13 +278,11 @@ object MnemonicPasswordGenerator {
                 uniqueFlow = uniqueFlow
             )
             
-            //  принимаем только варианты без повторов
             if (result != null && !PasswordValidator.hasDuplicateCharacters(result.password)) {
                 results.add(result)
             }
         }
         
-        // Если вариантов меньше 5, пробуем fallback
         var offset = options.variantOffset
         var attempts = 0
         while (results.size < count && attempts < 20) {
@@ -278,7 +307,6 @@ object MnemonicPasswordGenerator {
         return results
     }
 
-    // ===== ГЕНЕРАЦИЯ С СТРАТЕГИЕЙ =====
     private fun generateWithStrategy(
         options: GenerationOptions,
         strategy: VariantStrategy,
@@ -294,17 +322,13 @@ object MnemonicPasswordGenerator {
         
         val usedChars = mutableSetOf<Char>()
         val builder = StringBuilder()
-        val activeLeetMap = if (options.includeLeet) leetMap else emptyMap()
         
         return when (strategy) {
             VariantStrategy.UNIQUE_FLOW_SOFT -> {
-                // Обрабатываем uniqueFlow посимвольно
-                for (char in uniqueFlow) {
-                    appendUniqueOrReplacement(builder, char, usedChars, softLeetMap)
-                }
-                steps.add("4. Уникальный поток + мягкие замены: '${builder}'")
+                val processedFlow = applyDistributedReplacements(uniqueFlow, usedChars, 0.30, options.variantOffset)
+                builder.append(processedFlow)
+                steps.add("4. Уникальный поток + распределённые замены: '${builder}'")
                 
-                // Заглавная первая буква
                 if (builder.isNotEmpty()) {
                     val firstChar = builder[0]
                     if (firstChar.isLetter() && firstChar.isLowerCase()) {
@@ -314,13 +338,11 @@ object MnemonicPasswordGenerator {
                     }
                 }
                 
-                // Добавляем сервис
                 if (options.includeServiceCode && options.serviceName.isNotBlank()) {
                     appendUniqueSeparator(builder, usedChars)
                     appendServiceCode(builder, options.serviceName, usedChars)
                 }
                 
-                // Добавляем ротацию
                 if (options.includeRotationCode) {
                     appendUniqueSeparator(builder, usedChars)
                     appendRotationCode(builder, options.rotationMonth, options.rotationYear, usedChars)
@@ -330,7 +352,6 @@ object MnemonicPasswordGenerator {
                 password = sanitizeToUniquePassword(password, options.targetLength)
                 steps.add("5. Финальная сборка: '$password'")
                 
-                //  ФИНАЛЬНАЯ ПРОВЕРКА
                 if (PasswordValidator.hasDuplicateCharacters(password)) {
                     return null
                 }
@@ -342,9 +363,8 @@ object MnemonicPasswordGenerator {
             }
             
             VariantStrategy.UNIQUE_FLOW_FULL -> {
-                for (char in uniqueFlow) {
-                    appendUniqueOrReplacement(builder, char, usedChars, leetMap)
-                }
+                val processedFlow = applyDistributedReplacements(uniqueFlow, usedChars, 0.30, options.variantOffset + 1)
+                builder.append(processedFlow)
                 steps.add("4. Уникальный поток + полные замены: '${builder}'")
                 
                 if (builder.isNotEmpty()) {
@@ -384,7 +404,6 @@ object MnemonicPasswordGenerator {
                 if (options.serviceName.isNotBlank()) {
                     appendServiceCode(builder, options.serviceName, usedChars)
                     
-                    // Заглавная первая буква
                     if (builder.isNotEmpty()) {
                         val firstChar = builder[0]
                         if (firstChar.isLetter() && firstChar.isLowerCase()) {
@@ -396,9 +415,8 @@ object MnemonicPasswordGenerator {
                     
                     appendUniqueSeparator(builder, usedChars)
                     
-                    for (char in uniqueFlow) {
-                        appendUniqueOrReplacement(builder, char, usedChars, leetMap)
-                    }
+                    val processedFlow = applyDistributedReplacements(uniqueFlow, usedChars, 0.30, options.variantOffset + 2)
+                    builder.append(processedFlow)
                     
                     if (options.includeRotationCode) {
                         appendUniqueSeparator(builder, usedChars)
@@ -426,9 +444,8 @@ object MnemonicPasswordGenerator {
                     
                     appendUniqueSeparator(builder, usedChars)
                     
-                    for (char in uniqueFlow) {
-                        appendUniqueOrReplacement(builder, char, usedChars, leetMap)
-                    }
+                    val processedFlow = applyDistributedReplacements(uniqueFlow, usedChars, 0.30, options.variantOffset + 3)
+                    builder.append(processedFlow)
                     
                     if (options.includeServiceCode && options.serviceName.isNotBlank()) {
                         appendUniqueSeparator(builder, usedChars)
@@ -454,9 +471,8 @@ object MnemonicPasswordGenerator {
                 val initials = transliteratedWords.mapNotNull { it.firstOrNull() }.joinToString("")
                 steps.add("4. Инициалы: '$initials'")
                 
-                for (char in initials) {
-                    appendUniqueOrReplacement(builder, char, usedChars, leetMap)
-                }
+                val processedFlow = applyDistributedReplacements(initials, usedChars, 0.30, options.variantOffset + 4)
+                builder.append(processedFlow)
                 
                 if (builder.isNotEmpty()) {
                     val firstChar = builder[0]
@@ -492,7 +508,6 @@ object MnemonicPasswordGenerator {
         }
     }
 
-    // ===== ДОБАВЛЕНИЕ КОДА СЕРВИСА =====
     private fun appendServiceCode(
         builder: StringBuilder,
         serviceName: String,
@@ -502,18 +517,15 @@ object MnemonicPasswordGenerator {
         val cleaned = transliterated.filter { it.isLetterOrDigit() }
         if (cleaned.isEmpty()) return
         
-        // Берём уникальные буквы сервиса
         for (char in cleaned) {
             if (builder.length >= 4) break
             appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
         }
         
-        // Добавляем длину сервиса
         val lengthDigit = cleaned.length.toString().first()
         appendUniqueOrReplacement(builder, lengthDigit, usedChars, emptyMap())
     }
 
-    // ===== ДОБАВЛЕНИЕ КОДА РОТАЦИИ =====
     private fun appendRotationCode(
         builder: StringBuilder,
         month: Int?,
@@ -526,12 +538,10 @@ object MnemonicPasswordGenerator {
         val mm = String.format("%02d", currentMonth)
         val yy = String.format("%02d", currentYear)
         
-        // Проверяем, есть ли эти цифры уже в пароле
         val allDigits = mm + yy
         val hasConflict = allDigits.any { it in usedChars }
         
         if (hasConflict) {
-            // Используем формат QYY
             val quarter = ((currentMonth - 1) / 3) + 1
             appendUniqueOrReplacement(builder, 'Q', usedChars, emptyMap())
             appendUniqueOrReplacement(builder, quarter.toString().first(), usedChars, emptyMap())
@@ -539,14 +549,12 @@ object MnemonicPasswordGenerator {
                 appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
             }
         } else {
-            // Используем формат MMYY
             for (char in mm + yy) {
                 appendUniqueOrReplacement(builder, char, usedChars, emptyMap())
             }
         }
     }
 
-    // ===== FALLBACK ВАРИАНТ =====
     private fun generateFallbackVariant(
         options: GenerationOptions,
         normalizedPhrase: String,
@@ -560,16 +568,14 @@ object MnemonicPasswordGenerator {
         
         val usedChars = mutableSetOf<Char>()
         val builder = StringBuilder()
-        val activeLeetMap = if (useFullLeet) leetMap else softLeetMap
         
         if (serviceFirst && options.serviceName.isNotBlank()) {
             appendServiceCode(builder, options.serviceName, usedChars)
             appendUniqueSeparator(builder, usedChars)
         }
         
-        for (char in uniqueFlow) {
-            appendUniqueOrReplacement(builder, char, usedChars, activeLeetMap)
-        }
+        val processedFlow = applyDistributedReplacements(uniqueFlow, usedChars, 0.30, offset)
+        builder.append(processedFlow)
         
         if (!serviceFirst && options.includeServiceCode && options.serviceName.isNotBlank()) {
             appendUniqueSeparator(builder, usedChars)
@@ -597,7 +603,6 @@ object MnemonicPasswordGenerator {
         )
     }
 
-    // ===== ПОСТРОЕНИЕ ПОДСКАЗКИ =====
     private fun buildHint(
         normalizedPhrase: String,
         options: GenerationOptions,
@@ -626,7 +631,6 @@ object MnemonicPasswordGenerator {
         return parts.joinToString(" + ")
     }
 
-    // ===== РАСЧЁТ СЛОЖНОСТИ =====
     private fun calculateStrength(password: String): PasswordGenerator.Strength {
         var score = 0
         if (password.length >= 12) score++
