@@ -42,6 +42,9 @@ fun VaultListScreen(
     var showSearchField by remember { mutableStateOf(false) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    
+    // Состояние для QR-диалога
+    var showQrDialog by remember { mutableStateOf<Entry?>(null) }
 
     val filteredEntries = remember(entries, searchQuery, favoritesOnly) {
         var result = entries
@@ -62,7 +65,6 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    //  кнопка поиска открывает/закрывает поле
                     IconButton(onClick = { 
                         showSearchField = !showSearchField
                         if (showSearchField.not()) searchQuery = ""
@@ -73,7 +75,6 @@ fun VaultListScreen(
                         )
                     }
                     
-                    //  Избранное
                     IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
                         Icon(
                             if (favoritesOnly) Icons.Default.Star else Icons.Outlined.Star,
@@ -82,7 +83,6 @@ fun VaultListScreen(
                         )
                     }
                     
-                    //  Меню "⋮"
                     Box {
                         IconButton(onClick = { showMenu = true }) {
                             Icon(Icons.Default.MoreVert, "Меню")
@@ -168,7 +168,6 @@ fun VaultListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            //  ПОЛЕ ПОИСКА: показывается только при активации
             if (showSearchField) {
                 OutlinedTextField(
                     value = searchQuery,
@@ -240,7 +239,8 @@ fun VaultListScreen(
                         EntryCard(
                             entry = entry,
                             onClick = { onNavigateToEntry(entry.id) },
-                            onFavoriteClick = { viewModel.toggleFavorite(entry) }
+                            onFavoriteClick = { viewModel.toggleFavorite(entry) },
+                            onQrClick = { showQrDialog = entry }
                         )
                     }
                 }
@@ -272,14 +272,25 @@ fun VaultListScreen(
             }
         )
     }
+
+    // QR-диалог
+    if (showQrDialog != null) {
+        QrCodeDialog(
+            entry = showQrDialog!!,
+            onDismiss = { showQrDialog = null }
+        )
+    }
 }
 
 @Composable
 private fun EntryCard(
     entry: Entry,
     onClick: () -> Unit,
-    onFavoriteClick: () -> Unit
+    onFavoriteClick: () -> Unit,
+    onQrClick: () -> Unit
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -348,12 +359,39 @@ private fun EntryCard(
                     }
                 }
             }
-            IconButton(onClick = onFavoriteClick) {
-                Icon(
-                    if (entry.isFavorite) Icons.Default.Star else Icons.Outlined.Star,
-                    "Избранное",
-                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.MoreVert, "Меню записи")
+                }
+                
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("QR-код") },
+                        onClick = {
+                            showMenu = false
+                            onQrClick()
+                        },
+                        leadingIcon = { Icon(Icons.Default.QrCode, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Избранное") },
+                        onClick = {
+                            showMenu = false
+                            onFavoriteClick()
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (entry.isFavorite) Icons.Default.Star else Icons.Outlined.Star,
+                                null,
+                                tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
             }
         }
     }
