@@ -37,8 +37,6 @@ fun RotationScreen(
     var showShuffleDialog by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
     var daysThreshold by remember { mutableIntStateOf(7) }
-    
-    //  Состояние для ошибок
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
@@ -172,7 +170,6 @@ fun RotationScreen(
         }
     }
 
-    //  Обработка результата replacePassword()
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
             serviceName = entry.service,
@@ -181,7 +178,7 @@ fun RotationScreen(
             rotationMonth = null,
             rotationYear = null,
             onDismiss = { selectedEntry = null },
-            onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
+            onPasswordReplaced = { newPassword: String, newHint: String?, newGenerationType: String, mnemonicPhrase: String?, mnemonicOptions: String? ->
                 viewModel.replacePassword(
                     entryId = entry.id,
                     newPassword = newPassword,
@@ -196,7 +193,6 @@ fun RotationScreen(
                             }
                             is PasswordOperationResult.Error -> {
                                 errorMessage = result.message
-                                // НЕ закрываем диалог — пользователь должен увидеть ошибку
                             }
                         }
                     }
@@ -205,7 +201,6 @@ fun RotationScreen(
         )
     }
 
-    //  Обработка результата bulkReplacePasswords()
     if (showBulkRotation) {
         BulkRotationDialog(
             entries = filteredEntries,
@@ -218,7 +213,6 @@ fun RotationScreen(
                         }
                         is PasswordOperationResult.Error -> {
                             errorMessage = result.message
-                            // НЕ закрываем диалог
                         }
                     }
                 }
@@ -236,7 +230,6 @@ fun RotationScreen(
         )
     }
 
-    //  Диалог показа ошибки
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { errorMessage = null },
