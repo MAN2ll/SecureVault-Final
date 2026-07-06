@@ -1,6 +1,5 @@
 package com.securevault.ui
 
-import com.securevault.ui.screens.ChangeMasterPasswordScreen
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -79,10 +78,10 @@ fun SecureVaultNavHost() {
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             VaultListScreen(
                 onNavigateToEntry = { entryId ->
-                    navController.navigate("editor/$entryId")
+                    navController.navigate("editor/$entryId/${profileId ?: return@VaultListScreen}")
                 },
                 onNavigateToNewEntry = {
-                    navController.navigate("editor/new")
+                    navController.navigate("editor/new/${profileId ?: return@VaultListScreen}")
                 },
                 onNavigateToAudit = {
                     navController.navigate("audit")
@@ -99,16 +98,15 @@ fun SecureVaultNavHost() {
                 onNavigateToMnemonicGenerator = {
                     navController.navigate("mnemonic")
                 },
-                onNavigateToQrScanner = {  // НОВЫЙ ПАРАМЕТР
+                onNavigateToQrScanner = {
                     navController.navigate("qr_scanner")
                 }
             )
         }
 
-        composable("editor/{id}") { backStackEntry ->
+        composable("editor/{id}/{profileId}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
-            val vaultEntry = navController.getBackStackEntry("vault/{profileId}")
-            val profileId = vaultEntry.arguments?.getString("profileId")?.toIntOrNull()
+            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
 
             EntryEditorScreen(
                 id = id,
@@ -125,15 +123,14 @@ fun SecureVaultNavHost() {
             RotationScreen(onBack = { navController.popBackStack() })
         }
 
-       composable("settings") {
-        SettingsScreen(
-            onBack = { navController.popBackStack() },
-            onNavigateToExport = { navController.navigate("export") },
-            onNavigateToChangePassword = { navController.navigate("change_password") }
-        )
-    }
+        composable("settings") {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToExport = { navController.navigate("export") },
+                onNavigateToChangePassword = { navController.navigate("change_password") }
+            )
+        }
 
-        //  НОВЫЙ ЭКРАН: Смена мастер-пароля
         composable("change_password") {
             ChangeMasterPasswordScreen(
                 onBack = { navController.popBackStack() }
@@ -147,6 +144,7 @@ fun SecureVaultNavHost() {
         composable("export") {
             ExportImportScreen(onBack = { navController.popBackStack() })
         }
+        
         composable("qr_scanner") {
             QrScannerScreen(onBack = { navController.popBackStack() })
         }
