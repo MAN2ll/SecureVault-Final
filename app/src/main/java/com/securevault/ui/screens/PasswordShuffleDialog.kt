@@ -2,7 +2,6 @@
 
 package com.securevault.ui.screens
 
-import com.securevault.utils.PasswordValidator
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.PasswordShuffleAssignment
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
@@ -36,11 +36,9 @@ fun PasswordShuffleDialog(
     var isProcessing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    //  НОВОЕ: Состояние для ручного редактирования
     var editingAssignmentIndex by remember { mutableIntStateOf(-1) }
     var showDonorPicker by remember { mutableStateOf(false) }
 
-    //  Проверка валидности всех назначений
     val allAssignmentsValid = remember(assignments) {
         assignments.all { it.isValid }
     }
@@ -114,7 +112,6 @@ fun PasswordShuffleDialog(
                             Text("Схема перемешивания:", fontWeight = FontWeight.Bold)
                             Text("Каждый сервис отдаёт свой пароль другому сервису.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                            //  Отображение схемы с возможностью редактирования
                             assignments.forEachIndexed { index, assignment ->
                                 val target = entries.find { it.id == assignment.targetEntryId }
                                 val source = entries.find { it.id == assignment.sourceEntryId }
@@ -141,7 +138,6 @@ fun PasswordShuffleDialog(
                                                 Text(target?.service ?: "?", fontWeight = FontWeight.SemiBold)
                                                 Text(target?.username ?: "", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            //  Кнопка редактирования
                                             IconButton(
                                                 onClick = {
                                                     editingAssignmentIndex = index
@@ -152,11 +148,10 @@ fun PasswordShuffleDialog(
                                             }
                                         }
 
-                                        //  Отображение ошибки, если есть
                                         if (!assignment.isValid && assignment.validationMessage != null) {
                                             Spacer(Modifier.height(4.dp))
                                             Text(
-                                                " ${assignment.validationMessage}",
+                                                "${assignment.validationMessage}",
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.error,
                                                 fontWeight = FontWeight.Medium
@@ -226,16 +221,19 @@ fun PasswordShuffleDialog(
                             scope.launch {
                                 isProcessing = true
                                 viewModel.applyPasswordShuffle(assignments) { result ->
-                                    if (result.success) {
-                                        onShuffleApplied()
-                                    } else {
-                                        errorMessage = result.errorMessage
+                                    when (result) {
+                                        is PasswordOperationResult.Success -> {
+                                            isProcessing = false
+                                            onShuffleApplied()
+                                        }
+                                        is PasswordOperationResult.Error -> {
+                                            errorMessage = result.message
+                                            isProcessing = false
+                                        }
                                     }
-                                    isProcessing = false
                                 }
                             }
                         },
-                        //  Отключено, если есть невалидные назначения
                         enabled = assignments.isNotEmpty() && allAssignmentsValid && !isProcessing
                     ) {
                         Text("Применить")
@@ -257,7 +255,6 @@ fun PasswordShuffleDialog(
         modifier = Modifier.fillMaxWidth(0.95f)
     )
 
-    //  Диалог выбора донора
     if (showDonorPicker && editingAssignmentIndex >= 0) {
         DonorPickerDialog(
             assignments = assignments,
@@ -267,14 +264,12 @@ fun PasswordShuffleDialog(
                 val currentAssignment = assignments[editingAssignmentIndex]
                 val targetEntryId = currentAssignment.targetEntryId
 
-                // Валидация через ViewModel
                 val validationResult = viewModel.validatePasswordShuffleAssignment(
                     targetEntryId = targetEntryId,
                     sourceEntryId = newSourceEntryId,
                     currentAssignments = assignments
                 )
 
-                // Обновление assignments
                 assignments = assignments.toMutableList().apply {
                     set(
                         editingAssignmentIndex,
@@ -298,7 +293,6 @@ fun PasswordShuffleDialog(
     }
 }
 
-//  НОВЫЙ ДИАЛОГ: Выбор донора
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DonorPickerDialog(
@@ -311,7 +305,6 @@ private fun DonorPickerDialog(
     val currentAssignment = assignments[editingIndex]
     val targetEntry = availableEntries.find { it.id == currentAssignment.targetEntryId }
 
-    // Доступные доноры: все записи, кроме текущей и уже назначенных
     val usedSourceIds = assignments.mapIndexedNotNull { index, assignment ->
         if (index != editingIndex) assignment.sourceEntryId else null
     }
