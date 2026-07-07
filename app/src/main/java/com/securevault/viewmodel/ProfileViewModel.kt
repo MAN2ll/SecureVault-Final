@@ -45,7 +45,7 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    // ✅ НОВЫЙ МЕТОД: Проверка, есть ли записи в профиле
+    //  Проверка, есть ли записи в профиле
     fun hasEntriesInProfile(profileId: Int, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val entries = repository.getByProfileId(profileId)
@@ -53,14 +53,13 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    // ✅ НОВЫЙ МЕТОД: Удаление профиля с проверкой
+    //  Удаление профиля с проверкой
     fun deleteProfile(
         profileId: Int,
         onResult: (PasswordOperationResult) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                // Проверяем, есть ли записи
                 val entries = repository.getByProfileId(profileId)
                 if (entries.isNotEmpty()) {
                     onResult(PasswordOperationResult.Error(
