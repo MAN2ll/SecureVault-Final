@@ -74,9 +74,11 @@ fun SecureVaultNavHost() {
             )
         }
 
+        // ✅ ИСПРАВЛЕНО: Передаем profileId в VaultListScreen
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             VaultListScreen(
+                profileId = profileId, // <-- ВАЖНО
                 onNavigateToEntry = { entryId ->
                     navController.navigate("editor/$entryId/${profileId ?: return@VaultListScreen}")
                 },
