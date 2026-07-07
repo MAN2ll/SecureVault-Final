@@ -29,9 +29,17 @@ import com.securevault.viewmodel.VaultViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuditScreen(
+    profileId: Int?,
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
+    // ✅ Устанавливаем профиль при входе
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
+
     val entries by viewModel.entries.collectAsState()
     val context = LocalContext.current
 
@@ -39,7 +47,6 @@ fun AuditScreen(
     var deepAuditResults by remember { mutableStateOf<DeepAuditResults?>(null) }
     var isDeepAuditLoading by remember { mutableStateOf(false) }
 
-    //  ПОВЕРХНОСТНЫЙ АУДИТ (без расшифровки паролей)
     val surfaceAudit = remember(entries) {
         performSurfaceAudit(entries)
     }
@@ -66,7 +73,6 @@ fun AuditScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Общий рейтинг
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -98,7 +104,6 @@ fun AuditScreen(
                 }
             }
 
-            // Метрики поверхностного аудита
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -138,10 +143,6 @@ fun AuditScreen(
                 )
             }
 
-            //  Убрана метрика "возможно слабые пароли"
-            // Слабость паролей определяется только в глубоком аудите
-
-            // Кнопка глубокого аудита
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -171,12 +172,10 @@ fun AuditScreen(
                 }
             }
 
-            // Результаты глубокого аудита
             if (deepAuditResults != null) {
                 DeepAuditResultsCard(results = deepAuditResults!!)
             }
 
-            // Рекомендации
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -204,7 +203,6 @@ fun AuditScreen(
         }
     }
 
-    // Диалог подтверждения мастер-пароля для глубокого аудита
     if (showDeepAuditDialog) {
         ConfirmMasterPasswordForAudit(
             context = context,
@@ -234,9 +232,6 @@ fun AuditScreen(
     }
 }
 
-// ===== ПОВЕРХНОСТНЫЙ АУДИТ =====
-
-// Убрано поле potentiallyWeakCount
 data class SurfaceAuditResults(
     val totalEntries: Int,
     val expiredCount: Int,
@@ -264,8 +259,6 @@ private fun performSurfaceAudit(entries: List<com.securevault.data.Entry>): Surf
     val fingerprints = entries.mapNotNull { it.passwordFingerprint }
     val duplicateFingerprintCount = fingerprints.size - fingerprints.toSet().size
 
-    //  Убрана приблизительная оценка слабых паролей по длине encryptedPassword
-
     return SurfaceAuditResults(
         totalEntries = entries.size,
         expiredCount = expiredCount,
@@ -274,8 +267,6 @@ private fun performSurfaceAudit(entries: List<com.securevault.data.Entry>): Surf
         duplicateFingerprintCount = duplicateFingerprintCount
     )
 }
-
-// ===== ГЛУБОКИЙ АУДИТ =====
 
 data class DeepAuditResults(
     val shortPasswords: List<String>,
@@ -339,8 +330,6 @@ private object LocalContextProvidedHolder {
     lateinit var context: Context
 }
 
-// ===== UI КОМПОНЕНТЫ =====
-
 @Composable
 private fun MetricCard(
     modifier: Modifier = Modifier,
@@ -400,7 +389,7 @@ private fun DeepAuditResultsCard(results: DeepAuditResults) {
 
             if (!hasIssues) {
                 Text(
-                    "✓ Все пароли прошли проверку",
+                    "Все пароли прошли проверку",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontWeight = FontWeight.Medium
@@ -483,9 +472,6 @@ private fun AuditIssueItem(
     }
 }
 
-// ===== РЕКОМЕНДАЦИИ =====
-
-//  Убрана рекомендация про potentiallyWeakCount
 private fun buildRecommendations(
     surface: SurfaceAuditResults,
     deep: DeepAuditResults?
@@ -522,8 +508,6 @@ private fun buildRecommendations(
 
     return recommendations
 }
-
-// ===== ДИАЛОГ ПОДТВЕРЖДЕНИЯ =====
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
