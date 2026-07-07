@@ -221,14 +221,12 @@ fun PasswordShuffleDialog(
                             scope.launch {
                                 isProcessing = true
                                 viewModel.applyPasswordShuffle(assignments) { result ->
-                                    when (result) {
-                                        is PasswordOperationResult.Success -> {
-                                            isProcessing = false
+                                    when {
+                                        result.success -> {
                                             onShuffleApplied()
                                         }
-                                        is PasswordOperationResult.Error -> {
-                                            errorMessage = result.message
-                                            isProcessing = false
+                                        else -> {
+                                            errorMessage = result.errorMessage
                                         }
                                     }
                                 }
