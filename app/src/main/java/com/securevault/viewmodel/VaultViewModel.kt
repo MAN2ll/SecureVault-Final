@@ -5,14 +5,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
+import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,12 +27,6 @@ class VaultViewModel @Inject constructor(
     private val repository: VaultRepository,
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
-
-    //  ПРАВИЛЬНЫЙ ПОРЯДОК: сначала объявляем
-    private val _currentProfileId = MutableStateFlow<Int?>(null)
-    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
-
-    val favoritesOnly = MutableStateFlow(false)
 
     //  Фильтрация записей по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
@@ -48,7 +43,13 @@ class VaultViewModel @Inject constructor(
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
 
+    val favoritesOnly = MutableStateFlow(false)
+
+    private val _currentProfileId = MutableStateFlow<Int?>(null)
+    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
+
     init {
+        // Перезагружаем rotationEntries при смене профиля
         viewModelScope.launch {
             _currentProfileId.collect { profileId ->
                 if (profileId != null) {
@@ -153,7 +154,7 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Удаление всех записей профиля
+    //  Удаление всех записей профиля
     fun deleteAllEntriesInProfile(
         profileId: Int,
         onResult: (PasswordOperationResult) -> Unit
@@ -201,7 +202,7 @@ class VaultViewModel @Inject constructor(
                 }
 
                 val now = System.currentTimeMillis()
-                val encryptedPwd = com.securevault.utils.CryptoUtils.encrypt(newPassword)
+                val encryptedPwd = CryptoUtils.encrypt(newPassword)
                 val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
                 val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
 
@@ -244,7 +245,7 @@ class VaultViewModel @Inject constructor(
                         val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
                         if (validation.isValid) {
                             val now = System.currentTimeMillis()
-                            val encryptedPwd = com.securevault.utils.CryptoUtils.encrypt(newPassword)
+                            val encryptedPwd = CryptoUtils.encrypt(newPassword)
                             val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
                             val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
 
@@ -271,6 +272,96 @@ class VaultViewModel @Inject constructor(
             } catch (e: Exception) {
                 onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
+        }
+    }
+
+    //  Циклическая перестановка паролей с предварительной проверкой
+    fun shufflePasswords(
+        entries: List<Entry>,
+        onResult: (PasswordOperationResult) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            if (entries.size < 2) {
+                onResult(PasswordOperationResult.Error("Нужно минимум 2 записи для перестановки"))
+                return@launch
+            }
+
+            // 1. Расшифровываем все пароли заранее
+            val decryptedPasswords = entries.map { entry ->
+                try {
+                    entry.password
+                } catch (e: Exception) {
+                    throw Exception("Не удалось расшифровать пароль для '${entry.service}': ${e.message}")
+                }
+            }
+
+            val now = System.currentTimeMillis()
+            val updates = mutableListOf<Triple<Entry, String, String>>() // targetEntry, encryptedNewPassword, newFingerprint
+
+            // 2. ПРЕДВАРИТЕЛЬНАЯ ПРОВЕРКА (Pre-flight check)
+            for (i in entries.indices) {
+                val targetEntry = entries[i]
+                val sourceIndex = (i + 1) % entries.size
+                val newPassword = decryptedPasswords[sourceIndex]
+
+                // Если пароль не меняется (совпадает с текущим), пропускаем проверку
+                if (newPassword == targetEntry.password) continue
+
+                // Проверяем валидацию (включая проверку истории паролей!)
+                val validation = PasswordValidator.validateNewPasswordForEntry(
+                    targetEntry, newPassword, appContext
+                )
+
+                if (!validation.isValid) {
+                    // Если хоть одна проверка не прошла — отменяем ВСЮ операцию
+                    onResult(PasswordOperationResult.Error(
+                        "Невозможно выполнить ротацию: '${targetEntry.service}' -> ${validation.errorMessage}"
+                    ))
+                    return@launch
+                }
+
+                // Готовим данные для обновления
+                val encryptedPwd = CryptoUtils.encrypt(newPassword)
+                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+                updates.add(Triple(targetEntry, encryptedPwd, newFingerprint))
+            }
+
+            // 3. Если все проверки прошли — применяем изменения
+            val oldFingerprints = entries.map {
+                PasswordValidator.buildPasswordFingerprint(it.password, appContext)
+            }
+
+            for (i in entries.indices) {
+                val targetEntry = entries[i]
+
+                // Если пароль не изменился, пропускаем запись в БД
+                if (i >= updates.size || updates[i].first.id != targetEntry.id) continue
+
+                val (_, encryptedPwd, newFingerprint) = updates[i]
+                val oldFingerprint = oldFingerprints[i]
+
+                val updatedEntry = targetEntry.addToPasswordHistory(
+                    oldPassword = targetEntry.password,
+                    generationType = targetEntry.generationType,
+                    oldPasswordFingerprint = oldFingerprint
+                ).copy(
+                    encryptedPassword = encryptedPwd,
+                    passwordFingerprint = newFingerprint,
+                    lastChanged = now,
+                    generationType = "shuffled",
+                    nextRotationDate = if (targetEntry.rotationEnabled) {
+                        now + (targetEntry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                    } else {
+                        null
+                    }
+                )
+
+                repository.update(updatedEntry)
+            }
+
+            onResult(PasswordOperationResult.Success)
+        } catch (e: Exception) {
+            onResult(PasswordOperationResult.Error("Ошибка перестановки: ${e.message}"))
         }
     }
 
@@ -378,7 +469,7 @@ class VaultViewModel @Inject constructor(
                     }
 
                     val now = System.currentTimeMillis()
-                    val encryptedPwd = com.securevault.utils.CryptoUtils.encrypt(newPassword)
+                    val encryptedPwd = CryptoUtils.encrypt(newPassword)
                     val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
                     val oldFingerprint = PasswordValidator.buildPasswordFingerprint(targetEntry.password, appContext)
 
