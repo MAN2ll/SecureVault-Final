@@ -25,6 +25,13 @@ enum class RotationFilter(val label: String) {
     ALL("Все с ротацией")
 }
 
+//  Типы сортировки
+enum class RotationSort(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    BY_DATE("По сроку", Icons.Default.Schedule),
+    BY_NAME("По названию", Icons.Default.SortByAlpha),
+    BY_TYPE("По типу", Icons.Default.Tag)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationScreen(
@@ -32,7 +39,6 @@ fun RotationScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // ✅ Устанавливаем профиль при входе
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
@@ -44,12 +50,16 @@ fun RotationScreen(
     var showBulkRotation by remember { mutableStateOf(false) }
     var showShuffleDialog by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(RotationFilter.EXPIRED) }
+    var currentSort by remember { mutableStateOf(RotationSort.BY_DATE) }
     var daysThreshold by remember { mutableIntStateOf(7) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
-    val filteredEntries = remember(allRotationEntries, currentFilter, daysThreshold) {
+    //  Фильтрация + сортировка
+    val filteredEntries = remember(allRotationEntries, currentFilter, currentSort, daysThreshold) {
         val now = System.currentTimeMillis()
-        when (currentFilter) {
+        
+        var result = when (currentFilter) {
             RotationFilter.EXPIRED -> {
                 allRotationEntries.filter { it.nextRotationDate != null && it.nextRotationDate <= now }
             }
@@ -65,6 +75,21 @@ fun RotationScreen(
                 allRotationEntries
             }
         }
+        
+        //  Сортировка
+        result = when (currentSort) {
+            RotationSort.BY_DATE -> {
+                result.sortedWith(compareBy({ it.nextRotationDate ?: Long.MAX_VALUE }, { it.service.lowercase() }))
+            }
+            RotationSort.BY_NAME -> {
+                result.sortedBy { it.service.lowercase() }
+            }
+            RotationSort.BY_TYPE -> {
+                result.sortedWith(compareBy({ it.generationType }, { it.service.lowercase() }))
+            }
+        }
+        
+        result
     }
 
     Scaffold(
@@ -74,6 +99,41 @@ fun RotationScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
+                    }
+                },
+                actions = {
+                    //  Меню сортировки
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.Default.Sort, "Сортировка")
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            RotationSort.entries.forEach { sort ->
+                                DropdownMenuItem(
+                                    text = { Text(sort.label) },
+                                    onClick = {
+                                        currentSort = sort
+                                        showSortMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            sort.icon,
+                                            null,
+                                            tint = if (currentSort == sort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (currentSort == sort) {
+                                            Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             )
@@ -116,7 +176,10 @@ fun RotationScreen(
                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(text = "Найдено: ${filteredEntries.size} записей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Найдено: ${filteredEntries.size} записей", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(text = "Сортировка: ${currentSort.label}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+                    }
                 }
             }
 
