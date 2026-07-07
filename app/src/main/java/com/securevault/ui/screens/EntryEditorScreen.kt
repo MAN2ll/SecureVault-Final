@@ -53,15 +53,8 @@ fun EntryEditorScreen(
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     
-    // ✅ ИСПРАВЛЕНО: Используем profileId из параметров как fallback, если currentProfileId ещё null
-    val effectiveProfileId = currentProfileId ?: profileId
-
-    // ✅ ИСПРАВЛЕНО: Если profileId передан, но currentProfileId ещё null, устанавливаем его
-    LaunchedEffect(profileId) {
-        if (profileId != null && currentProfileId == null) {
-            viewModel.setCurrentProfile(profileId)
-        }
-    }
+    // ✅ ПРАВИЛЬНО: Используем currentProfileId, если profileId не передан
+    val effectiveProfileId = profileId ?: currentProfileId
 
     val profiles by profileViewModel.profiles.collectAsState()
     val profileName = remember(effectiveProfileId, profiles) {
@@ -88,8 +81,6 @@ fun EntryEditorScreen(
     var showMnemonicDialog by remember { mutableStateOf(false) }
     var showError by remember { mutableStateOf<String?>(null) }
     var showSuccess by remember { mutableStateOf(false) }
-    
-    // ✅ НОВОЕ: Состояние для AlertDialog ошибок
     var showSaveErrorDialog by remember { mutableStateOf(false) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -143,9 +134,10 @@ fun EntryEditorScreen(
                             return@IconButton
                         }
                         
+                        // ✅ ПРОВЕРКА: профиль должен быть выбран
                         val finalProfileId = effectiveProfileId
                         if (finalProfileId == null) {
-                            saveErrorMessage = "Профиль не выбран"
+                            saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей и войдите в профиль."
                             showSaveErrorDialog = true
                             return@IconButton
                         }
@@ -559,7 +551,6 @@ fun EntryEditorScreen(
         )
     }
 
-    // ✅ НОВОЕ: AlertDialog для ошибок сохранения
     if (showSaveErrorDialog) {
         AlertDialog(
             onDismissRequest = { showSaveErrorDialog = false },
