@@ -53,7 +53,7 @@ fun EntryEditorScreen(
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     
-    // ✅ ПРАВИЛЬНО: Используем currentProfileId, если profileId не передан
+    //  Используем currentProfileId, если profileId не передан
     val effectiveProfileId = profileId ?: currentProfileId
 
     val profiles by profileViewModel.profiles.collectAsState()
