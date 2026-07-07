@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 data class Profile(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val passwordHash: String, // SHA-256 хэш пароля профиля
+    val passwordHash: String,
+    val passwordSalt: String, // : соль для хэширования
     val createdAt: Long = System.currentTimeMillis()
 )
