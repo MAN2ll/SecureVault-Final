@@ -45,24 +45,20 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
-    profileId: Int?,  //  принимаем profileId из маршрута
+    profileId: Int?,
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val clipboardManager = LocalClipboardManager.current
-
-    //  Используем переданный profileId, fallback на currentProfileId
-    val currentProfileId by viewModel.currentProfileId.collectAsState()
-    val effectiveProfileId = profileId ?: currentProfileId
-
-    //  Устанавливаем профиль в ViewModel
+    //  Устанавливаем профиль при входе
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
         }
     }
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val clipboardManager = LocalClipboardManager.current
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -107,25 +103,7 @@ fun QrScannerScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (effectiveProfileId == null) {
-                //  Если профиль не выбран — показываем ошибку
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Warning, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(16.dp))
-                        Text("Профиль не выбран", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Вернитесь в список профилей и войдите в профиль", fontSize = 12.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = onBack) {
-                            Text("Назад")
-                        }
-                    }
-                }
-            } else if (!hasCameraPermission) {
+            if (!hasCameraPermission) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -176,21 +154,15 @@ fun QrScannerScreen(
                                                     if (rawValue != null && scannedToken == null) {
                                                         scannedToken = rawValue
 
-                                                        //  Используем effectiveProfileId
-                                                        val profileIdToUse = effectiveProfileId
-                                                        if (profileIdToUse != null) {
-                                                            val result = SecureQrManager.validateQrToken(rawValue, profileIdToUse, ctx)
+                                                        val currentProfileId = viewModel.currentProfileId.value
+                                                        if (currentProfileId != null) {
+                                                            val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, ctx)
                                                             validationResult = result
 
                                                             if (result.isValid && result.entryId != null) {
                                                                 viewModel.findEntryById(result.entryId)?.let { entry ->
-                                                                    //  ПРОВЕРКА: запись должна принадлежать текущему профилю
-                                                                    if (entry.profileId != profileIdToUse) {
-                                                                        errorMessage = "Запись принадлежит другому профилю"
-                                                                    } else {
-                                                                        foundEntry = entry
-                                                                        showPasswordDialog = true
-                                                                    }
+                                                                    foundEntry = entry
+                                                                    showPasswordDialog = true
                                                                 } ?: run {
                                                                     errorMessage = "Запись не найдена"
                                                                 }
@@ -253,7 +225,6 @@ fun QrScannerScreen(
         }
     }
 
-    // Диалог подтверждения мастер-пароля
     if (showPasswordDialog && foundEntry != null) {
         ConfirmMasterPasswordDialogForQr(
             context = context,
@@ -272,7 +243,6 @@ fun QrScannerScreen(
         )
     }
 
-    // Диалог результата после подтверждения
     if (showResultDialog && foundEntry != null && confirmedPassword != null) {
         QrResultDialog(
             entry = foundEntry!!,
@@ -288,7 +258,6 @@ fun QrScannerScreen(
         )
     }
 
-    // AlertDialog для ошибок
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { 
