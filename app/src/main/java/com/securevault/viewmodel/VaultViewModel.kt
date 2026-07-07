@@ -24,12 +24,27 @@ class VaultViewModel @Inject constructor(
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
 
-    val entries: StateFlow<List<Entry>> = repository.getAllEntries()
-    val rotationEntries: StateFlow<List<Entry>> = repository.getRotationEntries()
+    //  Используем repository.allEntries (свойство, а не метод)
+    val entries: StateFlow<List<Entry>> = repository.allEntries
+    
+    //  Используем getEntriesWithRotation()
+    private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
+    val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
+    
     val favoritesOnly = MutableStateFlow(false)
 
     private val _currentProfileId = MutableStateFlow<Int?>(null)
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
+
+    init {
+        loadRotationEntries()
+    }
+
+    private fun loadRotationEntries() {
+        viewModelScope.launch {
+            _rotationEntries.value = repository.getEntriesWithRotation()
+        }
+    }
 
     fun setCurrentProfile(profileId: Int?) {
         _currentProfileId.value = profileId
@@ -45,7 +60,14 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Сохранение с callback
+    // Для совместимости с другими файлами
+    fun insert(entry: Entry) {
+        viewModelScope.launch {
+            repository.insert(entry)
+        }
+    }
+
+    //  Сохранение с callback
     fun insertEntry(
         entry: Entry,
         onResult: (PasswordOperationResult) -> Unit
@@ -78,11 +100,7 @@ class VaultViewModel @Inject constructor(
     }
 
     fun findEntryById(entryId: String): Entry? {
-        var result: Entry? = null
-        viewModelScope.launch {
-            result = repository.getById(entryId)
-        }
-        return result
+        return repository.getByIdBlocking(entryId)
     }
 
     fun replacePassword(
@@ -140,13 +158,14 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    // Принимает List<Triple<String, String, String>>
     fun bulkReplacePasswords(
-        replacements: List<Pair<String, String>>,
+        replacements: List<Triple<String, String, String>>, // entryId, newPassword, generationType
         onResult: ((PasswordOperationResult) -> Unit)? = null
     ) {
         viewModelScope.launch {
             try {
-                for ((entryId, newPassword) in replacements) {
+                for ((entryId, newPassword, generationType) in replacements) {
                     val entry = repository.getById(entryId)
                     if (entry != null) {
                         val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
@@ -164,7 +183,7 @@ class VaultViewModel @Inject constructor(
                                 encryptedPassword = encryptedPwd,
                                 passwordFingerprint = newFingerprint,
                                 lastChanged = now,
-                                generationType = "random",
+                                generationType = generationType,
                                 nextRotationDate = if (entry.rotationEnabled) {
                                     now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
                                 } else {
