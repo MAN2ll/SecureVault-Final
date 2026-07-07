@@ -45,12 +45,24 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
+    profileId: Int?,  //  принимаем profileId из маршрута
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val clipboardManager = LocalClipboardManager.current
+
+    //  Используем переданный profileId, fallback на currentProfileId
+    val currentProfileId by viewModel.currentProfileId.collectAsState()
+    val effectiveProfileId = profileId ?: currentProfileId
+
+    //  Устанавливаем профиль в ViewModel
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -69,8 +81,6 @@ fun QrScannerScreen(
     var foundEntry by remember { mutableStateOf<Entry?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showPasswordDialog by remember { mutableStateOf(false) }
-    
-    //  Состояние для показа результата после подтверждения
     var showResultDialog by remember { mutableStateOf(false) }
     var confirmedPassword by remember { mutableStateOf<String?>(null) }
 
@@ -97,7 +107,25 @@ fun QrScannerScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (!hasCameraPermission) {
+            if (effectiveProfileId == null) {
+                //  Если профиль не выбран — показываем ошибку
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Warning, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Профиль не выбран", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Вернитесь в список профилей и войдите в профиль", fontSize = 12.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = onBack) {
+                            Text("Назад")
+                        }
+                    }
+                }
+            } else if (!hasCameraPermission) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -148,15 +176,21 @@ fun QrScannerScreen(
                                                     if (rawValue != null && scannedToken == null) {
                                                         scannedToken = rawValue
 
-                                                        val currentProfileId = viewModel.currentProfileId.value
-                                                        if (currentProfileId != null) {
-                                                            val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, ctx)
+                                                        //  Используем effectiveProfileId
+                                                        val profileIdToUse = effectiveProfileId
+                                                        if (profileIdToUse != null) {
+                                                            val result = SecureQrManager.validateQrToken(rawValue, profileIdToUse, ctx)
                                                             validationResult = result
 
                                                             if (result.isValid && result.entryId != null) {
                                                                 viewModel.findEntryById(result.entryId)?.let { entry ->
-                                                                    foundEntry = entry
-                                                                    showPasswordDialog = true
+                                                                    //  ПРОВЕРКА: запись должна принадлежать текущему профилю
+                                                                    if (entry.profileId != profileIdToUse) {
+                                                                        errorMessage = "Запись принадлежит другому профилю"
+                                                                    } else {
+                                                                        foundEntry = entry
+                                                                        showPasswordDialog = true
+                                                                    }
                                                                 } ?: run {
                                                                     errorMessage = "Запись не найдена"
                                                                 }
@@ -219,14 +253,13 @@ fun QrScannerScreen(
         }
     }
 
-    //  Диалог подтверждения мастер-пароля
+    // Диалог подтверждения мастер-пароля
     if (showPasswordDialog && foundEntry != null) {
         ConfirmMasterPasswordDialogForQr(
             context = context,
             entry = foundEntry!!,
             onConfirmed = { decryptedPassword ->
                 showPasswordDialog = false
-                //  НЕ закрываем экран, а показываем результат
                 confirmedPassword = decryptedPassword
                 showResultDialog = true
             },
@@ -239,7 +272,7 @@ fun QrScannerScreen(
         )
     }
 
-    //  Диалог результата после подтверждения
+    // Диалог результата после подтверждения
     if (showResultDialog && foundEntry != null && confirmedPassword != null) {
         QrResultDialog(
             entry = foundEntry!!,
@@ -255,7 +288,7 @@ fun QrScannerScreen(
         )
     }
 
-    //  AlertDialog для ошибок вместо автоматического сброса
+    // AlertDialog для ошибок
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { 
@@ -284,7 +317,6 @@ fun QrScannerScreen(
     }
 }
 
-// Показ результата сканирования
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun QrResultDialog(
