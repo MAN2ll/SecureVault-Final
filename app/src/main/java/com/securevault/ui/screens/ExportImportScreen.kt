@@ -28,10 +28,18 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportImportScreen(
+    profileId: Int?,
     onBack: () -> Unit,
     vaultViewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
+    //  Устанавливаем профиль при входе (если открыт из профиля)
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            vaultViewModel.setCurrentProfile(profileId)
+        }
+    }
+
     val context = LocalContext.current.applicationContext
     val exportManager = remember { ExportManager(context) }
     
@@ -44,9 +52,18 @@ fun ExportImportScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedProfileIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var importTargetProfileId by remember { mutableIntStateOf(currentProfileId ?: 0) }
+    
+    // Если открыт из профиля — автоматически выбираем этот профиль для импорта
+    var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
     var showExportWarning by remember { mutableStateOf(false) }
+
+    //  Если открыт из профиля — автоматически выбираем все записи этого профиля
+    LaunchedEffect(entries, profileId) {
+        if (profileId != null && selectedEntryIds.isEmpty()) {
+            selectedEntryIds = entries.filter { it.profileId == profileId }.map { it.id }.toSet()
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -70,7 +87,6 @@ fun ExportImportScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            //  передаём выбранный профиль и генерируем новые ID
             val result = exportManager.importFromCsv(it, importTargetProfileId, generateNewIds = true)
             scope.launch {
                 result.entries.forEach { entry -> vaultViewModel.insert(entry) }
@@ -138,7 +154,13 @@ fun ExportImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Экспорт / Импорт", fontWeight = FontWeight.Bold) },
+                title = { 
+                    Text(
+                        if (profileId != null) "Экспорт / Импорт профиля" 
+                        else "Экспорт / Импорт", 
+                        fontWeight = FontWeight.Bold 
+                    ) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
