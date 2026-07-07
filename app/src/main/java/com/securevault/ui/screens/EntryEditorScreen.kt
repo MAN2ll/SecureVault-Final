@@ -31,6 +31,7 @@ import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
+import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 
@@ -52,8 +53,6 @@ fun EntryEditorScreen(
     }
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
-    
-    //  Используем currentProfileId, если profileId не передан
     val effectiveProfileId = profileId ?: currentProfileId
 
     val profiles by profileViewModel.profiles.collectAsState()
@@ -83,6 +82,7 @@ fun EntryEditorScreen(
     var showSuccess by remember { mutableStateOf(false) }
     var showSaveErrorDialog by remember { mutableStateOf(false) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(existingEntry) {
         existingEntry?.let { entry ->
@@ -134,7 +134,6 @@ fun EntryEditorScreen(
                             return@IconButton
                         }
                         
-                        // ✅ ПРОВЕРКА: профиль должен быть выбран
                         val finalProfileId = effectiveProfileId
                         if (finalProfileId == null) {
                             saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей и войдите в профиль."
@@ -243,13 +242,19 @@ fun EntryEditorScreen(
                             )
                         }
 
-                        try {
-                            viewModel.insert(finalEntry)
-                            showSuccess = true
-                            onBack()
-                        } catch (e: Exception) {
-                            saveErrorMessage = "Не удалось сохранить запись: ${e.message}"
-                            showSaveErrorDialog = true
+                        isSaving = true
+                        viewModel.insertEntry(finalEntry) { result ->
+                            isSaving = false
+                            when (result) {
+                                is PasswordOperationResult.Success -> {
+                                    showSuccess = true
+                                    onBack()
+                                }
+                                is PasswordOperationResult.Error -> {
+                                    saveErrorMessage = result.message
+                                    showSaveErrorDialog = true
+                                }
+                            }
                         }
                     }) {
                         Icon(Icons.Default.Check, "Сохранить")
