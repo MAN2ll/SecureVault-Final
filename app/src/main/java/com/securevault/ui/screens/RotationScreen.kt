@@ -201,24 +201,28 @@ fun RotationScreen(
         )
     }
 
-    if (showBulkRotation) {
-        BulkRotationDialog(
-            entries = filteredEntries,
-            onDismiss = { showBulkRotation = false },
-            onBulkReplace = { replacements ->
-                viewModel.bulkReplacePasswords(replacements) { result ->
-                    when (result) {
-                        is PasswordOperationResult.Success -> {
-                            showBulkRotation = false
-                        }
-                        is PasswordOperationResult.Error -> {
-                            errorMessage = result.message
-                        }
+  if (showBulkRotation) {
+    BulkRotationDialog(
+        entries = filteredEntries,
+        onDismiss = { showBulkRotation = false },
+        onBulkReplace = { replacements ->
+            //  Преобразуем в List<Triple<String, String, String>>
+            val tripleReplacements = replacements.map { (entryId, newPassword, generationType) ->
+                Triple(entryId, newPassword, generationType)
+            }
+            viewModel.bulkReplacePasswords(tripleReplacements) { result ->
+                when (result) {
+                    is PasswordOperationResult.Success -> {
+                        showBulkRotation = false
+                    }
+                    is PasswordOperationResult.Error -> {
+                        errorMessage = result.message
                     }
                 }
             }
-        )
-    }
+        }
+    )
+}
 
     if (showShuffleDialog) {
         PasswordShuffleDialog(
