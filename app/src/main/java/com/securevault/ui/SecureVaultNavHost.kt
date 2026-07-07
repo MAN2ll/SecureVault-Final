@@ -117,7 +117,7 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // ✅ ИСПРАВЛЕНО: Маршрут с profileId
+        // Маршрут с profileId
         composable("mnemonic/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             MnemonicGeneratorScreen(
@@ -152,8 +152,13 @@ fun SecureVaultNavHost() {
             ExportImportScreen(onBack = { navController.popBackStack() })
         }
         
-        composable("qr_scanner") {
-            QrScannerScreen(onBack = { navController.popBackStack() })
+       //  Маршрут с profileId
+        composable("qr_scanner/{profileId}") { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            QrScannerScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }
