@@ -7,7 +7,6 @@ import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import com.securevault.utils.PasswordValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +27,12 @@ class VaultViewModel @Inject constructor(
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
 
+    //  ПРАВИЛЬНЫЙ ПОРЯДОК: сначала объявляем
+    private val _currentProfileId = MutableStateFlow<Int?>(null)
+    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
+
+    val favoritesOnly = MutableStateFlow(false)
+
     //  Фильтрация записей по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { allEntries, profileId ->
@@ -40,17 +45,10 @@ class VaultViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    //  rotationEntries тоже фильтруется по профилю
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
 
-    val favoritesOnly = MutableStateFlow(false)
-
-    private val _currentProfileId = MutableStateFlow<Int?>(null)
-    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
-
     init {
-        // Перезагружаем rotationEntries при смене профиля
         viewModelScope.launch {
             _currentProfileId.collect { profileId ->
                 if (profileId != null) {
@@ -155,7 +153,7 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  Удаление всех записей профиля
+    // Удаление всех записей профиля
     fun deleteAllEntriesInProfile(
         profileId: Int,
         onResult: (PasswordOperationResult) -> Unit
@@ -168,7 +166,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  deleteAll теперь удаляет только в текущем профиле
     fun deleteAll() {
         val profileId = _currentProfileId.value ?: return
         viewModelScope.launch {
