@@ -21,26 +21,23 @@ object SecureQrManager {
         val errorMessage: String? = null
     )
 
-    // Получение или создание стабильного токена для записи
+    //  ВЕЧНЫЙ ТОКЕН: создаётся один раз и не меняется
     private fun getOrCreateStableToken(entryId: String, context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val existingToken = prefs.getString("token_$entryId", null)
         if (existingToken != null) return existingToken
 
-        // Генерируем новый UUID-подобный токен детерминированно
         val token = generateDeterministicToken(entryId)
         prefs.edit().putString("token_$entryId", token).apply()
         return token
     }
 
-    //  Детерминированная генерация токена на основе entryId
     private fun generateDeterministicToken(entryId: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(entryId.toByteArray())
         return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(32)
     }
 
-    //  Получение device binding hash
     private fun getDeviceBindingHash(context: Context): String {
         val deviceId = android.provider.Settings.Secure.getString(
             context.contentResolver,
@@ -51,7 +48,7 @@ object SecureQrManager {
         return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(24)
     }
 
-    // Генерация QR-токена БЕЗ lastChanged
+    //  БЕЗ lastChanged - QR вечный
     fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
         val stableToken = getOrCreateStableToken(entryId, context)
         val deviceBindingHash = getDeviceBindingHash(context)
@@ -89,7 +86,7 @@ object SecureQrManager {
         return bitmap
     }
 
-    //  Валидация БЕЗ проверки lastChanged
+    //  БЕЗ проверки lastChanged - QR всегда действителен
     fun validateQrToken(token: String, currentProfileId: Int, context: Context): QrValidationResult {
         return try {
             val json = JSONObject(token)
@@ -108,25 +105,22 @@ object SecureQrManager {
                 return QrValidationResult(false, errorMessage = "QR-код повреждён")
             }
 
-            // Проверка привязки к устройству
             val expectedDeviceHash = getDeviceBindingHash(context)
             if (deviceBindingHash != expectedDeviceHash) {
                 return QrValidationResult(false, errorMessage = "QR-код не принадлежит этому устройству")
             }
 
-            // Проверка привязки к профилю
             val expectedProfileHash = hashProfileId(currentProfileId)
             if (profileIdHash != expectedProfileHash) {
                 return QrValidationResult(false, errorMessage = "QR-код не принадлежит этому профилю")
             }
 
-            // Проверка стабильного токена
             val expectedToken = getOrCreateStableToken(entryId, context)
             if (stableToken != expectedToken) {
                 return QrValidationResult(false, errorMessage = "QR-код недействителен")
             }
 
-            //  НЕ проверяем lastChanged — QR остаётся действительным после ротации
+            //  НЕ проверяем lastChanged - QR вечный
             QrValidationResult(true, entryId = entryId, profileId = currentProfileId)
         } catch (e: Exception) {
             QrValidationResult(false, errorMessage = "Ошибка чтения QR-кода")
