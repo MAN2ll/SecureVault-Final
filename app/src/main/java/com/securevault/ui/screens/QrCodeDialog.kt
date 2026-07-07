@@ -68,7 +68,6 @@ fun QrCodeDialog(
                         modifier = Modifier.size(280.dp)
                     )
 
-                    //  Сохранить QR
                     OutlinedButton(
                         onClick = {
                             val saved = saveQrToGallery(context, entry.service, qrBitmap)
@@ -84,13 +83,13 @@ fun QrCodeDialog(
                     Text("Не удалось сгенерировать QR-код", color = MaterialTheme.colorScheme.error)
                 }
 
-            
+                //  НОВЫЙ ТЕКСТ: QR вечный
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(" Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Безопасный QR-код", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Spacer(Modifier.height(4.dp))
                         Text("• QR не содержит пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text("• QR открывает карточку записи внутри SecureVault", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -109,7 +108,6 @@ fun QrCodeDialog(
         }
     )
 
-    //  Показ результата сохранения
     if (showSaveResult != null) {
         val msg = showSaveResult!!
         LaunchedEffect(msg) {
@@ -119,7 +117,6 @@ fun QrCodeDialog(
     }
 }
 
-//  Сохранение QR в галерею через MediaStore
 private fun saveQrToGallery(context: Context, serviceName: String, bitmap: Bitmap): Boolean {
     return try {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
