@@ -24,6 +24,7 @@ import com.securevault.viewmodel.VaultViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
+    profileId: Int?, // ✅ ДОБАВЛЕНО: принимаем ID профиля
     onNavigateToEntry: (String) -> Unit,
     onNavigateToNewEntry: () -> Unit,
     onNavigateToAudit: () -> Unit,
@@ -35,6 +36,13 @@ fun VaultListScreen(
     authViewModel: AuthViewModel = hiltViewModel(),
     viewModel: VaultViewModel = hiltViewModel()
 ) {
+    //  Принудительно устанавливаем профиль при входе на экран
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
+
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
