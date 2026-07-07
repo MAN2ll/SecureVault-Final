@@ -10,6 +10,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -24,10 +26,14 @@ class VaultViewModel @Inject constructor(
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
 
-    //  Используем repository.allEntries (свойство, а не метод)
-    val entries: Flow<List<Entry>> = repository.allEntries
+    //  Конвертируем Flow в StateFlow
+    val entries: StateFlow<List<Entry>> = repository.allEntries
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
     
-    //  Используем getEntriesWithRotation()
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
     
@@ -60,14 +66,12 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Для совместимости с другими файлами
     fun insert(entry: Entry) {
         viewModelScope.launch {
             repository.insert(entry)
         }
     }
 
-    //  Сохранение с callback
     fun insertEntry(
         entry: Entry,
         onResult: (PasswordOperationResult) -> Unit
@@ -80,7 +84,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  Обновление с callback
     fun updateEntry(
         entry: Entry,
         onResult: (PasswordOperationResult) -> Unit
@@ -158,9 +161,8 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Принимает List<Triple<String, String, String>>
     fun bulkReplacePasswords(
-        replacements: List<Triple<String, String, String>>, // entryId, newPassword, generationType
+        replacements: List<Triple<String, String, String>>,
         onResult: ((PasswordOperationResult) -> Unit)? = null
     ) {
         viewModelScope.launch {
