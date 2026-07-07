@@ -7,9 +7,11 @@ import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import com.securevault.utils.PasswordValidator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
@@ -26,29 +28,44 @@ class VaultViewModel @Inject constructor(
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
 
-    //  Конвертируем Flow в StateFlow
+    //  Фильтрация записей по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
+        .combine(_currentProfileId) { allEntries, profileId ->
+            if (profileId == null) emptyList()
+            else allEntries.filter { it.profileId == profileId }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
-    
+
+    //  rotationEntries тоже фильтруется по профилю
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
-    
+
     val favoritesOnly = MutableStateFlow(false)
 
     private val _currentProfileId = MutableStateFlow<Int?>(null)
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
     init {
-        loadRotationEntries()
+        // Перезагружаем rotationEntries при смене профиля
+        viewModelScope.launch {
+            _currentProfileId.collect { profileId ->
+                if (profileId != null) {
+                    loadRotationEntries(profileId)
+                } else {
+                    _rotationEntries.value = emptyList()
+                }
+            }
+        }
     }
 
-    private fun loadRotationEntries() {
+    private fun loadRotationEntries(profileId: Int) {
         viewModelScope.launch {
-            _rotationEntries.value = repository.getEntriesWithRotation()
+            val allRotation = repository.getEntriesWithRotation()
+            _rotationEntries.value = allRotation.filter { it.profileId == profileId }
         }
     }
 
@@ -96,9 +113,66 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    //  Удаление одной записи с проверкой профиля
+    fun deleteEntry(
+        entryId: String,
+        expectedProfileId: Int,
+        onResult: (PasswordOperationResult) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            val entry = repository.getById(entryId)
+            if (entry == null) {
+                onResult(PasswordOperationResult.Error("Запись не найдена"))
+                return@launch
+            }
+            if (entry.profileId != expectedProfileId) {
+                onResult(PasswordOperationResult.Error("Запись принадлежит другому профилю"))
+                return@launch
+            }
+            repository.delete(entry)
+            onResult(PasswordOperationResult.Success)
+        } catch (e: Exception) {
+            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+        }
+    }
+
+    //  Массовое удаление записей
+    fun deleteEntries(
+        entryIds: List<String>,
+        expectedProfileId: Int,
+        onResult: (PasswordOperationResult) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            for (entryId in entryIds) {
+                val entry = repository.getById(entryId)
+                if (entry != null && entry.profileId == expectedProfileId) {
+                    repository.delete(entry)
+                }
+            }
+            onResult(PasswordOperationResult.Success)
+        } catch (e: Exception) {
+            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+        }
+    }
+
+    //  Удаление всех записей профиля
+    fun deleteAllEntriesInProfile(
+        profileId: Int,
+        onResult: (PasswordOperationResult) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            repository.deleteEntriesByProfileId(profileId)
+            onResult(PasswordOperationResult.Success)
+        } catch (e: Exception) {
+            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+        }
+    }
+
+    //  deleteAll теперь удаляет только в текущем профиле
     fun deleteAll() {
+        val profileId = _currentProfileId.value ?: return
         viewModelScope.launch {
-            repository.deleteAll()
+            repository.deleteEntriesByProfileId(profileId)
         }
     }
 
