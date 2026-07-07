@@ -23,15 +23,26 @@ import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
+import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MnemonicGeneratorScreen(
+    profileId: Int?, //  принимаем profileId из маршрута
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
+    //  Принудительно устанавливаем профиль
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
+
     val currentProfileId by viewModel.currentProfileId.collectAsState()
+    val effectiveProfileId = profileId ?: currentProfileId
+
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -47,8 +58,10 @@ fun MnemonicGeneratorScreen(
     var showError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
     
+    // ✅ НОВОЕ: AlertDialog для ошибок сохранения
     var showSaveErrorDialog by remember { mutableStateOf(false) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
 
     fun generateVariants() {
         validationError = null
@@ -79,7 +92,7 @@ fun MnemonicGeneratorScreen(
         selectedVariantIndex = -1
         
         if (variants.isEmpty()) {
-            validationError = "Не удалось создать варианты без повторов. Измените фразу или параметры."
+            validationError = "Не удалось сгенерировать варианты без повторов. Попробуйте другую фразу."
         }
     }
 
@@ -261,8 +274,7 @@ fun MnemonicGeneratorScreen(
             Button(
                 onClick = {
                     if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                        saveErrorMessage = "Выберите вариант из списка"
-                        showSaveErrorDialog = true
+                        showError = "Выберите вариант из списка"
                         return@Button
                     }
                     if (serviceName.isBlank()) {
@@ -270,8 +282,10 @@ fun MnemonicGeneratorScreen(
                         showSaveErrorDialog = true
                         return@Button
                     }
-                    if (currentProfileId == null) {
-                        saveErrorMessage = "Профиль не выбран"
+                    
+                    val finalProfileId = effectiveProfileId
+                    if (finalProfileId == null) {
+                        saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей."
                         showSaveErrorDialog = true
                         return@Button
                     }
@@ -279,42 +293,61 @@ fun MnemonicGeneratorScreen(
                     val selected = variants[selectedVariantIndex]
 
                     if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                        saveErrorMessage = "Вариант содержит повторяющиеся символы. Нажмите 'Ещё варианты'."
+                        saveErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
                         showSaveErrorDialog = true
                         return@Button
                     }
 
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
 
-                    try {
-                        val entry = Entry.create(
-                            service = serviceName,
-                            username = "",
-                            password = selected.password,
-                            profileId = currentProfileId!!,
-                            passwordFingerprint = fingerprint,
-                            textHint = selected.mnemonicHint,
-                            generationType = "mnemonic",
-                            mnemonicPhraseHint = phrase,
-                            mnemonicOptionsJson = null
-                        )
-                        viewModel.insert(entry)
-                        onBack()
-                    } catch (e: Exception) {
-                        saveErrorMessage = "Не удалось сохранить пароль: ${e.message}"
-                        showSaveErrorDialog = true
+                    val entry = Entry.create(
+                        service = serviceName,
+                        username = "",
+                        password = selected.password,
+                        profileId = finalProfileId,
+                        passwordFingerprint = fingerprint,
+                        textHint = selected.mnemonicHint,
+                        generationType = "mnemonic",
+                        mnemonicPhraseHint = phrase,
+                        mnemonicOptionsJson = null
+                    )
+                    
+                    //  Ждём завершения сохранения
+                    isSaving = true
+                    viewModel.insertEntry(entry) { result ->
+                        isSaving = false
+                        when (result) {
+                            is PasswordOperationResult.Success -> {
+                                onBack()
+                            }
+                            is PasswordOperationResult.Error -> {
+                                saveErrorMessage = result.message
+                                showSaveErrorDialog = true
+                            }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = variants.isNotEmpty() && selectedVariantIndex >= 0
+                enabled = variants.isNotEmpty() && selectedVariantIndex >= 0 && !isSaving
             ) {
-                Icon(Icons.Default.Save, null, Modifier.size(18.dp))
-                Spacer(Modifier.size(4.dp))
-                Text("Сохранить")
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.size(4.dp))
+                    Text("Сохранение...")
+                } else {
+                    Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Сохранить")
+                }
             }
         }
     }
 
+    //  AlertDialog для ошибок сохранения
     if (showSaveErrorDialog) {
         AlertDialog(
             onDismissRequest = { showSaveErrorDialog = false },
