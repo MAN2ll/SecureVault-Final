@@ -2,134 +2,134 @@ package com.securevault.utils
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Base64
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import org.json.JSONObject
 import java.security.MessageDigest
-import java.util.UUID
 
 object SecureQrManager {
 
     private const val QR_TYPE = "securevault_qr_v1"
+    private const val PREFS_NAME = "qr_tokens_prefs"
 
-    /**
-     * Генерация QR-токена для записи.
-     * QR действует до смены пароля (привязан к lastChanged).
-     */
-    fun generateQrToken(entryId: String, profileId: Int, lastChanged: Long, context: Context): String {
-        val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
+    data class QrValidationResult(
+        val isValid: Boolean,
+        val entryId: String? = null,
+        val profileId: Int? = null,
+        val errorMessage: String? = null
+    )
 
-        val profileIdHash = hashString("profile_$profileId")
+    // Получение или создание стабильного токена для записи
+    private fun getOrCreateStableToken(entryId: String, context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val existingToken = prefs.getString("token_$entryId", null)
+        if (existingToken != null) return existingToken
 
+        // Генерируем новый UUID-подобный токен детерминированно
+        val token = generateDeterministicToken(entryId)
+        prefs.edit().putString("token_$entryId", token).apply()
+        return token
+    }
+
+    //  Детерминированная генерация токена на основе entryId
+    private fun generateDeterministicToken(entryId: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(entryId.toByteArray())
+        return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(32)
+    }
+
+    //  Получение device binding hash
+    private fun getDeviceBindingHash(context: Context): String {
         val deviceId = android.provider.Settings.Secure.getString(
             context.contentResolver,
             android.provider.Settings.Secure.ANDROID_ID
-        ) ?: "unknown"
-        val deviceBindingHash = hashString("device_$deviceId")
+        ) ?: "default_device"
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest("securevault_device_$deviceId".toByteArray())
+        return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(24)
+    }
 
-        val nonce = UUID.randomUUID().toString()
-
-        // Сохраняем nonce и lastChanged для проверки
-        prefs.edit()
-            .putString("qr_nonce_$entryId", nonce)
-            .putLong("qr_last_changed_$entryId", lastChanged)
-            .apply()
+    // Генерация QR-токена БЕЗ lastChanged
+    fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
+        val stableToken = getOrCreateStableToken(entryId, context)
+        val deviceBindingHash = getDeviceBindingHash(context)
+        val profileIdHash = hashProfileId(profileId)
 
         val payload = JSONObject().apply {
             put("type", QR_TYPE)
             put("entryId", entryId)
             put("profileIdHash", profileIdHash)
             put("deviceBindingHash", deviceBindingHash)
-            put("nonce", nonce)
-            put("lastChanged", lastChanged)
+            put("stableToken", stableToken)
         }
 
         return payload.toString()
     }
 
+    private fun hashProfileId(profileId: Int): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest("profile_$profileId".toByteArray())
+        return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(16)
+    }
+
     fun generateQrBitmap(content: String, size: Int = 512): Bitmap {
-        val writer = QRCodeWriter()
-        val hints = mapOf(EncodeHintType.MARGIN to 1)
-        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size, hints)
-
-        val width = bitMatrix.width
-        val height = bitMatrix.height
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-
-        for (x in 0 until width) {
-            for (y in 0 until height) {
+        val hints = mapOf(
+            EncodeHintType.MARGIN to 1,
+            EncodeHintType.CHARACTER_SET to "UTF-8"
+        )
+        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
                 bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
             }
         }
-
         return bitmap
     }
 
-    /**
-     * Валидация QR-токена.
-     * Проверяет: тип, профиль, устройство, nonce, lastChanged.
-     */
-    fun validateQrToken(token: String, profileId: Int, context: Context): QrValidationResult {
+    //  Валидация БЕЗ проверки lastChanged
+    fun validateQrToken(token: String, currentProfileId: Int, context: Context): QrValidationResult {
         return try {
             val json = JSONObject(token)
 
-            if (json.optString("type") != QR_TYPE) {
-                return QrValidationResult(false, "Неверный тип QR-кода")
+            val type = json.optString("type")
+            if (type != QR_TYPE) {
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
-            val entryId = json.optString("entryId", "")
-            val profileIdHash = json.optString("profileIdHash", "")
-            val deviceBindingHash = json.optString("deviceBindingHash", "")
-            val nonce = json.optString("nonce", "")
-            val lastChanged = json.optLong("lastChanged", 0L)
+            val entryId = json.optString("entryId")
+            val profileIdHash = json.optString("profileIdHash")
+            val deviceBindingHash = json.optString("deviceBindingHash")
+            val stableToken = json.optString("stableToken")
 
-            if (entryId.isBlank()) {
-                return QrValidationResult(false, "QR-код повреждён")
+            if (entryId.isBlank() || profileIdHash.isBlank() || deviceBindingHash.isBlank() || stableToken.isBlank()) {
+                return QrValidationResult(false, errorMessage = "QR-код повреждён")
             }
 
-            val expectedProfileHash = hashString("profile_$profileId")
-            if (profileIdHash != expectedProfileHash) {
-                return QrValidationResult(false, "QR-код не принадлежит этому профилю")
-            }
-
-            val deviceId = android.provider.Settings.Secure.getString(
-                context.contentResolver,
-                android.provider.Settings.Secure.ANDROID_ID
-            ) ?: "unknown"
-            val expectedDeviceHash = hashString("device_$deviceId")
+            // Проверка привязки к устройству
+            val expectedDeviceHash = getDeviceBindingHash(context)
             if (deviceBindingHash != expectedDeviceHash) {
-                return QrValidationResult(false, "QR-код не принадлежит этому устройству")
+                return QrValidationResult(false, errorMessage = "QR-код не принадлежит этому устройству")
             }
 
-            val prefs = context.getSharedPreferences("qr_prefs", Context.MODE_PRIVATE)
-            val storedNonce = prefs.getString("qr_nonce_$entryId", null)
-            val storedLastChanged = prefs.getLong("qr_last_changed_$entryId", 0L)
-
-            if (storedNonce != nonce) {
-                return QrValidationResult(false, "QR-код недействителен")
+            // Проверка привязки к профилю
+            val expectedProfileHash = hashProfileId(currentProfileId)
+            if (profileIdHash != expectedProfileHash) {
+                return QrValidationResult(false, errorMessage = "QR-код не принадлежит этому профилю")
             }
 
-            //  Проверка: пароль не изменился
-            if (storedLastChanged != lastChanged) {
-                return QrValidationResult(false, "Пароль был изменён. Создайте новый QR-код.")
+            // Проверка стабильного токена
+            val expectedToken = getOrCreateStableToken(entryId, context)
+            if (stableToken != expectedToken) {
+                return QrValidationResult(false, errorMessage = "QR-код недействителен")
             }
 
-            QrValidationResult(true, null, entryId)
+            //  НЕ проверяем lastChanged — QR остаётся действительным после ротации
+            QrValidationResult(true, entryId = entryId, profileId = currentProfileId)
         } catch (e: Exception) {
-            QrValidationResult(false, "Ошибка чтения QR-кода")
+            QrValidationResult(false, errorMessage = "Ошибка чтения QR-кода")
         }
     }
-
-    private fun hashString(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
-
-    data class QrValidationResult(
-        val isValid: Boolean,
-        val errorMessage: String?,
-        val entryId: String? = null
-    )
 }
