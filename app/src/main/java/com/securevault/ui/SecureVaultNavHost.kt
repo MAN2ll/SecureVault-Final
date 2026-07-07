@@ -74,11 +74,10 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // ✅ ИСПРАВЛЕНО: Передаем profileId в VaultListScreen
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             VaultListScreen(
-                profileId = profileId, // <-- ВАЖНО
+                profileId = profileId,
                 onNavigateToEntry = { entryId ->
                     navController.navigate("editor/$entryId/${profileId ?: return@VaultListScreen}")
                 },
@@ -97,8 +96,9 @@ fun SecureVaultNavHost() {
                 onNavigateToSettings = {
                     navController.navigate("settings")
                 },
+                //  Передаём profileId в mnemonic
                 onNavigateToMnemonicGenerator = {
-                    navController.navigate("mnemonic")
+                    navController.navigate("mnemonic/${profileId ?: return@VaultListScreen}")
                 },
                 onNavigateToQrScanner = {
                     navController.navigate("qr_scanner")
@@ -117,8 +117,13 @@ fun SecureVaultNavHost() {
             )
         }
 
-        composable("mnemonic") {
-            MnemonicGeneratorScreen(onBack = { navController.popBackStack() })
+        // ✅ ИСПРАВЛЕНО: Маршрут с profileId
+        composable("mnemonic/{profileId}") { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            MnemonicGeneratorScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable("rotation") {
