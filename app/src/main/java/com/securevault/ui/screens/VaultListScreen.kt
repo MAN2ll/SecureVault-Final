@@ -53,7 +53,6 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
 
-    //  Режим выбора записей
     var selectionMode by remember { mutableStateOf(false) }
     var selectedEntries by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -62,7 +61,6 @@ fun VaultListScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf<Entry?>(null) }
 
-    //  Состояния для удаления
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
@@ -83,7 +81,6 @@ fun VaultListScreen(
         result.sortedBy { it.service.lowercase() }
     }
 
-    //  Функция для сброса режима выбора при изменении списка
     LaunchedEffect(entries) {
         selectedEntries = selectedEntries.filter { id -> entries.any { it.id == id } }.toSet()
         if (selectedEntries.isEmpty()) selectionMode = false
@@ -92,7 +89,6 @@ fun VaultListScreen(
     Scaffold(
         topBar = {
             if (selectionMode) {
-                //  Режим выбора: показываем счётчик
                 TopAppBar(
                     title = { Text("Выбрано: ${selectedEntries.size}", fontWeight = FontWeight.Bold) },
                     navigationIcon = {
@@ -321,10 +317,6 @@ fun VaultListScreen(
                                     onNavigateToEntry(entry.id)
                                 }
                             },
-                            onLongClick = {
-                                selectionMode = true
-                                selectedEntries = setOf(entry.id)
-                            },
                             onFavoriteClick = { viewModel.toggleFavorite(entry) },
                             onQrClick = { showQrDialog = entry },
                             onDeleteClick = { entryToDelete = entry }
@@ -335,7 +327,6 @@ fun VaultListScreen(
         }
     }
 
-    //  Диалог QR
     if (showQrDialog != null) {
         QrCodeDialog(
             entry = showQrDialog!!,
@@ -343,7 +334,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Диалог удаления одной записи: запрос мастер-пароля
     if (entryToDelete != null) {
         MasterPasswordConfirmDialog(
             title = "Подтверждение удаления",
@@ -371,7 +361,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Диалог подтверждения удаления выбранных
     if (showDeleteSelectedDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteSelectedDialog = false },
@@ -410,7 +399,6 @@ fun VaultListScreen(
         )
     }
 
-    // Диалог подтверждения удаления всех паролей профиля
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
@@ -446,7 +434,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Универсальный диалог мастер-пароля для опасных действий
     if (showMasterPasswordDialog != null) {
         val action = showMasterPasswordDialog!!
         MasterPasswordConfirmDialog(
@@ -465,7 +452,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Диалог ошибок
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
@@ -481,13 +467,11 @@ fun VaultListScreen(
     }
 }
 
-//  Перечисление действий, требующих мастер-пароль
 enum class MasterPasswordAction {
     DELETE_SELECTED,
     DELETE_ALL_PROFILE
 }
 
-//  Универсальный диалог подтверждения мастер-пароля
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MasterPasswordConfirmDialog(
@@ -553,7 +537,6 @@ private fun EntryCard(
     selectionMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onQrClick: () -> Unit,
     onDeleteClick: () -> Unit
@@ -563,19 +546,7 @@ private fun EntryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .then(
-                if (!selectionMode) {
-                    Modifier.composed {
-                        this.then(
-                            Modifier.clickable(
-                                onClick = {},
-                                onLongClick = onLongClick
-                            )
-                        )
-                    }
-                } else Modifier
-            ),
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = when {
                 selectionMode && isSelected -> MaterialTheme.colorScheme.primaryContainer
