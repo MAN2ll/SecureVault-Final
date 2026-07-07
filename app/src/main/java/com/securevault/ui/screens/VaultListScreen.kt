@@ -2,6 +2,7 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,11 +14,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.security.MasterPasswordHasher
+import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
 
@@ -36,7 +42,8 @@ fun VaultListScreen(
     authViewModel: AuthViewModel = hiltViewModel(),
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // Принудительно устанавливаем профиль при входе на экран
+    val context = LocalContext.current
+
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
@@ -45,19 +52,29 @@ fun VaultListScreen(
 
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
-    
+
+    //  Режим выбора записей
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedEntries by remember { mutableStateOf<Set<String>>(emptySet()) }
+
     var searchQuery by remember { mutableStateOf("") }
     var showSearchField by remember { mutableStateOf(false) }
-    var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf<Entry?>(null) }
+
+    //  Состояния для удаления
+    var entryToDelete by remember { mutableStateOf<Entry?>(null) }
+    var showDeleteSelectedDialog by remember { mutableStateOf(false) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showMasterPasswordDialog by remember { mutableStateOf<MasterPasswordAction?>(null) }
+    var operationError by remember { mutableStateOf<String?>(null) }
 
     val filteredEntries = remember(entries, searchQuery, favoritesOnly) {
         var result = entries
         if (searchQuery.isNotBlank()) {
-            result = result.filter { 
+            result = result.filter {
                 it.service.contains(searchQuery, ignoreCase = true) ||
-                it.username.contains(searchQuery, ignoreCase = true)
+                        it.username.contains(searchQuery, ignoreCase = true)
             }
         }
         if (favoritesOnly) {
@@ -66,106 +83,161 @@ fun VaultListScreen(
         result.sortedBy { it.service.lowercase() }
     }
 
+    //  Функция для сброса режима выбора при изменении списка
+    LaunchedEffect(entries) {
+        selectedEntries = selectedEntries.filter { id -> entries.any { it.id == id } }.toSet()
+        if (selectedEntries.isEmpty()) selectionMode = false
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = { 
-                        showSearchField = !showSearchField
-                        if (!showSearchField) searchQuery = ""
-                    }) {
-                        Icon(
-                            if (showSearchField) Icons.Default.Close else Icons.Default.Search,
-                            if (showSearchField) "Закрыть поиск" else "Поиск"
-                        )
-                    }
-                    
-                    IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
-                        Icon(
-                            if (favoritesOnly) Icons.Default.Star else Icons.Outlined.Star,
-                            "Избранное",
-                            tint = if (favoritesOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, "Меню")
+            if (selectionMode) {
+                //  Режим выбора: показываем счётчик
+                TopAppBar(
+                    title = { Text("Выбрано: ${selectedEntries.size}", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            selectionMode = false
+                            selectedEntries = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, "Отмена выбора")
                         }
-                        
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                if (selectedEntries.isNotEmpty()) {
+                                    showMasterPasswordDialog = MasterPasswordAction.DELETE_SELECTED
+                                }
+                            },
+                            enabled = selectedEntries.isNotEmpty()
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Сканировать QR") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToQrScanner()
-                                },
-                                leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Аудит безопасности") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToAudit()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Security, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Экспорт / импорт") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToExport()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Upload, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Ротация паролей") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToRotation()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Schedule, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Мнемонический генератор") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToMnemonicGenerator()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Lightbulb, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Настройки") },
-                                onClick = { 
-                                    showMenu = false
-                                    onNavigateToSettings()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Settings, null) }
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Заблокировать", color = MaterialTheme.colorScheme.error) },
-                                onClick = { 
-                                    showMenu = false
-                                    authViewModel.lock()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error) }
-                            )
+                            Icon(Icons.Default.Delete, "Удалить выбранные",
+                                tint = if (selectedEntries.isNotEmpty())
+                                    MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
                         }
                     }
-                }
-            )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
+                    actions = {
+                        IconButton(onClick = {
+                            showSearchField = !showSearchField
+                            if (!showSearchField) searchQuery = ""
+                        }) {
+                            Icon(
+                                if (showSearchField) Icons.Default.Close else Icons.Default.Search,
+                                if (showSearchField) "Закрыть поиск" else "Поиск"
+                            )
+                        }
+
+                        IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
+                            Icon(
+                                if (favoritesOnly) Icons.Default.Star else Icons.Outlined.Star,
+                                "Избранное",
+                                tint = if (favoritesOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.MoreVert, "Меню")
+                            }
+
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Выбрать записи") },
+                                    onClick = {
+                                        showMenu = false
+                                        selectionMode = true
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Checklist, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Сканировать QR") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToQrScanner()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Аудит безопасности") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToAudit()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Security, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Экспорт / импорт") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToExport()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Upload, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Ротация паролей") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToRotation()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Schedule, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Мнемонический генератор") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToMnemonicGenerator()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Lightbulb, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Настройки") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToSettings()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Settings, null) }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Удалить все пароли профиля", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showMenu = false
+                                        showMasterPasswordDialog = MasterPasswordAction.DELETE_ALL_PROFILE
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error) }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Заблокировать", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showMenu = false
+                                        authViewModel.lock()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error) }
+                                )
+                            }
+                        }
+                    }
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToNewEntry,
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, "Добавить запись")
+            if (!selectionMode) {
+                FloatingActionButton(
+                    onClick = onNavigateToNewEntry,
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Add, "Добавить запись")
+                }
             }
         }
     ) { padding ->
@@ -210,22 +282,14 @@ fun VaultListScreen(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            if (searchQuery.isNotBlank()) 
-                                "Ничего не найдено" 
-                            else if (favoritesOnly) 
+                            if (searchQuery.isNotBlank())
+                                "Ничего не найдено"
+                            else if (favoritesOnly)
                                 "Нет избранных записей"
-                            else 
+                            else
                                 "Нет сохранённых паролей",
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(8.dp))
-                        if (searchQuery.isBlank() && !favoritesOnly) {
-                            Text(
-                                "Нажмите + чтобы добавить первую запись",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
                     }
                 }
             } else {
@@ -235,7 +299,7 @@ fun VaultListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
-                
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -244,9 +308,26 @@ fun VaultListScreen(
                     items(filteredEntries, key = { it.id }) { entry ->
                         EntryCard(
                             entry = entry,
-                            onClick = { onNavigateToEntry(entry.id) },
+                            selectionMode = selectionMode,
+                            isSelected = entry.id in selectedEntries,
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedEntries = if (entry.id in selectedEntries) {
+                                        selectedEntries - entry.id
+                                    } else {
+                                        selectedEntries + entry.id
+                                    }
+                                } else {
+                                    onNavigateToEntry(entry.id)
+                                }
+                            },
+                            onLongClick = {
+                                selectionMode = true
+                                selectedEntries = setOf(entry.id)
+                            },
                             onFavoriteClick = { viewModel.toggleFavorite(entry) },
-                            onQrClick = { showQrDialog = entry }
+                            onQrClick = { showQrDialog = entry },
+                            onDeleteClick = { entryToDelete = entry }
                         )
                     }
                 }
@@ -254,6 +335,7 @@ fun VaultListScreen(
         }
     }
 
+    //  Диалог QR
     if (showQrDialog != null) {
         QrCodeDialog(
             entry = showQrDialog!!,
@@ -261,17 +343,95 @@ fun VaultListScreen(
         )
     }
 
+    //  Диалог удаления одной записи: запрос мастер-пароля
+    if (entryToDelete != null) {
+        MasterPasswordConfirmDialog(
+            title = "Подтверждение удаления",
+            onConfirmed = {
+                val entry = entryToDelete!!
+                val currentProfile = viewModel.currentProfileId.value
+                if (currentProfile == null) {
+                    operationError = "Профиль не выбран"
+                    entryToDelete = null
+                    return@MasterPasswordConfirmDialog
+                }
+                viewModel.deleteEntry(entry.id, currentProfile) { result ->
+                    when (result) {
+                        is PasswordOperationResult.Success -> {
+                            entryToDelete = null
+                        }
+                        is PasswordOperationResult.Error -> {
+                            operationError = result.message
+                            entryToDelete = null
+                        }
+                    }
+                }
+            },
+            onDismiss = { entryToDelete = null }
+        )
+    }
+
+    //  Диалог подтверждения удаления выбранных
+    if (showDeleteSelectedDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedDialog = false },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Удалить выбранные записи?") },
+            text = { Text("Будет удалено записей: ${selectedEntries.size}. Это действие необратимо.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteSelectedDialog = false
+                        val currentProfile = viewModel.currentProfileId.value
+                        if (currentProfile != null) {
+                            viewModel.deleteEntries(selectedEntries.toList(), currentProfile) { result ->
+                                when (result) {
+                                    is PasswordOperationResult.Success -> {
+                                        selectedEntries = emptySet()
+                                        selectionMode = false
+                                    }
+                                    is PasswordOperationResult.Error -> {
+                                        operationError = result.message
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Удалить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteSelectedDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    // Диалог подтверждения удаления всех паролей профиля
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Удалить все записи?") },
-            text = { Text("Это действие необратимо. Все пароли будут удалены.") },
+            title = { Text("Удалить все пароли профиля?") },
+            text = { Text("Все пароли текущего профиля будут удалены. Это действие необратимо.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteAll()
                         showDeleteAllDialog = false
+                        val currentProfile = viewModel.currentProfileId.value
+                        if (currentProfile != null) {
+                            viewModel.deleteAllEntriesInProfile(currentProfile) { result ->
+                                when (result) {
+                                    is PasswordOperationResult.Success -> {}
+                                    is PasswordOperationResult.Error -> {
+                                        operationError = result.message
+                                    }
+                                }
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -285,23 +445,142 @@ fun VaultListScreen(
             }
         )
     }
+
+    //  Универсальный диалог мастер-пароля для опасных действий
+    if (showMasterPasswordDialog != null) {
+        val action = showMasterPasswordDialog!!
+        MasterPasswordConfirmDialog(
+            title = when (action) {
+                MasterPasswordAction.DELETE_SELECTED -> "Подтверждение массового удаления"
+                MasterPasswordAction.DELETE_ALL_PROFILE -> "Подтверждение удаления всех паролей"
+            },
+            onConfirmed = {
+                when (action) {
+                    MasterPasswordAction.DELETE_SELECTED -> showDeleteSelectedDialog = true
+                    MasterPasswordAction.DELETE_ALL_PROFILE -> showDeleteAllDialog = true
+                }
+                showMasterPasswordDialog = null
+            },
+            onDismiss = { showMasterPasswordDialog = null }
+        )
+    }
+
+    //  Диалог ошибок
+    if (operationError != null) {
+        AlertDialog(
+            onDismissRequest = { operationError = null },
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Ошибка") },
+            text = { Text(operationError ?: "") },
+            confirmButton = {
+                TextButton(onClick = { operationError = null }) {
+                    Text("Понятно")
+                }
+            }
+        )
+    }
+}
+
+//  Перечисление действий, требующих мастер-пароль
+enum class MasterPasswordAction {
+    DELETE_SELECTED,
+    DELETE_ALL_PROFILE
+}
+
+//  Универсальный диалог подтверждения мастер-пароля
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MasterPasswordConfirmDialog(
+    title: String,
+    onConfirmed: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Введите мастер-пароль для подтверждения действия", fontSize = 13.sp)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Мастер-пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                val storedHash = prefs.getString("master_hash", null)
+                val storedSalt = prefs.getString("master_salt", null)
+                val iterations = prefs.getInt("master_iterations", 100_000)
+
+                if (storedHash != null && storedSalt != null &&
+                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
+                    onConfirmed()
+                } else {
+                    error = "Неверный мастер-пароль"
+                }
+                password = ""
+            }) {
+                Text("Подтвердить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 @Composable
 private fun EntryCard(
     entry: Entry,
+    selectionMode: Boolean,
+    isSelected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onFavoriteClick: () -> Unit,
-    onQrClick: () -> Unit
+    onQrClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .then(
+                if (!selectionMode) {
+                    Modifier.composed {
+                        this.then(
+                            Modifier.clickable(
+                                onClick = {},
+                                onLongClick = onLongClick
+                            )
+                        )
+                    }
+                } else Modifier
+            ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = when {
+                selectionMode && isSelected -> MaterialTheme.colorScheme.primaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     ) {
         Row(
@@ -310,6 +589,14 @@ private fun EntryCard(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onClick() },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+
             Icon(
                 Icons.Default.Folder,
                 null,
@@ -328,11 +615,11 @@ private fun EntryCard(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val daysLeft = entry.getDaysUntilRotation()
                     val isExpired = entry.isPasswordExpired()
-                    
+
                     if (isExpired) {
                         Spacer(Modifier.width(4.dp))
                         Text(
@@ -350,13 +637,13 @@ private fun EntryCard(
                             fontWeight = FontWeight.Medium
                         )
                     }
-                    
+
                     if (entry.generationType == "mnemonic") {
                         Spacer(Modifier.width(8.dp))
                         Icon(Icons.Default.Lightbulb, null, Modifier.size(10.dp), tint = MaterialTheme.colorScheme.tertiary)
                         Text(" AMPG", fontSize = 10.sp, color = MaterialTheme.colorScheme.tertiary)
                     }
-                    
+
                     if (entry.generationType == "shuffled") {
                         Spacer(Modifier.width(8.dp))
                         Icon(Icons.Default.Shuffle, null, Modifier.size(10.dp), tint = MaterialTheme.colorScheme.secondary)
@@ -364,38 +651,49 @@ private fun EntryCard(
                     }
                 }
             }
-            
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Default.MoreVert, "Меню записи")
-                }
-                
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("QR-код") },
-                        onClick = {
-                            showMenu = false
-                            onQrClick()
-                        },
-                        leadingIcon = { Icon(Icons.Default.QrCode, null) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Избранное") },
-                        onClick = {
-                            showMenu = false
-                            onFavoriteClick()
-                        },
-                        leadingIcon = {
-                            Icon(
-                                if (entry.isFavorite) Icons.Default.Star else Icons.Outlined.Star,
-                                null,
-                                tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    )
+
+            if (!selectionMode) {
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, "Меню записи")
+                    }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("QR-код") },
+                            onClick = {
+                                showMenu = false
+                                onQrClick()
+                            },
+                            leadingIcon = { Icon(Icons.Default.QrCode, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (entry.isFavorite) "Убрать из избранного" else "В избранное") },
+                            onClick = {
+                                showMenu = false
+                                onFavoriteClick()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    if (entry.isFavorite) Icons.Default.Star else Icons.Outlined.Star,
+                                    null,
+                                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                showMenu = false
+                                onDeleteClick()
+                            },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        )
+                    }
                 }
             }
         }
