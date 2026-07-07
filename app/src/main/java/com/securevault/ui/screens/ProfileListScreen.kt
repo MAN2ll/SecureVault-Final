@@ -17,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +32,8 @@ import com.securevault.viewmodel.VaultViewModel
 fun ProfileListScreen(
     onProfileSelected: (Int) -> Unit,
     onLock: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToExportImport: () -> Unit,
     profileViewModel: ProfileViewModel = hiltViewModel(),
     vaultViewModel: VaultViewModel = hiltViewModel()
 ) {
@@ -41,11 +42,11 @@ fun ProfileListScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<Profile?>(null) }
 
-    //  Состояния для удаления профиля
     var profileToDelete by remember { mutableStateOf<Profile?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
     var showMasterPasswordForDelete by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         vaultViewModel.setCurrentProfile(null)
@@ -56,8 +57,35 @@ fun ProfileListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 actions = {
-                    IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, "Заблокировать")
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, "Общие настройки")
+                    }
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "Меню")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Экспорт / импорт") },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToExportImport()
+                                },
+                                leadingIcon = { Icon(Icons.Default.Upload, null) }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Заблокировать") },
+                                onClick = {
+                                    showMenu = false
+                                    onLock()
+                                },
+                                leadingIcon = { Icon(Icons.Default.Lock, null) }
+                            )
+                        }
                     }
                 }
             )
@@ -124,7 +152,7 @@ fun ProfileListScreen(
         )
     }
 
-    //  Диалог проверки наличия записей перед удалением
+    // Проверка наличия записей перед удалением
     if (profileToDelete != null && !showDeleteConfirmDialog && !showMasterPasswordForDelete) {
         LaunchedEffect(profileToDelete) {
             val profile = profileToDelete!!
@@ -139,42 +167,20 @@ fun ProfileListScreen(
         }
     }
 
-    //  Запрос мастер-пароля для удаления профиля
     if (showMasterPasswordForDelete && profileToDelete != null) {
-        AlertDialog(
-            onDismissRequest = {
+        MasterPasswordConfirmDialog(
+            title = "Подтверждение удаления профиля",
+            onConfirmed = {
+                showMasterPasswordForDelete = false
+                showDeleteConfirmDialog = true
+            },
+            onDismiss = {
                 showMasterPasswordForDelete = false
                 profileToDelete = null
-            },
-            icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Подтверждение удаления профиля") },
-            text = {
-                MasterPasswordInput(
-                    context = context,
-                    onConfirmed = {
-                        showMasterPasswordForDelete = false
-                        showDeleteConfirmDialog = true
-                    },
-                    onError = { error ->
-                        operationError = error
-                        showMasterPasswordForDelete = false
-                        profileToDelete = null
-                    }
-                )
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    showMasterPasswordForDelete = false
-                    profileToDelete = null
-                }) {
-                    Text("Отмена")
-                }
             }
         )
     }
 
-    // Подтверждение удаления профиля
     if (showDeleteConfirmDialog && profileToDelete != null) {
         AlertDialog(
             onDismissRequest = {
@@ -218,7 +224,6 @@ fun ProfileListScreen(
         )
     }
 
-    // Диалог ошибок
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
@@ -231,54 +236,6 @@ fun ProfileListScreen(
                 }
             }
         )
-    }
-}
-
-//  Ввод мастер-пароля
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MasterPasswordInput(
-    context: Context,
-    onConfirmed: () -> Unit,
-    onError: (String) -> Unit
-) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Введите мастер-пароль для подтверждения", fontSize = 13.sp)
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it; error = null },
-            label = { Text("Мастер-пароль") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            isError = error != null
-        )
-        if (error != null) {
-            Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-        }
-        Button(
-            onClick = {
-                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val storedHash = prefs.getString("master_hash", null)
-                val storedSalt = prefs.getString("master_salt", null)
-                val iterations = prefs.getInt("master_iterations", 100_000)
-
-                if (storedHash != null && storedSalt != null &&
-                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                    onConfirmed()
-                } else {
-                    error = "Неверный мастер-пароль"
-                }
-                password = ""
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Подтвердить")
-        }
     }
 }
 
