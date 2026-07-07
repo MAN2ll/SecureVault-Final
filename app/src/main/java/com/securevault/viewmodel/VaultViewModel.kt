@@ -25,7 +25,7 @@ class VaultViewModel @Inject constructor(
 ) : AndroidViewModel(appContext) {
 
     //  Используем repository.allEntries (свойство, а не метод)
-    val entries: StateFlow<List<Entry>> = repository.allEntries
+    val entries: Flow<List<Entry>> = repository.allEntries
     
     //  Используем getEntriesWithRotation()
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
