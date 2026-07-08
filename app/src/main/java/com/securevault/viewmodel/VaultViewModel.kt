@@ -32,26 +32,20 @@ class VaultViewModel @Inject constructor(
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
     val entries: StateFlow<List<Entry>> = repository.allEntries
-        .combine(_currentProfileId) { allEntries, profileId ->
-            if (profileId == null) emptyList()
-            else allEntries.filter { it.profileId == profileId }
+        .combine(_currentProfileId) { all, pid ->
+            if (pid == null) emptyList() else all.filter { it.profileId == pid }
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
-
     val favoritesOnly = MutableStateFlow(false)
 
     init {
         viewModelScope.launch {
-            _currentProfileId.collect { profileId ->
-                if (profileId != null) {
-                    loadRotationEntries(profileId)
+            _currentProfileId.collect { pid ->
+                if (pid != null) {
+                    _rotationEntries.value = repository.getEntriesWithRotation().filter { it.profileId == pid }
                 } else {
                     _rotationEntries.value = emptyList()
                 }
@@ -59,406 +53,199 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    private fun loadRotationEntries(profileId: Int) {
-        viewModelScope.launch {
-            val allRotation = repository.getEntriesWithRotation()
-            _rotationEntries.value = allRotation.filter { it.profileId == profileId }
-        }
-    }
-
-    fun setCurrentProfile(profileId: Int?) {
-        _currentProfileId.value = profileId
-    }
-
-    fun toggleFavoritesOnly() {
-        favoritesOnly.value = !favoritesOnly.value
-    }
-
-    fun toggleFavorite(entry: Entry) {
-        viewModelScope.launch {
-            repository.update(entry.copy(isFavorite = !entry.isFavorite))
-        }
-    }
-
-    fun insert(entry: Entry) {
-        viewModelScope.launch { repository.insert(entry) }
-    }
+    fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
+    fun toggleFavoritesOnly() { favoritesOnly.value = !favoritesOnly.value }
+    fun toggleFavorite(entry: Entry) = viewModelScope.launch { repository.update(entry.copy(isFavorite = !entry.isFavorite)) }
+    fun insert(entry: Entry) = viewModelScope.launch { repository.insert(entry) }
+    fun findEntryById(entryId: String): Entry? = repository.getByIdBlocking(entryId)
 
     fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
-        try {
-            repository.insert(entry)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error(e.message ?: "Ошибка сохранения"))
-        }
+        try { repository.insert(entry); onResult(PasswordOperationResult.Success) }
+        catch (e: Exception) { onResult(PasswordOperationResult.Error(e.message ?: "Ошибка")) }
     }
 
     fun updateEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
-        try {
-            repository.update(entry)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error(e.message ?: "Ошибка обновления"))
-        }
+        try { repository.update(entry); onResult(PasswordOperationResult.Success) }
+        catch (e: Exception) { onResult(PasswordOperationResult.Error(e.message ?: "Ошибка")) }
     }
 
     fun deleteEntry(entryId: String, expectedProfileId: Int, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
         try {
-            val entry = repository.getById(entryId)
-            if (entry == null) {
-                onResult(PasswordOperationResult.Error("Запись не найдена"))
-                return@launch
-            }
-            if (entry.profileId != expectedProfileId) {
-                onResult(PasswordOperationResult.Error("Запись принадлежит другому профилю"))
-                return@launch
-            }
+            val entry = repository.getById(entryId) ?: run { onResult(PasswordOperationResult.Error("Не найдена")); return@launch }
+            if (entry.profileId != expectedProfileId) { onResult(PasswordOperationResult.Error("Другой профиль")); return@launch }
             repository.delete(entry)
             onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
+        } catch (e: Exception) { onResult(PasswordOperationResult.Error(e.message ?: "Ошибка")) }
     }
 
     fun deleteEntries(entryIds: List<String>, expectedProfileId: Int, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
         try {
-            for (entryId in entryIds) {
-                val entry = repository.getById(entryId)
-                if (entry != null && entry.profileId == expectedProfileId) {
-                    repository.delete(entry)
-                }
+            for (id in entryIds) {
+                val entry = repository.getById(id)
+                if (entry != null && entry.profileId == expectedProfileId) repository.delete(entry)
             }
             onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
+        } catch (e: Exception) { onResult(PasswordOperationResult.Error(e.message ?: "Ошибка")) }
     }
 
     fun deleteAllEntriesInProfile(profileId: Int, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
-        try {
-            repository.deleteEntriesByProfileId(profileId)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
+        try { repository.deleteEntriesByProfileId(profileId); onResult(PasswordOperationResult.Success) }
+        catch (e: Exception) { onResult(PasswordOperationResult.Error(e.message ?: "Ошибка")) }
     }
 
     fun deleteAll() {
-        val profileId = _currentProfileId.value ?: return
-        viewModelScope.launch {
-            repository.deleteEntriesByProfileId(profileId)
-        }
-    }
-
-    fun findEntryById(entryId: String): Entry? {
-        return repository.getByIdBlocking(entryId)
+        val pid = _currentProfileId.value ?: return
+        viewModelScope.launch { repository.deleteEntriesByProfileId(pid) }
     }
 
     fun replacePassword(
-        entryId: String,
-        newPassword: String,
-        newHint: String?,
-        newGenerationType: String,
-        newMnemonicPhraseHint: String?,
-        newMnemonicOptionsJson: String?,
-        onResult: ((PasswordOperationResult) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            try {
-                val entry = repository.getById(entryId)
-                if (entry == null) {
-                    onResult?.invoke(PasswordOperationResult.Error("Запись не найдена"))
-                    return@launch
-                }
-
-                val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
-                if (!validation.isValid) {
-                    onResult?.invoke(PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации"))
-                    return@launch
-                }
-
-                val now = System.currentTimeMillis()
-                val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-
-                val updatedEntry = entry.addToPasswordHistory(
-                    oldPassword = entry.password,
-                    generationType = entry.generationType,
-                    oldPasswordFingerprint = oldFingerprint
-                ).copy(
-                    encryptedPassword = encryptedPwd,
-                    passwordFingerprint = newFingerprint,
-                    lastChanged = now,
-                    generationType = newGenerationType,
-                    textHint = newHint ?: entry.textHint,
-                    mnemonicPhraseHint = newMnemonicPhraseHint ?: entry.mnemonicPhraseHint,
-                    mnemonicOptionsJson = newMnemonicOptionsJson ?: entry.mnemonicOptionsJson,
-                    nextRotationDate = if (entry.rotationEnabled) {
-                        now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                    } else {
-                        null
-                    }
-                )
-
-                repository.update(updatedEntry)
-                onResult?.invoke(PasswordOperationResult.Success)
-            } catch (e: Exception) {
-                onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+        entryId: String, newPassword: String, newHint: String?,
+        newGenerationType: String, newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?, onResult: ((PasswordOperationResult) -> Unit)? = null
+    ) = viewModelScope.launch {
+        try {
+            val entry = repository.getById(entryId) ?: run {
+                onResult?.invoke(PasswordOperationResult.Error("Не найдена")); return@launch
             }
-        }
+            val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
+            if (!validation.isValid) {
+                onResult?.invoke(PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка")); return@launch
+            }
+            val now = System.currentTimeMillis()
+            val encryptedPwd = CryptoUtils.encrypt(newPassword)
+            val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+            val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
+            val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+                encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
+                generationType = newGenerationType,
+                textHint = newHint ?: entry.textHint,
+                mnemonicPhraseHint = newMnemonicPhraseHint ?: entry.mnemonicPhraseHint,
+                mnemonicOptionsJson = newMnemonicOptionsJson ?: entry.mnemonicOptionsJson,
+                nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+            )
+            repository.update(updated)
+            onResult?.invoke(PasswordOperationResult.Success)
+        } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    fun bulkReplacePasswords(
-        replacements: List<Triple<String, String, String>>,
-        onResult: ((PasswordOperationResult) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            try {
-                for ((entryId, newPassword, generationType) in replacements) {
-                    val entry = repository.getById(entryId)
-                    if (entry != null) {
-                        val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
-                        if (validation.isValid) {
-                            val now = System.currentTimeMillis()
-                            val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                            val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                            val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-
-                            val updatedEntry = entry.addToPasswordHistory(
-                                oldPassword = entry.password,
-                                generationType = entry.generationType,
-                                oldPasswordFingerprint = oldFingerprint
-                            ).copy(
-                                encryptedPassword = encryptedPwd,
-                                passwordFingerprint = newFingerprint,
-                                lastChanged = now,
-                                generationType = generationType,
-                                nextRotationDate = if (entry.rotationEnabled) {
-                                    now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                                } else {
-                                    null
-                                }
-                            )
-                            repository.update(updatedEntry)
-                        }
-                    }
-                }
-                onResult?.invoke(PasswordOperationResult.Success)
-            } catch (e: Exception) {
-                onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+    fun bulkReplacePasswords(replacements: List<Triple<String, String, String>>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
+        try {
+            for ((entryId, newPassword, generationType) in replacements) {
+                val entry = repository.getById(entryId) ?: continue
+                val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
+                if (!validation.isValid) continue
+                val now = System.currentTimeMillis()
+                val encryptedPwd = CryptoUtils.encrypt(newPassword)
+                val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+                val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
+                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+                    encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
+                    generationType = generationType,
+                    nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+                )
+                repository.update(updated)
             }
-        }
+            onResult?.invoke(PasswordOperationResult.Success)
+        } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
     fun shufflePasswords(entries: List<Entry>, onResult: (PasswordOperationResult) -> Unit) = viewModelScope.launch {
         try {
             if (entries.size < 2) {
-                onResult(PasswordOperationResult.Error("Нужно минимум 2 записи для перестановки"))
-                return@launch
+                onResult(PasswordOperationResult.Error("Нужно минимум 2 записи")); return@launch
             }
-
-            val decryptedPasswords = entries.map { entry ->
-                try {
-                    entry.password
-                } catch (e: Exception) {
-                    throw Exception("Не удалось расшифровать пароль для '${entry.service}': ${e.message}")
+            val decrypted = entries.map {
+                try { it.password } catch (e: Exception) {
+                    throw Exception("Не удалось расшифровать '${it.service}': ${e.message}")
                 }
             }
-
             val now = System.currentTimeMillis()
-            val updates = mutableMapOf<String, Pair<String, String>>() // entryId -> (encryptedPwd, fingerprint)
-
+            val updates = mutableMapOf<String, Pair<String, String>>()
             for (i in entries.indices) {
-                val targetEntry = entries[i]
-                val sourceIndex = (i + 1) % entries.size
-                val newPassword = decryptedPasswords[sourceIndex]
-
-                if (newPassword == targetEntry.password) continue
-
-                val validation = PasswordValidator.validateNewPasswordForEntry(targetEntry, newPassword, appContext)
+                val target = entries[i]
+                val newPwd = decrypted[(i + 1) % entries.size]
+                if (newPwd == target.password) continue
+                val validation = PasswordValidator.validateNewPasswordForEntry(target, newPwd, appContext)
                 if (!validation.isValid) {
-                    onResult(PasswordOperationResult.Error("Невозможно выполнить ротацию: '${targetEntry.service}' -> ${validation.errorMessage}"))
+                    onResult(PasswordOperationResult.Error("Невозможно: '${target.service}' -> ${validation.errorMessage}"))
                     return@launch
                 }
-
-                val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                updates[targetEntry.id] = Pair(encryptedPwd, newFingerprint)
+                val enc = CryptoUtils.encrypt(newPwd)
+                val fp = PasswordValidator.buildPasswordFingerprint(newPwd, appContext)
+                updates[target.id] = Pair(enc, fp)
             }
-
-            val oldFingerprints = entries.associate {
-                it.id to PasswordValidator.buildPasswordFingerprint(it.password, appContext)
-            }
-
             for (entry in entries) {
-                val update = updates[entry.id] ?: continue
-                val (encryptedPwd, newFingerprint) = update
-                val oldFingerprint = oldFingerprints[entry.id] ?: ""
-
-                val updatedEntry = entry.addToPasswordHistory(
-                    oldPassword = entry.password,
-                    generationType = entry.generationType,
-                    oldPasswordFingerprint = oldFingerprint
-                ).copy(
-                    encryptedPassword = encryptedPwd,
-                    passwordFingerprint = newFingerprint,
-                    lastChanged = now,
+                val upd = updates[entry.id] ?: continue
+                val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
+                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+                    encryptedPassword = upd.first, passwordFingerprint = upd.second, lastChanged = now,
                     generationType = "shuffled",
-                    nextRotationDate = if (entry.rotationEnabled) {
-                        now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                    } else {
-                        null
-                    }
+                    nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
                 )
-
-                repository.update(updatedEntry)
+                repository.update(updated)
             }
-
             onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка перестановки: ${e.message}"))
-        }
+        } catch (e: Exception) { onResult(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    fun buildPasswordShufflePlan(selectedEntryIds: List<String>, onResult: (PasswordShufflePlanResult) -> Unit) {
-        viewModelScope.launch {
-            try {
-                if (selectedEntryIds.size < 2) {
-                    onResult(PasswordShufflePlanResult(false, emptyList(), "Нужно минимум 2 записи"))
-                    return@launch
-                }
-
-                val entries = selectedEntryIds.mapNotNull { repository.getById(it) }
-                if (entries.size != selectedEntryIds.size) {
-                    onResult(PasswordShufflePlanResult(false, emptyList(), "Не все записи найдены"))
-                    return@launch
-                }
-
-                val profileId = entries.first().profileId
-                if (entries.any { it.profileId != profileId }) {
-                    onResult(PasswordShufflePlanResult(false, emptyList(), "Все записи должны быть из одного профиля"))
-                    return@launch
-                }
-
-                val assignments = mutableListOf<PasswordShuffleAssignment>()
-                val usedSources = mutableSetOf<String>()
-
-                for (target in entries) {
-                    val availableSources = entries.filter { source ->
-                        source.id != target.id && source.id !in usedSources
-                    }
-
-                    if (availableSources.isEmpty()) {
-                        onResult(PasswordShufflePlanResult(false, emptyList(), "Не удалось построить схему"))
-                        return@launch
-                    }
-
-                    val source = availableSources.first()
-                    usedSources.add(source.id)
-
-                    val validation = validatePasswordShuffleAssignment(target.id, source.id, assignments)
-                    assignments.add(
-                        PasswordShuffleAssignment(
-                            targetEntryId = target.id,
-                            sourceEntryId = source.id,
-                            isValid = validation.isValid,
-                            validationMessage = validation.errorMessage
-                        )
-                    )
-                }
-
-                onResult(PasswordShufflePlanResult(true, assignments, null))
-            } catch (e: Exception) {
-                onResult(PasswordShufflePlanResult(false, emptyList(), "Ошибка: ${e.message}"))
+    fun buildPasswordShufflePlan(selectedIds: List<String>, onResult: (PasswordShufflePlanResult) -> Unit) = viewModelScope.launch {
+        try {
+            if (selectedIds.size < 2) { onResult(PasswordShufflePlanResult(false, emptyList(), "Нужно минимум 2")); return@launch }
+            val entries = selectedIds.mapNotNull { repository.getById(it) }
+            if (entries.size != selectedIds.size) { onResult(PasswordShufflePlanResult(false, emptyList(), "Не все найдены")); return@launch }
+            val pid = entries.first().profileId
+            if (entries.any { it.profileId != pid }) { onResult(PasswordShufflePlanResult(false, emptyList(), "Разные профили")); return@launch }
+            val assignments = mutableListOf<PasswordShuffleAssignment>()
+            val used = mutableSetOf<String>()
+            for (target in entries) {
+                val available = entries.filter { it.id != target.id && it.id !in used }
+                if (available.isEmpty()) { onResult(PasswordShufflePlanResult(false, emptyList(), "Не удалось")); return@launch }
+                val source = available.first(); used.add(source.id)
+                val v = validatePasswordShuffleAssignment(target.id, source.id, assignments)
+                assignments.add(PasswordShuffleAssignment(target.id, source.id, v.isValid, v.errorMessage))
             }
-        }
+            onResult(PasswordShufflePlanResult(true, assignments, null))
+        } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-    fun validatePasswordShuffleAssignment(
-        targetEntryId: String,
-        sourceEntryId: String,
-        currentAssignments: List<PasswordShuffleAssignment>
-    ): PasswordValidator.ValidationResult {
-        if (targetEntryId == sourceEntryId) {
-            return PasswordValidator.ValidationResult(false, "Сервис не может получить свой же пароль")
-        }
-
-        val usedCount = currentAssignments.count {
-            it.sourceEntryId == sourceEntryId && it.targetEntryId != targetEntryId
-        }
-        if (usedCount > 0) {
-            return PasswordValidator.ValidationResult(false, "Этот пароль уже назначен другому сервису")
-        }
-
+    fun validatePasswordShuffleAssignment(targetId: String, sourceId: String, current: List<PasswordShuffleAssignment>): PasswordValidator.ValidationResult {
+        if (targetId == sourceId) return PasswordValidator.ValidationResult(false, "Сервис не может получить свой пароль")
+        if (current.any { it.sourceEntryId == sourceId && it.targetEntryId != targetId })
+            return PasswordValidator.ValidationResult(false, "Пароль уже назначен")
         return PasswordValidator.ValidationResult(true)
     }
 
-    fun applyPasswordShuffle(assignments: List<PasswordShuffleAssignment>, onResult: (PasswordShufflePlanResult) -> Unit) {
-        viewModelScope.launch {
-            try {
-                for (assignment in assignments) {
-                    if (!assignment.isValid) {
-                        onResult(PasswordShufflePlanResult(false, emptyList(), "Есть невалидные назначения"))
-                        return@launch
-                    }
-
-                    val sourceEntry = repository.getById(assignment.sourceEntryId)
-                    val targetEntry = repository.getById(assignment.targetEntryId)
-
-                    if (sourceEntry == null || targetEntry == null) {
-                        onResult(PasswordShufflePlanResult(false, emptyList(), "Запись не найдена"))
-                        return@launch
-                    }
-
-                    val newPassword = sourceEntry.password
-                    val validation = PasswordValidator.validateNewPasswordForEntry(targetEntry, newPassword, appContext)
-                    if (!validation.isValid) {
-                        onResult(PasswordShufflePlanResult(false, emptyList(), validation.errorMessage ?: "Ошибка валидации"))
-                        return@launch
-                    }
-
-                    val now = System.currentTimeMillis()
-                    val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                    val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                    val oldFingerprint = PasswordValidator.buildPasswordFingerprint(targetEntry.password, appContext)
-
-                    val updatedEntry = targetEntry.addToPasswordHistory(
-                        oldPassword = targetEntry.password,
-                        generationType = targetEntry.generationType,
-                        oldPasswordFingerprint = oldFingerprint
-                    ).copy(
-                        encryptedPassword = encryptedPwd,
-                        passwordFingerprint = newFingerprint,
-                        lastChanged = now,
-                        generationType = "shuffled",
-                        nextRotationDate = if (targetEntry.rotationEnabled) {
-                            now + (targetEntry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                        } else {
-                            null
-                        }
-                    )
-
-                    repository.update(updatedEntry)
-                }
-
-                onResult(PasswordShufflePlanResult(true, emptyList(), null))
-            } catch (e: Exception) {
-                onResult(PasswordShufflePlanResult(false, emptyList(), "Ошибка: ${e.message}"))
+    fun applyPasswordShuffle(assignments: List<PasswordShuffleAssignment>, onResult: (PasswordShufflePlanResult) -> Unit) = viewModelScope.launch {
+        try {
+            for (a in assignments) {
+                if (!a.isValid) { onResult(PasswordShufflePlanResult(false, emptyList(), "Несовместимо")); return@launch }
+                val src = repository.getById(a.sourceEntryId) ?: run { onResult(PasswordShufflePlanResult(false, emptyList(), "Не найдена")); return@launch }
+                val tgt = repository.getById(a.targetEntryId) ?: run { onResult(PasswordShufflePlanResult(false, emptyList(), "Не найдена")); return@launch }
+                val newPwd = src.password
+                val v = PasswordValidator.validateNewPasswordForEntry(tgt, newPwd, appContext)
+                if (!v.isValid) { onResult(PasswordShufflePlanResult(false, emptyList(), v.errorMessage ?: "Ошибка")); return@launch }
+                val now = System.currentTimeMillis()
+                val enc = CryptoUtils.encrypt(newPwd)
+                val newFp = PasswordValidator.buildPasswordFingerprint(newPwd, appContext)
+                val oldFp = PasswordValidator.buildPasswordFingerprint(tgt.password, appContext)
+                val updated = tgt.addToPasswordHistory(tgt.password, tgt.generationType, oldFp).copy(
+                    encryptedPassword = enc, passwordFingerprint = newFp, lastChanged = now,
+                    generationType = "shuffled",
+                    nextRotationDate = if (tgt.rotationEnabled) now + (tgt.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
+                )
+                repository.update(updated)
             }
-        }
+            onResult(PasswordShufflePlanResult(true, emptyList(), null))
+        } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 }
 
 data class PasswordShuffleAssignment(
-    val targetEntryId: String,
-    val sourceEntryId: String,
-    val isValid: Boolean,
-    val validationMessage: String?
+    val targetEntryId: String, val sourceEntryId: String,
+    val isValid: Boolean, val validationMessage: String?
 )
 
 data class PasswordShufflePlanResult(
-    val success: Boolean,
-    val assignments: List<PasswordShuffleAssignment>,
+    val success: Boolean, val assignments: List<PasswordShuffleAssignment>,
     val errorMessage: String?
 )
