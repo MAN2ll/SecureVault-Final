@@ -1,12 +1,18 @@
 package com.securevault.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
+import com.securevault.utils.RotationCheckWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 sealed class PasswordOperationResult {
@@ -237,6 +244,26 @@ class VaultViewModel @Inject constructor(
             }
             onResult(PasswordShufflePlanResult(true, emptyList(), null))
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
+    }
+
+    // : Планирование фоновой проверки ротации
+    fun scheduleRotationCheck(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiresBatteryNotLow(true)
+            .build()
+
+        val workRequest = PeriodicWorkRequestBuilder<RotationCheckWorker>(
+            1, TimeUnit.DAYS
+        )
+            .setConstraints(constraints)
+            .setInitialDelay(1, TimeUnit.HOURS)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            "rotation_check",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
     }
 }
 
