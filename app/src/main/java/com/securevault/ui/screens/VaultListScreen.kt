@@ -36,6 +36,7 @@ fun VaultListScreen(
     onNavigateToAudit: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToRotation: () -> Unit,
+    onNavigateToRotationJournal: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToMnemonicGenerator: () -> Unit,
     onNavigateToQrScanner: () -> Unit,
@@ -53,7 +54,6 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
 
-    // Режим выбора
     var selectionMode by remember { mutableStateOf(false) }
     var selectedEntries by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -63,7 +63,6 @@ fun VaultListScreen(
     var showQrDialog by remember { mutableStateOf<Entry?>(null) }
     var showViewDialog by remember { mutableStateOf<Entry?>(null) }
 
-    // Состояния для удаления
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteSelectedDialog by remember { mutableStateOf(false) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
@@ -173,6 +172,14 @@ fun VaultListScreen(
                                         onNavigateToRotation()
                                     },
                                     leadingIcon = { Icon(Icons.Default.Schedule, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Журнал ротации") },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToRotationJournal()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.History, null) }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Аудит безопасности") },
@@ -318,7 +325,6 @@ fun VaultListScreen(
                                         selectedEntries + entry.id
                                     }
                                 } else {
-                                    //  Клик = просмотр карточки
                                     showViewDialog = entry
                                 }
                             },
@@ -333,27 +339,28 @@ fun VaultListScreen(
         }
     }
 
-    //  Просмотр карточки
     if (showViewDialog != null) {
         PasswordViewDialog(
             entry = showViewDialog!!,
             onDismiss = { showViewDialog = null },
             onEdit = {
+                val entry = showViewDialog!!
                 showViewDialog = null
-                onNavigateToEntry(showViewDialog!!.id)
+                onNavigateToEntry(entry.id)
             },
             onQr = {
+                val entry = showViewDialog!!
                 showViewDialog = null
-                showQrDialog = showViewDialog
+                showQrDialog = entry
             },
             onDelete = {
+                val entry = showViewDialog!!
                 showViewDialog = null
-                entryToDelete = showViewDialog
+                entryToDelete = entry
             }
         )
     }
 
-    //  QR
     if (showQrDialog != null) {
         QrCodeDialog(
             entry = showQrDialog!!,
@@ -361,7 +368,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Удаление одной записи
     if (entryToDelete != null) {
         MasterPasswordConfirmDialog(
             title = "Подтверждение удаления",
@@ -387,7 +393,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Подтверждение массового удаления
     if (showDeleteSelectedDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteSelectedDialog = false },
@@ -424,7 +429,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Подтверждение удаления всех паролей профиля
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
@@ -458,7 +462,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Мастер-пароль для опасных действий
     if (showMasterPasswordDialog != null) {
         val action = showMasterPasswordDialog!!
         MasterPasswordConfirmDialog(
@@ -477,7 +480,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Ошибки
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
