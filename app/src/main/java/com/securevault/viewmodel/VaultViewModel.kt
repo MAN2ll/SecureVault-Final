@@ -246,7 +246,7 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-    // : Планирование фоновой проверки ротации
+    // Планирование фоновой проверки ротации
     fun scheduleRotationCheck(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
