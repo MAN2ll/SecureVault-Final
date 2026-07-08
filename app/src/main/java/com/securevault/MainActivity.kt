@@ -15,10 +15,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.ui.SecureVaultNavHost
 import com.securevault.ui.theme.SecureVaultTheme
+import com.securevault.utils.NotificationHelper
 import com.securevault.utils.ReminderScheduler
 import com.securevault.utils.ThemeManager
+import com.securevault.viewmodel.VaultViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -28,14 +31,19 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
+            //  Вызываем обе системы напоминаний
             ReminderScheduler.scheduleReminder(this)
+            scheduleNewRotationCheck()
         }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        //  Запрос разрешения на уведомления (Android 13+)
+        // Создание канала уведомлений (для новой системы)
+        NotificationHelper.createNotificationChannel(this)
+        
+        // Запрос разрешения на уведомления (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this, Manifest.permission.POST_NOTIFICATIONS
@@ -44,9 +52,11 @@ class MainActivity : ComponentActivity() {
                 requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else {
                 ReminderScheduler.scheduleReminder(this)
+                scheduleNewRotationCheck()
             }
         } else {
             ReminderScheduler.scheduleReminder(this)
+            scheduleNewRotationCheck()
         }
         
         setContent {
@@ -68,5 +78,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    
+    //  Планирование новой системы проверки ротации
+    private fun scheduleNewRotationCheck() {
+        val vaultViewModel: VaultViewModel by lazy {
+            androidx.lifecycle.ViewModelProvider(this)[VaultViewModel::class.java]
+        }
+        vaultViewModel.scheduleRotationCheck(this)
     }
 }
