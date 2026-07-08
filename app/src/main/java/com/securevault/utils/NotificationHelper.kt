@@ -82,7 +82,7 @@ object NotificationHelper {
         
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_app_logo)
-            .setContentTitle("⚠️ Пароль истёк!")
+            .setContentTitle("Пароль истёк!")
             .setContentText("Срочно смените пароль для $serviceName")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setAutoCancel(true)
@@ -92,5 +92,52 @@ object NotificationHelper {
         
         val notificationManager = context.getSystemService(NotificationManager::class.java)
         notificationManager.notify(serviceName.hashCode() + 1000, notification)
+    }
+
+    // : Сводное уведомление о всех просроченных и скоро истекающих паролях
+    fun sendRotationSummaryNotification(
+        context: Context,
+        expiredCount: Int,
+        expiringSoonCount: Int
+    ) {
+        if (!isEnabled(context)) return
+        if (expiredCount == 0 && expiringSoonCount == 0) return
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val title = when {
+            expiredCount > 0 && expiringSoonCount > 0 -> "SecureVault: Требуется внимание"
+            expiredCount > 0 -> " SecureVault: Просроченные пароли"
+            else -> "SecureVault: Скоро истекают пароли"
+        }
+
+        val message = buildString {
+            if (expiredCount > 0) append("Просрочено: $expiredCount")
+            if (expiredCount > 0 && expiringSoonCount > 0) append("\n")
+            if (expiringSoonCount > 0) append("Скоро истекают: $expiringSoonCount")
+        }
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_app_logo)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(
+                if (expiredCount > 0) NotificationCompat.PRIORITY_MAX
+                else NotificationCompat.PRIORITY_HIGH
+            )
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setVibrate(if (expiredCount > 0) longArrayOf(0, 500, 200, 500) else null)
+            .build()
+
+        val notificationManager = context.getSystemService(NotificationManager::class.java)
+        notificationManager.notify(2000, notification)
     }
 }
