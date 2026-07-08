@@ -17,13 +17,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.BackupData
+import com.securevault.data.EncryptedBackup
+import com.securevault.utils.BackupManager
 import com.securevault.utils.ExportManager
+import com.securevault.utils.ImportMode
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +40,6 @@ fun ExportImportScreen(
     vaultViewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
-    //  Устанавливаем профиль при входе (если открыт из профиля)
     LaunchedEffect(profileId) {
         if (profileId != null) {
             vaultViewModel.setCurrentProfile(profileId)
@@ -42,36 +48,33 @@ fun ExportImportScreen(
 
     val context = LocalContext.current.applicationContext
     val exportManager = remember { ExportManager(context) }
-    
     val scope = rememberCoroutineScope()
-    
+
     val entries by vaultViewModel.entries.collectAsState()
     val profiles by profileViewModel.profiles.collectAsState()
     val currentProfileId by vaultViewModel.currentProfileId.collectAsState()
-    
+
     var selectedTab by remember { mutableIntStateOf(0) }
-    var selectedProfileIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    
-    // Если открыт из профиля — автоматически выбираем этот профиль для импорта
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
-    var showExportWarning by remember { mutableStateOf(false) }
 
-    //  Если открыт из профиля — автоматически выбираем все записи этого профиля
-    LaunchedEffect(entries, profileId) {
-        if (profileId != null && selectedEntryIds.isEmpty()) {
-            selectedEntryIds = entries.filter { it.profileId == profileId }.map { it.id }.toSet()
-        }
-    }
+    //Состояния для полного backup
+    var showBackupPasswordDialog by remember { mutableStateOf(false) }
+    var showImportPasswordDialog by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var importPassword by remember { mutableStateOf("") }
+    var isExporting by remember { mutableStateOf(false) }
+    var isImporting by remember { mutableStateOf(false) }
+    var importResult by remember { mutableStateOf<String?>(null) }
+    var showImportModeDialog by remember { mutableStateOf(false) }
+    var pendingBackupData by remember { mutableStateOf<BackupData?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         uri?.let {
-            val entriesToExport = entries.filter { entry -> 
-                selectedEntryIds.contains(entry.id)
-            }
+            val entriesToExport = entries.filter { entry -> selectedEntryIds.contains(entry.id) }
             context.contentResolver.openOutputStream(it)?.use { outputStream ->
                 val success = exportManager.exportToCsv(entriesToExport, outputStream)
                 Toast.makeText(
@@ -90,76 +93,92 @@ fun ExportImportScreen(
             val result = exportManager.importFromCsv(it, importTargetProfileId, generateNewIds = true)
             scope.launch {
                 result.entries.forEach { entry -> vaultViewModel.insert(entry) }
-                
                 val message = buildString {
-                    if (result.entries.isNotEmpty()) {
-                        append("Импортировано: ${result.entries.size} записей")
-                    }
+                    if (result.entries.isNotEmpty()) append("Импортировано: ${result.entries.size} записей")
                     if (result.hasKeystoreErrors) {
                         if (isNotEmpty()) append("\n")
-                        append(" ${result.keystoreErrors} записей нельзя расшифровать на этом устройстве (разные ключи Android Keystore)")
+                        append("${result.keystoreErrors} записей нельзя расшифровать")
                     }
                     if (result.errors.isNotEmpty() && result.entries.isEmpty()) {
-                        append("Не удалось импортировать: ${result.errors.take(3).joinToString("; ")}")
+                        append("Ошибка: ${result.errors.take(3).joinToString("; ")}")
                     }
-                    if (isEmpty()) {
-                        append("Файл не содержит данных")
-                    }
+                    if (isEmpty()) append("Файл не содержит данных")
                 }
-                
                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    if (showExportWarning) {
-        AlertDialog(
-            onDismissRequest = { showExportWarning = false },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Внимание!") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(" Файл экспорта содержит чувствительные данные!", fontWeight = FontWeight.Bold)
-                    Text("• Пароли зашифрованы, но файл не защищён паролем")
-                    Text("• Храните его только в безопасном месте")
-                    Text("• Не передавайте третьим лицам")
-                    Spacer(Modifier.height(8.dp))
-                    Text(" Перенос между устройствами:", fontWeight = FontWeight.Bold)
-                    Text(
-                        "Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве. " +
-                        "Для переноса на другое устройство нужен защищённый экспорт с отдельным паролем (будет в будущих версиях).",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showExportWarning = false
-                        exportLauncher.launch(exportManager.generateExportFilename())
+    //Экспорт полного backup
+    val backupExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                isExporting = true
+                try {
+                    val backupData = withContext(Dispatchers.IO) {
+                        BackupManager.exportAllProfiles(vaultViewModel.repository)
                     }
-                ) {
-                    Text("Понимаю, экспортировать")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExportWarning = false }) {
-                    Text("Отмена")
+                    val encrypted = withContext(Dispatchers.IO) {
+                        BackupManager.encryptBackup(backupData, backupPassword)
+                    }
+                    val jsonString = encrypted.toJson()
+
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                    }
+
+                    val profileCount = backupData.profiles.size
+                    val entryCount = backupData.profiles.sumOf { it.entries.size }
+                    importResult = "Backup создан\nПрофилей: $profileCount\nЗаписей: $entryCount"
+                } catch (e: Exception) {
+                    importResult = "Ошибка: ${e.message}"
+                } finally {
+                    isExporting = false
+                    backupPassword = ""
                 }
             }
-        )
+        }
+    }
+
+    // Импорт полного backup
+    val backupImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            scope.launch {
+                isImporting = true
+                try {
+                    val jsonString = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader ->
+                            reader.readText()
+                        } ?: throw Exception("Не удалось прочитать файл")
+                    }
+                    val encrypted = EncryptedBackup.fromJson(jsonString)
+                    val backupData = withContext(Dispatchers.IO) {
+                        BackupManager.decryptBackup(encrypted, importPassword)
+                    }
+                    pendingBackupData = backupData
+                    showImportModeDialog = true
+                } catch (e: Exception) {
+                    importResult = "❌ Ошибка: ${e.message}"
+                } finally {
+                    isImporting = false
+                    importPassword = ""
+                }
+            }
+        }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
-                        if (profileId != null) "Экспорт / Импорт профиля" 
-                        else "Экспорт / Импорт", 
-                        fontWeight = FontWeight.Bold 
-                    ) 
+                        if (profileId != null) "Экспорт / Импорт профиля" else "Экспорт / Импорт",
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -180,6 +199,7 @@ fun ExportImportScreen(
             }
 
             if (selectedTab == 0) {
+                // ЭКСПОРТ
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -187,159 +207,96 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(" CSV содержит чувствительные данные!", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                                Text("Файл не зашифрован. Храните его в безопасном месте.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f))
-                            }
-                        }
-                    }
-                    
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("📱 Перенос между устройствами", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                Text("Из-за Android Keystore зашифрованные пароли можно восстановить ТОЛЬКО на том же устройстве.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.9f))
-                            }
-                        }
-                    }
+                    // CSV экспорт
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("CSV экспорт записей", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Для совместимости с другими приложениями", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(12.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Выберите записи для экспорта", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        TextButton(onClick = {
-                            selectedEntryIds = if (selectedEntryIds.size == entries.size) {
-                                emptySet()
-                            } else {
-                                entries.map { it.id }.toSet()
-                            }
-                        }) {
-                            Text(if (selectedEntryIds.size == entries.size) "Снять все" else "Выбрать все")
-                        }
-                    }
-
-                    if (profiles.isNotEmpty()) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Фильтр по профилям:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                                Spacer(Modifier.height(8.dp))
-                                androidx.compose.foundation.layout.FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    profiles.forEach { profile ->
-                                        val isSelected = selectedProfileIds.contains(profile.id)
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = {
-                                                selectedProfileIds = if (isSelected) {
-                                                    selectedProfileIds - profile.id
-                                                } else {
-                                                    selectedProfileIds + profile.id
-                                                }
-                                            },
-                                            label = { Text(profile.name) }
-                                        )
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Выберите записи", fontWeight = FontWeight.Medium)
+                                TextButton(onClick = {
+                                    selectedEntryIds = if (selectedEntryIds.size == entries.size) emptySet() else entries.map { it.id }.toSet()
+                                }) {
+                                    Text(if (selectedEntryIds.size == entries.size) "Снять все" else "Выбрать все")
                                 }
                             }
-                        }
-                    }
 
-                    val filteredEntries = if (selectedProfileIds.isEmpty()) {
-                        entries
-                    } else {
-                        entries.filter { it.profileId in selectedProfileIds }
-                    }
-
-                    if (filteredEntries.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.Inbox, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                                Spacer(Modifier.height(8.dp))
-                                Text("Нет записей для экспорта", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    } else {
-                        filteredEntries.forEach { entry ->
-                            val isSelected = selectedEntryIds.contains(entry.id)
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedEntryIds = if (isSelected) {
-                                            selectedEntryIds - entry.id
-                                        } else {
-                                            selectedEntryIds + entry.id
-                                        }
-                                    }
-                            ) {
+                            entries.forEach { entry ->
+                                val isSelected = selectedEntryIds.contains(entry.id)
                                 Row(
-                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedEntryIds = if (isSelected) selectedEntryIds - entry.id else selectedEntryIds + entry.id
+                                        }
+                                        .padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = { checked ->
-                                            selectedEntryIds = if (checked) {
-                                                selectedEntryIds + entry.id
-                                            } else {
-                                                selectedEntryIds - entry.id
-                                            }
-                                        }
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(entry.service, fontWeight = FontWeight.SemiBold)
+                                    Checkbox(checked = isSelected, onCheckedChange = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(entry.service, fontWeight = FontWeight.Medium)
                                         Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
+
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { exportLauncher.launch(exportManager.generateExportFilename()) },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = selectedEntryIds.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Экспортировать CSV (${selectedEntryIds.size})")
+                            }
                         }
                     }
 
-                    Spacer(Modifier.weight(1f))
+                    HorizontalDivider()
 
-                    Button(
-                        onClick = {
-                            if (selectedEntryIds.isEmpty()) {
-                                Toast.makeText(context, "Выберите хотя бы одну запись", Toast.LENGTH_SHORT).show()
-                            } else {
-                                showExportWarning = true
-                            }
-                        },
+                    // Полный защищённый backup
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = selectedEntryIds.isNotEmpty()
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
-                        Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Экспортировать (${selectedEntryIds.size})")
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Полный защищённый backup", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Экспортирует все профили и пароли в зашифрованном файле.\n" +
+                                "Файл защищён паролем (AES-256-GCM).\n" +
+                                "Можно переносить между устройствами.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { showBackupPasswordDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = profiles.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Создать backup")
+                            }
+                        }
                     }
                 }
             } else {
+                // ИМПОРТ
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -347,21 +304,14 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // CSV импорт
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.FileOpen, null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Импорт из файла", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            
-                            Text("Поддерживаемые форматы: CSV (экспортированные из SecureVault)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(16.dp))
-                            
-                            Text("Целевой профиль:", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text("CSV импорт", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(Modifier.height(8.dp))
-                            
+                            Text("Целевой профиль:", fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(8.dp))
+
                             if (profiles.isNotEmpty()) {
                                 ExposedDropdownMenuBox(
                                     expanded = expandedTargetProfile,
@@ -391,77 +341,171 @@ fun ExportImportScreen(
                                         }
                                     }
                                 }
-                            } else {
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Сначала создайте профиль", color = MaterialTheme.colorScheme.onErrorContainer)
-                                    }
-                                }
                             }
-                            
-                            Spacer(Modifier.height(16.dp))
-                            
+
+                            Spacer(Modifier.height(12.dp))
                             Button(
-                                onClick = {
-                                    importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
-                                },
+                                onClick = { importLauncher.launch(arrayOf("text/csv", "*/*")) },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = profiles.isNotEmpty()
                             ) {
                                 Icon(Icons.Default.Download, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Выбрать файл")
+                                Text("Импортировать CSV")
                             }
                         }
                     }
 
+                    HorizontalDivider()
+
+                    // Импорт полного backup
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Информация", fontWeight = FontWeight.Bold)
+                                Text("Импорт полного backup", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "• Файл должен быть в формате CSV, экспортированным из SecureVault\n" +
-                                "• Пароли импортируются в зашифрованном виде\n" +
-                                "• Все записи будут добавлены в выбранный профиль с новыми ID\n" +
-                                "• Дубликаты могут быть созданы (проверяйте вручную)",
+                                "Восстанавливает все профили и пароли из зашифрованного файла.\n" +
+                                "Профили создаются заново с новыми ID.",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { showImportPasswordDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.LockOpen, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Импортировать backup")
+                            }
                         }
                     }
-                    
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+
+                    if (importResult != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (importResult!!.startsWith("✅"))
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.errorContainer
+                            )
                         ) {
-                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Импортируйте только файлы из доверенных источников!", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Medium)
-                                Text("Файлы с других устройств не будут работать из-за Android Keystore.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f))
-                            }
+                            Text(
+                                importResult!!,
+                                modifier = Modifier.padding(16.dp),
+                                fontSize = 13.sp
+                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    // Диалог ввода пароля для экспорта
+    if (showBackupPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupPasswordDialog = false },
+            icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Защитить backup паролем") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Введите пароль для шифрования backup-файла", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it },
+                        label = { Text("Пароль") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (backupPassword.length >= 4) {
+                            showBackupPasswordDialog = false
+                            backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
+                        } else {
+                            Toast.makeText(context, "Пароль должен быть минимум 4 символа", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = backupPassword.length >= 4
+                ) {
+                    Text("Создать")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupPasswordDialog = false; backupPassword = "" }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    // Диалог ввода пароля для импорта
+    if (showImportPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportPasswordDialog = false },
+            icon = { Icon(Icons.Default.LockOpen, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Введите пароль backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Введите пароль, который использовался при создании backup", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = importPassword,
+                        onValueChange = { importPassword = it },
+                        label = { Text("Пароль") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showImportPasswordDialog = false
+                        backupImportLauncher.launch(arrayOf("application/json", "*/*"))
+                    },
+                    enabled = importPassword.isNotEmpty()
+                ) {
+                    Text("Импортировать")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportPasswordDialog = false; importPassword = "" }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    // Диалог выбора режима импорта
+    if (showImportModeDialog && pendingBackupData != null) {
+        AlertDialog(
+            onDismissRequest = { showImportModeDialog = false; pendingBackupData = null },
+            icon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Режим импорта") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Найдено профилей: ${pendingBackupData!!.profiles.size}", fontWeight = FontWeight.Medium)
+                    Text("Всего записей: ${pendingBackupData!!.profiles.sumOf { it.entries.size }}", fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Выберите режим:", fontWeight = FontWeight.Medium)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
     }
 }
