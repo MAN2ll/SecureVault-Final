@@ -92,23 +92,19 @@ class AuthViewModel @Inject constructor() : ViewModel() {
         } else {
             BruteForceGuard.recordFailedAttempt()
 
-            if (BruteForceGuard.shouldWipeData()) {
-                prefs.edit().clear().apply()
-                _authState.value = AuthState.SetupRequired
-            } else {
-                val remaining = BruteForceGuard.getRemainingLockoutMillis()
-                if (remaining > 0) {
-                    _authState.value = AuthState.BruteForceLocked(remaining)
-                    viewModelScope.launch {
-                        while (BruteForceGuard.getRemainingLockoutMillis() > 0) {
-                            delay(1000)
-                            _authState.value = AuthState.BruteForceLocked(BruteForceGuard.getRemainingLockoutMillis())
-                        }
-                        _authState.value = AuthState.Locked
+            //  Убираем shouldWipeData(), оставляем только lockout
+            val remaining = BruteForceGuard.getRemainingLockoutMillis()
+            if (remaining > 0) {
+                _authState.value = AuthState.BruteForceLocked(remaining)
+                viewModelScope.launch {
+                    while (BruteForceGuard.getRemainingLockoutMillis() > 0) {
+                        delay(1000)
+                        _authState.value = AuthState.BruteForceLocked(BruteForceGuard.getRemainingLockoutMillis())
                     }
-                } else {
                     _authState.value = AuthState.Locked
                 }
+            } else {
+                _authState.value = AuthState.Locked
             }
             return false
         }
