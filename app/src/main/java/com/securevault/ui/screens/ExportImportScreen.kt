@@ -118,7 +118,7 @@ fun ExportImportScreen(
                 isExporting = true
                 try {
                     val backupData = withContext(Dispatchers.IO) {
-                        BackupManager.exportAllProfiles(vaultViewModel.repository)
+                        vaultViewModel.exportAllProfiles()
                     }
                     val encrypted = withContext(Dispatchers.IO) {
                         BackupManager.encryptBackup(backupData, backupPassword)
