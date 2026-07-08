@@ -51,7 +51,7 @@ fun PasswordShuffleDialog(
     }
 
     AlertDialog(
-        onDismissRequest = if (isShuffling) {} else onDismiss,
+        onDismissRequest = { if (!isShuffling) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Shuffle, null, tint = MaterialTheme.colorScheme.primary)
