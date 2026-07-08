@@ -55,4 +55,8 @@ class VaultRepository @Inject constructor(
         val threshold = now + (daysThreshold * 24L * 60 * 60 * 1000)
         return entryDao.getEntriesExpiringSoon(now, threshold)
     }
+        // Получение всех записей для экспорта
+    suspend fun getAllEntriesForExport(): List<Entry> {
+        return entryDao.getAllEntries().first()
+    }
 }
