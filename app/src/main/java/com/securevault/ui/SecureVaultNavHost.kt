@@ -59,7 +59,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Главный экран профилей
         composable("profiles") {
             ProfileListScreen(
                 onProfileSelected = { profileId ->
@@ -81,7 +80,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Экран списка записей профиля
         composable("vault/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             VaultListScreen(
@@ -101,6 +99,9 @@ fun SecureVaultNavHost() {
                 onNavigateToRotation = {
                     navController.navigate("rotation/${profileId ?: return@VaultListScreen}")
                 },
+                onNavigateToRotationJournal = {
+                    navController.navigate("rotation_journal/${profileId ?: return@VaultListScreen}")
+                },
                 onNavigateToSettings = {
                     navController.navigate("profile_settings/${profileId ?: return@VaultListScreen}")
                 },
@@ -113,7 +114,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Редактор записи
         composable("editor/{id}/{profileId}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
@@ -125,7 +125,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Мнемонический генератор
         composable("mnemonic/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             MnemonicGeneratorScreen(
@@ -134,7 +133,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Ротация паролей
         composable("rotation/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             RotationScreen(
@@ -143,7 +141,7 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // Журнал ротации
+        // ✅ НОВОЕ: Журнал ротации
         composable("rotation_journal/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             RotationJournalScreen(
@@ -152,7 +150,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  QR-сканер
         composable("qr_scanner/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             QrScannerScreen(
@@ -161,7 +158,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Аудит
         composable("audit/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             AuditScreen(
@@ -170,7 +166,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Экспорт/импорт из профиля
         composable("export/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             ExportImportScreen(
@@ -179,7 +174,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Экспорт/импорт общий (из настроек)
         composable("export_import_general") {
             ExportImportScreen(
                 profileId = null,
@@ -187,7 +181,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Настройки профиля
         composable("profile_settings/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             ProfileSettingsScreen(
@@ -196,7 +189,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Общие настройки
         composable("settings") {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
