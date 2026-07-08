@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 
 sealed class PasswordOperationResult {
     object Success : PasswordOperationResult()
@@ -244,6 +245,45 @@ class VaultViewModel @Inject constructor(
             }
             onResult(PasswordShufflePlanResult(true, emptyList(), null))
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
+    }
+
+          // Экспорт всех профилей и записей для backup
+    suspend fun exportAllProfiles(): com.securevault.data.BackupData {
+        val allProfiles = repository.allProfiles.first()
+        val backupProfiles = allProfiles.map { profile ->
+            val entries = repository.getByProfileId(profile.id)
+            val backupEntries = entries.map { entry ->
+                com.securevault.data.BackupEntry(
+                    service = entry.service,
+                    username = entry.username,
+                    encryptedPassword = entry.encryptedPassword,
+                    url = entry.url,
+                    notes = entry.notes,
+                    textHint = entry.textHint,
+                    generationType = entry.generationType,
+                    mnemonicPhraseHint = entry.mnemonicPhraseHint,
+                    mnemonicOptionsJson = entry.mnemonicOptionsJson,
+                    rotationEnabled = entry.rotationEnabled,
+                    rotationPeriodMonths = entry.rotationPeriodMonths,
+                    nextRotationDate = entry.nextRotationDate,
+                    isFavorite = entry.isFavorite,
+                    createdAt = entry.createdAt,
+                    lastChanged = entry.lastChanged,
+                    passwordHistoryJson = entry.passwordHistoryJson,
+                    passwordFingerprint = entry.passwordFingerprint
+                )
+            }
+            com.securevault.data.BackupProfile(profile.id, profile.name, backupEntries)
+        }
+        return com.securevault.data.BackupData(profiles = backupProfiles)
+    }
+
+    //  Импорт backup
+    suspend fun importBackup(
+        backupData: com.securevault.data.BackupData,
+        mode: com.securevault.utils.ImportMode
+    ): com.securevault.utils.ImportResult {
+        return com.securevault.utils.BackupManager.importBackup(repository, backupData, mode)
     }
 
     // Планирование фоновой проверки ротации
