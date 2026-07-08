@@ -59,7 +59,7 @@ fun ExportImportScreen(
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
-    //Состояния для полного backup
+    // Состояния для полного backup
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
     var backupPassword by remember { mutableStateOf("") }
@@ -70,7 +70,36 @@ fun ExportImportScreen(
     var showImportModeDialog by remember { mutableStateOf(false) }
     var pendingBackupData by remember { mutableStateOf<BackupData?>(null) }
 
-    val exportLauncher = rememberLauncherForActivityResult(
+    // Вспомогательная функция для импорта
+    fun performImport(
+        backupData: BackupData,
+        mode: ImportMode
+    ) {
+        scope.launch {
+            isImporting = true
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    vaultViewModel.importBackup(backupData, mode)
+                }
+                importResult = buildString {
+                    append("Импорт завершён\n")
+                    append("Профилей: ${result.importedProfiles}\n")
+                    append("Записей: ${result.importedEntries}")
+                    if (result.errors.isNotEmpty()) {
+                        append("\n\nОшибки:\n")
+                        append(result.errors.take(3).joinToString("\n"))
+                    }
+                }
+            } catch (e: Exception) {
+                importResult = "❌ Ошибка: ${e.message}"
+            } finally {
+                isImporting = false
+                pendingBackupData = null
+            }
+        }
+    }
+
+    val csvExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         uri?.let {
@@ -86,7 +115,7 @@ fun ExportImportScreen(
         }
     }
 
-    val importLauncher = rememberLauncherForActivityResult(
+    val csvImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
@@ -109,7 +138,7 @@ fun ExportImportScreen(
         }
     }
 
-    //Экспорт полного backup
+    // Экспорт полного backup
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -142,7 +171,7 @@ fun ExportImportScreen(
         }
     }
 
-    // Импорт полного backup
+    //  Импорт полного backup
     val backupImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -163,7 +192,6 @@ fun ExportImportScreen(
                     showImportModeDialog = true
                 } catch (e: Exception) {
                     importResult = "❌ Ошибка: ${e.message}"
-                } finally {
                     isImporting = false
                     importPassword = ""
                 }
@@ -250,7 +278,7 @@ fun ExportImportScreen(
 
                             Spacer(Modifier.height(12.dp))
                             Button(
-                                onClick = { exportLauncher.launch(exportManager.generateExportFilename()) },
+                                onClick = { csvExportLauncher.launch(exportManager.generateExportFilename()) },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = selectedEntryIds.isNotEmpty()
                             ) {
@@ -286,12 +314,40 @@ fun ExportImportScreen(
                             Button(
                                 onClick = { showBackupPasswordDialog = true },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = profiles.isNotEmpty()
+                                enabled = profiles.isNotEmpty() && !isExporting
                             ) {
-                                Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Создать backup")
+                                if (isExporting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Создание backup...")
+                                } else {
+                                    Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Создать backup")
+                                }
                             }
+                        }
+                    }
+
+                    if (importResult != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (importResult!!.startsWith("Готово"))
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Text(
+                                importResult!!,
+                                modifier = Modifier.padding(16.dp),
+                                fontSize = 13.sp
+                            )
                         }
                     }
                 }
@@ -345,7 +401,7 @@ fun ExportImportScreen(
 
                             Spacer(Modifier.height(12.dp))
                             Button(
-                                onClick = { importLauncher.launch(arrayOf("text/csv", "*/*")) },
+                                onClick = { csvImportLauncher.launch(arrayOf("text/csv", "*/*")) },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = profiles.isNotEmpty()
                             ) {
@@ -379,11 +435,22 @@ fun ExportImportScreen(
                             Spacer(Modifier.height(12.dp))
                             Button(
                                 onClick = { showImportPasswordDialog = true },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !isImporting
                             ) {
-                                Icon(Icons.Default.LockOpen, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Импортировать backup")
+                                if (isImporting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Импорт...")
+                                } else {
+                                    Icon(Icons.Default.LockOpen, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Импортировать backup")
+                                }
                             }
                         }
                     }
@@ -392,7 +459,7 @@ fun ExportImportScreen(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (importResult!!.startsWith("✅"))
+                                containerColor = if (importResult!!.startsWith("Готово"))
                                     MaterialTheme.colorScheme.primaryContainer
                                 else
                                     MaterialTheme.colorScheme.errorContainer
@@ -410,7 +477,7 @@ fun ExportImportScreen(
         }
     }
 
-    // Диалог ввода пароля для экспорта
+    //  Диалог ввода пароля для экспорта
     if (showBackupPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showBackupPasswordDialog = false },
@@ -419,6 +486,7 @@ fun ExportImportScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Введите пароль для шифрования backup-файла", fontSize = 13.sp)
+                    Text("Запомните этот пароль — без него невозможно будет восстановить данные!", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                     OutlinedTextField(
                         value = backupPassword,
                         onValueChange = { backupPassword = it },
@@ -426,6 +494,15 @@ fun ExportImportScreen(
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = "",
+                        onValueChange = {},
+                        label = { Text("Подтверждение пароля") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false
                     )
                 }
             },
@@ -452,7 +529,7 @@ fun ExportImportScreen(
         )
     }
 
-    // Диалог ввода пароля для импорта
+    //  Диалог ввода пароля для импорта
     if (showImportPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showImportPasswordDialog = false },
@@ -474,8 +551,10 @@ fun ExportImportScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        showImportPasswordDialog = false
-                        backupImportLauncher.launch(arrayOf("application/json", "*/*"))
+                        if (importPassword.isNotEmpty()) {
+                            showImportPasswordDialog = false
+                            backupImportLauncher.launch(arrayOf("application/json", "*/*"))
+                        }
                     },
                     enabled = importPassword.isNotEmpty()
                 ) {
@@ -490,7 +569,7 @@ fun ExportImportScreen(
         )
     }
 
-    // Диалог выбора режима импорта
+    // ✅ Диалог выбора режима импорта
     if (showImportModeDialog && pendingBackupData != null) {
         AlertDialog(
             onDismissRequest = { showImportModeDialog = false; pendingBackupData = null },
@@ -502,10 +581,46 @@ fun ExportImportScreen(
                     Text("Всего записей: ${pendingBackupData!!.profiles.sumOf { it.entries.size }}", fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     Text("Выберите режим:", fontWeight = FontWeight.Medium)
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    Button(
+                        onClick = {
+                            showImportModeDialog = false
+                            performImport(pendingBackupData!!, ImportMode.ADD_AS_NEW)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Добавить как новые профили")
+                    }
+                    
+                    OutlinedButton(
+                        onClick = {
+                            showImportModeDialog = false
+                            performImport(pendingBackupData!!, ImportMode.MERGE_IF_EXISTS)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Объединить с существующими")
+                    }
+                    
+                    OutlinedButton(
+                        onClick = {
+                            showImportModeDialog = false
+                            performImport(pendingBackupData!!, ImportMode.SKIP_IF_EXISTS)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Пропустить существующие")
+                    }
                 }
             },
             confirmButton = {},
-            dismissButton = {}
+            dismissButton = {
+                TextButton(onClick = { showImportModeDialog = false; pendingBackupData = null }) {
+                    Text("Отмена")
+                }
+            }
         )
     }
 }
