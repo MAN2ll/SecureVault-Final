@@ -28,7 +28,7 @@ class VaultViewModel @Inject constructor(
     private val appContext: Application
 ) : AndroidViewModel(appContext) {
 
-    //  Фильтрация записей по текущему профилю
+    // ✅ Фильтрация записей по текущему профилю
     val entries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { allEntries, profileId ->
             if (profileId == null) emptyList()
