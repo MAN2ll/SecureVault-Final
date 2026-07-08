@@ -79,6 +79,9 @@ dependencies {
     // ===== Navigation =====
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
+    // WorkManager для фоновых задач
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     // ===== Hilt (DI) =====
     implementation("com.google.dagger:hilt-android:2.48")
     kapt("com.google.dagger:hilt-android-compiler:2.48")
