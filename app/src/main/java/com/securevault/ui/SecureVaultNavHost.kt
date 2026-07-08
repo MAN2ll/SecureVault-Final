@@ -141,7 +141,7 @@ fun SecureVaultNavHost() {
             )
         }
 
-        // ✅ НОВОЕ: Журнал ротации
+        //  Журнал ротации
         composable("rotation_journal/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             RotationJournalScreen(
