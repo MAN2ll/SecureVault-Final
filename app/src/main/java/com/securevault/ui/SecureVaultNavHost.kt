@@ -143,6 +143,15 @@ fun SecureVaultNavHost() {
             )
         }
 
+        // Журнал ротации
+        composable("rotation_journal/{profileId}") { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            RotationJournalScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         //  QR-сканер
         composable("qr_scanner/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
