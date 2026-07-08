@@ -1,330 +1,134 @@
 package com.securevault.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.securevault.data.Entry
-import com.securevault.data.VaultRepository
-import com.securevault.utils.CryptoUtils
-import com.securevault.utils.PasswordValidator
+import com.securevault.security.BruteForceGuard
+import com.securevault.security.MasterPasswordHasher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 import javax.inject.Inject
 
-sealed class PasswordOperationResult {
-    object Success : PasswordOperationResult()
-    data class Error(val message: String) : PasswordOperationResult()
-}
-
 @HiltViewModel
-class VaultViewModel @Inject constructor(
-    private val repository: VaultRepository,
-    private val appContext: Application
-) : AndroidViewModel(appContext) {
+class AuthViewModel @Inject constructor() : ViewModel() {
 
-    //  ПЕРЕМЕЩЕНО ВВЕРХ: Объявляем ДО init
-    private val _currentProfileId = MutableStateFlow<Int?>(null)
-    val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
+    sealed class AuthState {
+        object Locked : AuthState()
+        object SetupRequired : AuthState()
+        object Unlocked : AuthState()
+        data class BruteForceLocked(val remainingMillis: Long) : AuthState()
+    }
 
-    //  Фильтрация записей по текущему профилю
-    val entries: StateFlow<List<Entry>> = repository.allEntries
-        .combine(_currentProfileId) { allEntries, profileId ->
-            if (profileId == null) emptyList()
-            else allEntries.filter { it.profileId == profileId }
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Locked)
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    private lateinit var prefs: SharedPreferences
+    private var isInitialized = false
+
+    fun init(context: Context) {
+        if (isInitialized) return
+        prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+        BruteForceGuard.init(context)
+        isInitialized = true
+
+        val hasMasterHash = prefs.getString("master_hash", null) != null
+        _authState.value = if (hasMasterHash) AuthState.Locked else AuthState.SetupRequired
+    }
+
+    fun setupMasterPassword(password: String) {
+        val hashResult = MasterPasswordHasher.hash(password)
+        prefs.edit()
+            .putString("master_hash", hashResult.hash)
+            .putString("master_salt", hashResult.salt)
+            .putInt("master_iterations", hashResult.iterations)
+            .remove("master_hash_sha256")
+            .apply()
+        BruteForceGuard.resetAttempts()
+        _authState.value = AuthState.Unlocked
+    }
+
+    fun verifyMasterPassword(password: String): Boolean {
+        if (!isInitialized) return false
+
+        val storedHash = prefs.getString("master_hash", null)
+        val storedSalt = prefs.getString("master_salt", null)
+        val iterations = prefs.getInt("master_iterations", 100_000)
+
+        if (storedHash != null && storedSalt != null) {
+            return MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
 
-    private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
-    val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
-
-    val favoritesOnly = MutableStateFlow(false)
-
-    init {
-        // Перезагружаем rotationEntries при смене профиля
-        viewModelScope.launch {
-            _currentProfileId.collect { profileId ->
-                if (profileId != null) {
-                    loadRotationEntries(profileId)
-                } else {
-                    _rotationEntries.value = emptyList()
-                }
+        val oldHash = prefs.getString("master_hash_sha256", null)
+        if (oldHash != null) {
+            val passwordHash = hashPasswordSHA256(password)
+            if (passwordHash == oldHash) {
+                setupMasterPassword(password)
+                return true
             }
         }
+
+        return false
     }
 
-    private fun loadRotationEntries(profileId: Int) {
-        viewModelScope.launch {
-            val allRotation = repository.getEntriesWithRotation()
-            _rotationEntries.value = allRotation.filter { it.profileId == profileId }
+    fun attemptUnlock(password: String): Boolean {
+        if (BruteForceGuard.isLockedOut()) {
+            val remaining = BruteForceGuard.getRemainingLockoutMillis()
+            _authState.value = AuthState.BruteForceLocked(remaining)
+            return false
         }
-    }
 
-    fun setCurrentProfile(profileId: Int?) {
-        _currentProfileId.value = profileId
-    }
+        val isValid = verifyMasterPassword(password)
 
-    fun toggleFavoritesOnly() {
-        favoritesOnly.value = !favoritesOnly.value
-    }
+        if (isValid) {
+            BruteForceGuard.resetAttempts()
+            _authState.value = AuthState.Unlocked
+            return true
+        } else {
+            BruteForceGuard.recordFailedAttempt()
 
-    fun toggleFavorite(entry: Entry) {
-        viewModelScope.launch {
-            repository.update(entry.copy(isFavorite = !entry.isFavorite))
-        }
-    }
-
-    fun insert(entry: Entry) {
-        viewModelScope.launch {
-            repository.insert(entry)
-        }
-    }
-
-    fun insertEntry(
-        entry: Entry,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            repository.insert(entry)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error(e.message ?: "Ошибка сохранения"))
-        }
-    }
-
-    fun updateEntry(
-        entry: Entry,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            repository.update(entry)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error(e.message ?: "Ошибка обновления"))
-        }
-    }
-
-    //  Удаление одной записи с проверкой профиля
-    fun deleteEntry(
-        entryId: String,
-        expectedProfileId: Int,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            val entry = repository.getById(entryId)
-            if (entry == null) {
-                onResult(PasswordOperationResult.Error("Запись не найдена"))
-                return@launch
-            }
-            if (entry.profileId != expectedProfileId) {
-                onResult(PasswordOperationResult.Error("Запись принадлежит другому профилю"))
-                return@launch
-            }
-            repository.delete(entry)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
-    }
-
-    //  Массовое удаление записей
-    fun deleteEntries(
-        entryIds: List<String>,
-        expectedProfileId: Int,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            for (entryId in entryIds) {
-                val entry = repository.getById(entryId)
-                if (entry != null && entry.profileId == expectedProfileId) {
-                    repository.delete(entry)
-                }
-            }
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
-    }
-
-    //  Удаление всех записей профиля
-    fun deleteAllEntriesInProfile(
-        profileId: Int,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            repository.deleteEntriesByProfileId(profileId)
-            onResult(PasswordOperationResult.Success)
-        } catch (e: Exception) {
-            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-        }
-    }
-
-    fun deleteAll() {
-        val profileId = _currentProfileId.value ?: return
-        viewModelScope.launch {
-            repository.deleteEntriesByProfileId(profileId)
-        }
-    }
-
-    fun findEntryById(entryId: String): Entry? {
-        return repository.getByIdBlocking(entryId)
-    }
-
-    fun replacePassword(
-        entryId: String,
-        newPassword: String,
-        newHint: String?,
-        newGenerationType: String,
-        newMnemonicPhraseHint: String?,
-        newMnemonicOptionsJson: String?,
-        onResult: ((PasswordOperationResult) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            try {
-                val entry = repository.getById(entryId)
-                if (entry == null) {
-                    onResult?.invoke(PasswordOperationResult.Error("Запись не найдена"))
-                    return@launch
-                }
-
-                val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
-                if (!validation.isValid) {
-                    onResult?.invoke(PasswordOperationResult.Error(validation.errorMessage ?: "Ошибка валидации"))
-                    return@launch
-                }
-
-                val now = System.currentTimeMillis()
-                val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-
-                val updatedEntry = entry.addToPasswordHistory(
-                    oldPassword = entry.password,
-                    generationType = entry.generationType,
-                    oldPasswordFingerprint = oldFingerprint
-                ).copy(
-                    encryptedPassword = encryptedPwd,
-                    passwordFingerprint = newFingerprint,
-                    lastChanged = now,
-                    generationType = newGenerationType,
-                    textHint = newHint ?: entry.textHint,
-                    mnemonicPhraseHint = newMnemonicPhraseHint ?: entry.mnemonicPhraseHint,
-                    mnemonicOptionsJson = newMnemonicOptionsJson ?: entry.mnemonicOptionsJson,
-                    nextRotationDate = if (entry.rotationEnabled) {
-                        now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                    } else {
-                        null
-                    }
-                )
-
-                repository.update(updatedEntry)
-                onResult?.invoke(PasswordOperationResult.Success)
-            } catch (e: Exception) {
-                onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-            }
-        }
-    }
-
-    fun bulkReplacePasswords(
-        replacements: List<Triple<String, String, String>>,
-        onResult: ((PasswordOperationResult) -> Unit)? = null
-    ) {
-        viewModelScope.launch {
-            try {
-                for ((entryId, newPassword, generationType) in replacements) {
-                    val entry = repository.getById(entryId)
-                    if (entry != null) {
-                        val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
-                        if (validation.isValid) {
-                            val now = System.currentTimeMillis()
-                            val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                            val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                            val oldFingerprint = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-
-                            val updatedEntry = entry.addToPasswordHistory(
-                                oldPassword = entry.password,
-                                generationType = entry.generationType,
-                                oldPasswordFingerprint = oldFingerprint
-                            ).copy(
-                                encryptedPassword = encryptedPwd,
-                                passwordFingerprint = newFingerprint,
-                                lastChanged = now,
-                                generationType = generationType,
-                                nextRotationDate = if (entry.rotationEnabled) {
-                                    now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                                } else {
-                                    null
-                                }
-                            )
-                            repository.update(updatedEntry)
+            if (BruteForceGuard.shouldWipeData()) {
+                prefs.edit().clear().apply()
+                _authState.value = AuthState.SetupRequired
+            } else {
+                val remaining = BruteForceGuard.getRemainingLockoutMillis()
+                if (remaining > 0) {
+                    _authState.value = AuthState.BruteForceLocked(remaining)
+                    viewModelScope.launch {
+                        while (BruteForceGuard.getRemainingLockoutMillis() > 0) {
+                            delay(1000)
+                            _authState.value = AuthState.BruteForceLocked(BruteForceGuard.getRemainingLockoutMillis())
                         }
+                        _authState.value = AuthState.Locked
                     }
+                } else {
+                    _authState.value = AuthState.Locked
                 }
-                onResult?.invoke(PasswordOperationResult.Success)
-            } catch (e: Exception) {
-                onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
+            return false
         }
     }
 
-    //  Циклическая перестановка паролей с предварительной проверкой
-    fun shufflePasswords(
-        entries: List<Entry>,
-        onResult: (PasswordOperationResult) -> Unit
-    ) = viewModelScope.launch {
-        try {
-            if (entries.size < 2) {
-                onResult(PasswordOperationResult.Error("Нужно минимум 2 записи для перестановки"))
-                return@launch
-            }
+    fun changeMasterPassword(oldPassword: String, newPassword: String): Boolean {
+        if (!verifyMasterPassword(oldPassword)) {
+            return false
+        }
+        setupMasterPassword(newPassword)
+        return true
+    }
 
-            // 1. Расшифровываем все пароли заранее
-            val decryptedPasswords = entries.map { entry ->
-                try {
-                    entry.password
-                } catch (e: Exception) {
-                    throw Exception("Не удалось расшифровать пароль для '${entry.service}': ${e.message}")
-                }
-            }
+    fun lock() {
+        _authState.value = AuthState.Locked
+    }
 
-            val now = System.currentTimeMillis()
-            val updates = mutableListOf<Triple<Entry, String, String>>() // targetEntry, encryptedNewPassword, newFingerprint
-
-            // 2. ПРЕДВАРИТЕЛЬНАЯ ПРОВЕРКА (Pre-flight check)
-            for (i in entries.indices) {
-                val targetEntry = entries[i]
-                val sourceIndex = (i + 1) % entries.size
-                val newPassword = decryptedPasswords[sourceIndex]
-
-                // Если пароль не меняется (совпадает с текущим), пропускаем проверку
-                if (newPassword == targetEntry.password) continue
-
-                // Проверяем валидацию (включая проверку истории паролей!)
-                val validation = PasswordValidator.validateNewPasswordForEntry(
-                    targetEntry, newPassword, appContext
-                )
-
-                if (!validation.isValid) {
-                    // Если хоть одна проверка не прошла — отменяем ВСЮ операцию
-                    onResult(PasswordOperationResult.Error(
-                        "Невозможно выполнить ротацию: '${targetEntry.service}' -> ${validation.errorMessage}"
-                    ))
-                    return@launch
-                }
-
-                // Готовим данные для обновления
-                val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
-                updates.add(Triple(targetEntry, encryptedPwd, newFingerprint))
-            }
-
-           
+    private fun hashPasswordSHA256(password: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+}
