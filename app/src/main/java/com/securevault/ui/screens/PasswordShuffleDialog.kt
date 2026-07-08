@@ -71,7 +71,7 @@ fun PasswordShuffleDialog(
                     fontSize = 13.sp
                 )
 
-                // ✅ ВИЗУАЛЬНАЯ СХЕМА
+                //  ВИЗУАЛЬНАЯ СХЕМА
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
