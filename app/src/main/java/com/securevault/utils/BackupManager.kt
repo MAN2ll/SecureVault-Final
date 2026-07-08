@@ -3,6 +3,7 @@ package com.securevault.utils
 import android.content.Context
 import android.util.Base64
 import com.securevault.data.*
+import kotlinx.coroutines.flow.first
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -66,9 +67,9 @@ object BackupManager {
         return bytes
     }
     
-    // Экспорт всех профилей и записей
-    fun exportAllProfiles(repository: VaultRepository): BackupData {
-        val profiles = repository.allProfiles.value
+    // Экспорт всех профилей и записей (теперь suspend)
+    suspend fun exportAllProfiles(repository: VaultRepository): BackupData {
+        val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
             val entries = repository.getByProfileId(profile.id)
             val backupEntries = entries.map { entry ->
@@ -103,36 +104,31 @@ object BackupManager {
         backupData: BackupData,
         mode: ImportMode
     ): ImportResult {
-        val profileMapping = mutableMapOf<Int, Int>() // oldProfileId -> newProfileId
+        val profileMapping = mutableMapOf<Int, Int>()
         var importedProfiles = 0
         var importedEntries = 0
         val errors = mutableListOf<String>()
         
         for (backupProfile in backupData.profiles) {
             try {
-                // Проверяем, существует ли профиль с таким именем
                 val existingProfile = repository.getProfileByName(backupProfile.name)
                 
                 val newProfileId = when (mode) {
                     ImportMode.ADD_AS_NEW -> {
-                        // Создаём новый профиль с уникальным именем
                         val uniqueName = generateUniqueProfileName(repository, backupProfile.name)
                         val newProfile = Profile(name = uniqueName, passwordHash = "", passwordSalt = "")
                         repository.insertProfile(newProfile).toInt()
                     }
                     ImportMode.MERGE_IF_EXISTS -> {
                         if (existingProfile != null) {
-                            // Используем существующий профиль
                             existingProfile.id
                         } else {
-                            // Создаём новый профиль
                             val newProfile = Profile(name = backupProfile.name, passwordHash = "", passwordSalt = "")
                             repository.insertProfile(newProfile).toInt()
                         }
                     }
                     ImportMode.SKIP_IF_EXISTS -> {
                         if (existingProfile != null) {
-                            // Пропускаем этот профиль
                             continue
                         } else {
                             val newProfile = Profile(name = backupProfile.name, passwordHash = "", passwordSalt = "")
@@ -144,7 +140,6 @@ object BackupManager {
                 profileMapping[backupProfile.oldProfileId] = newProfileId
                 importedProfiles++
                 
-                // Импортируем записи
                 for (backupEntry in backupProfile.entries) {
                     try {
                         val newEntry = Entry.createWithNewId(
@@ -200,9 +195,9 @@ object BackupManager {
 }
 
 enum class ImportMode {
-    ADD_AS_NEW,      // Добавить как новые профили
-    MERGE_IF_EXISTS, // Объединить с существующими
-    SKIP_IF_EXISTS   // Пропустить, если существует
+    ADD_AS_NEW,
+    MERGE_IF_EXISTS,
+    SKIP_IF_EXISTS
 }
 
 data class ImportResult(
