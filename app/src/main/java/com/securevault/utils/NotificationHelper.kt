@@ -94,7 +94,7 @@ object NotificationHelper {
         notificationManager.notify(serviceName.hashCode() + 1000, notification)
     }
 
-    // : Сводное уведомление о всех просроченных и скоро истекающих паролях
+    //  Сводное уведомление о всех просроченных и скоро истекающих паролях
     fun sendRotationSummaryNotification(
         context: Context,
         expiredCount: Int,
@@ -113,7 +113,7 @@ object NotificationHelper {
 
         val title = when {
             expiredCount > 0 && expiringSoonCount > 0 -> "SecureVault: Требуется внимание"
-            expiredCount > 0 -> " SecureVault: Просроченные пароли"
+            expiredCount > 0 -> "SecureVault: Просроченные пароли"
             else -> "SecureVault: Скоро истекают пароли"
         }
 
