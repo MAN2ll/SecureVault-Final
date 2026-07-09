@@ -11,28 +11,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToExport: () -> Unit,
-    onNavigateToChangePassword: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    onNavigateToChangePassword: () -> Unit
 ) {
-    var showAboutDialog by remember { mutableStateOf(false) }
-    var showLockConfirmDialog by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Настройки", fontWeight = FontWeight.Bold) },
+                title = { Text("Общие настройки", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
@@ -45,158 +38,80 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+
+            SettingsCard(
+                icon = Icons.Default.Lock,
+                title = "Сменить мастер-пароль",
+                subtitle = "Обновить главный ключ шифрования",
+                onClick = onNavigateToChangePassword
+            )
+
+            HorizontalDivider()
+
+            Text("Данные", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+
+            SettingsCard(
+                icon = Icons.Default.Upload,
+                title = "Экспорт / импорт",
+                subtitle = "Полный backup профилей и паролей",
+                onClick = onNavigateToExport
+            )
+
+            HorizontalDivider()
+
+            Text("О приложении", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
 
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    SettingsItem(
-                        icon = Icons.Default.Lock,
-                        title = "Сменить мастер-пароль",
-                        subtitle = "Рекомендуется менять регулярно",
-                        onClick = onNavigateToChangePassword
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    SettingsItem(
-                        icon = Icons.Default.LockReset,
-                        title = "Заблокировать приложение",
-                        subtitle = "Потребуется мастер-пароль для входа",
-                        onClick = { showLockConfirmDialog = true }
-                    )
-                }
-            }
-
-            Text("Данные", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    SettingsItem(
-                        icon = Icons.Default.Upload,
-                        title = "Экспорт / Импорт",
-                        subtitle = "Резервное копирование (CSV с шифрованием)",
-                        onClick = onNavigateToExport
-                    )
-                }
-            }
-
-            Text("О приложении", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    SettingsItem(
-                        icon = Icons.Default.Info,
-                        title = "SecureVault v1.0",
-                        subtitle = "Менеджер паролей с AMPG v1",
-                        onClick = { showAboutDialog = true }
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Технологии защиты", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("SecureVault", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Версия 1.0.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
-                    TechnologyItem(" AES-256-GCM", "Шифрование паролей через Android Keystore")
-                    TechnologyItem(" PBKDF2", "Хеширование мастер-пароля (100,000 итераций)")
-                    TechnologyItem(" AMPG v1", "Авторская мнемоническая генерация")
-                    TechnologyItem(" Управляемая ротация", "Автоматическое напоминание о смене")
-                    TechnologyItem(" HMAC-SHA256", "Защищённые fingerprint паролей")
-                    TechnologyItem(" BruteForceGuard", "Защита от подбора мастер-пароля")
+                    // : AMPG v2
+                    Text(
+                        "Безопасный менеджер паролей с многоуровневой защитой:\n" +
+                        "• AES-256-GCM шифрование\n" +
+                        "• Профили с PIN-кодами\n" +
+                        "• AMPG v2 — адаптивная мнемоническая генерация\n" +
+                        "• QR-коды с привязкой к устройству\n" +
+                        "• Умная ротация паролей\n" +
+                        "• Аудит безопасности\n" +
+                        "• Защищённый backup v3",
+                        fontSize = 12.sp
+                    )
                 }
             }
         }
     }
-
-    if (showAboutDialog) {
-        AlertDialog(
-            onDismissRequest = { showAboutDialog = false },
-            title = { Text("О приложении") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("SecureVault v1.0", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("Менеджер паролей с авторским алгоритмом мнемонической генерации AMPG v1.")
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Разработано в рамках магистерской диссертации.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAboutDialog = false }) {
-                    Text("Закрыть")
-                }
-            }
-        )
-    }
-
-    if (showLockConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showLockConfirmDialog = false },
-            title = { Text("Заблокировать приложение?") },
-            text = { Text("Для разблокировки потребуется ввести мастер-пароль.") },
-            confirmButton = {
-                Button(onClick = {
-                    authViewModel.lock()
-                    showLockConfirmDialog = false
-                }) {
-                    Text("Заблокировать")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLockConfirmDialog = false }) {
-                    Text("Отмена")
-                }
-            }
-        )
-    }
 }
 
 @Composable
-private fun SettingsItem(
-    icon: ImageVector,
+private fun SettingsCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
     ) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(onClick = onClick) {
-            Icon(Icons.Default.ChevronRight, null)
-        }
-    }
-}
-
-@Composable
-private fun TechnologyItem(title: String, description: String) {
-    Row(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(
-            title,
-            fontWeight = FontWeight.Medium,
-            fontSize = 12.sp,
-            modifier = Modifier.width(140.dp)
-        )
-        Text(
-            description,
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
