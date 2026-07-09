@@ -109,7 +109,7 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteEntriesByProfileId(pid) }
     }
 
-    //  очистка mnemonic при random/manual
+    // Очистка mnemonic при random/manual
     fun replacePassword(
         entryId: String, newPassword: String, newHint: String?,
         newGenerationType: String, newMnemonicPhraseHint: String?,
@@ -149,13 +149,43 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    //  BulkPasswordReplacement вместо Triple
+    //  Валидация всех replacements перед применением
     fun bulkReplacePasswords(replacements: List<BulkPasswordReplacement>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
         try {
+            // 1. Сначала валидируем ВСЕ замены
+            val validationErrors = mutableListOf<String>()
+            val validatedReplacements = mutableListOf<Pair<Entry, BulkPasswordReplacement>>()
+
             for (replacement in replacements) {
-                val entry = repository.getById(replacement.entryId) ?: continue
+                val entry = repository.getById(replacement.entryId)
+                if (entry == null) {
+                    validationErrors.add("Запись не найдена: ${replacement.entryId}")
+                    continue
+                }
+
                 val validation = PasswordValidator.validateNewPasswordForEntry(entry, replacement.newPassword, appContext)
-                if (!validation.isValid) continue
+                if (!validation.isValid) {
+                    validationErrors.add("${entry.service} — ${validation.errorMessage ?: "ошибка валидации"}")
+                    continue
+                }
+
+                validatedReplacements.add(Pair(entry, replacement))
+            }
+
+            // 2. Если есть ошибки — отменяем всю операцию
+            if (validationErrors.isNotEmpty()) {
+                val errorMessage = buildString {
+                    append("Не удалось выполнить массовую ротацию:\n")
+                    validationErrors.forEach { error ->
+                        append("• $error\n")
+                    }
+                }
+                onResult?.invoke(PasswordOperationResult.Error(errorMessage))
+                return@launch
+            }
+
+            // 3. Если все валидно — применяем изменения
+            for ((entry, replacement) in validatedReplacements) {
                 val now = System.currentTimeMillis()
                 val encryptedPwd = CryptoUtils.encrypt(replacement.newPassword)
                 val newFp = PasswordValidator.buildPasswordFingerprint(replacement.newPassword, appContext)
@@ -175,6 +205,7 @@ class VaultViewModel @Inject constructor(
                 )
                 repository.update(updated)
             }
+
             onResult?.invoke(PasswordOperationResult.Success)
         } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
@@ -275,18 +306,18 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-    //  Экспорт всех профилей для backup
+    // Экспорт всех профилей для backup
     suspend fun exportAllProfiles(): BackupData {
         return BackupManager.exportAllProfiles(repository)
     }
 
-    //  Импорт backup с новым PIN
+    //  Передаём appContext в BackupManager
     suspend fun importBackup(
         backupData: BackupData,
         mode: ImportMode,
         newPin: String
     ): com.securevault.utils.ImportResult {
-        return BackupManager.importBackup(repository, backupData, mode, newPin)
+        return BackupManager.importBackup(repository, backupData, mode, newPin, appContext)
     }
 
     // Планирование фоновой проверки ротации
@@ -320,7 +351,7 @@ data class PasswordShufflePlanResult(
     val errorMessage: String?
 )
 
-//  data class для bulk replacement
+// data class для bulk replacement
 data class BulkPasswordReplacement(
     val entryId: String,
     val newPassword: String,
