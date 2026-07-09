@@ -27,6 +27,9 @@ import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
 
+//  enum вынесен на верхний уровень файла
+enum class RotationMode { RANDOM, MNEMONIC, MANUAL, FROM_EXISTING }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
@@ -49,8 +52,6 @@ fun PasswordRotationDialog(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-
-    enum class RotationMode { RANDOM, MNEMONIC, MANUAL, FROM_EXISTING }
 
     var selectedMode by remember { mutableStateOf(RotationMode.RANDOM) }
     var manualPassword by remember { mutableStateOf("") }
@@ -254,7 +255,6 @@ fun PasswordRotationDialog(
                 when (selectedMode) {
                     RotationMode.RANDOM -> {
                         if (generatedRandomPwd.isBlank()) { showError = "Сгенерируйте пароль"; return@Button }
-                        // ✅ ИСПРАВЛЕНО: передаём null для mnemonic полей при random
                         onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
                     }
                     RotationMode.MNEMONIC -> {
@@ -264,7 +264,6 @@ fun PasswordRotationDialog(
                     }
                     RotationMode.MANUAL -> {
                         if (manualPassword.isBlank()) { showError = "Введите пароль"; return@Button }
-                        // передаём null для mnemonic полей при manual
                         onPasswordReplaced(manualPassword, null, "manual", null, null)
                     }
                     RotationMode.FROM_EXISTING -> {
@@ -274,7 +273,6 @@ fun PasswordRotationDialog(
                         } catch (e: Exception) {
                             showError = "Не удалось расшифровать пароль выбранной записи"; return@Button
                         }
-                        //  передаём null для mnemonic полей при shuffled
                         onPasswordReplaced(passwordToUse, null, "shuffled", null, null)
                     }
                 }
