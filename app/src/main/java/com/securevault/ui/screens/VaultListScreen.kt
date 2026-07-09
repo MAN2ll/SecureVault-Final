@@ -40,6 +40,7 @@ fun VaultListScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToMnemonicGenerator: () -> Unit,
     onNavigateToQrScanner: () -> Unit,
+    onNavigateToProfiles: () -> Unit,
     authViewModel: AuthViewModel = hiltViewModel(),
     viewModel: VaultViewModel = hiltViewModel()
 ) {
@@ -223,13 +224,25 @@ fun VaultListScreen(
                                     leadingIcon = { Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error) }
                                 )
                                 HorizontalDivider()
+                                // ✅ ИСПРАВЛЕНО: Выйти к профилям (не блокирует)
                                 DropdownMenuItem(
                                     text = { Text("Выйти к профилям") },
                                     onClick = {
                                         showMenu = false
-                                        authViewModel.lock()
+                                        viewModel.setCurrentProfile(null)
+                                        onNavigateToProfiles()
                                     },
                                     leadingIcon = { Icon(Icons.Default.ExitToApp, null) }
+                                )
+                                // ✅ НОВОЕ: Заблокировать приложение
+                                DropdownMenuItem(
+                                    text = { Text("Заблокировать приложение", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showMenu = false
+                                        viewModel.setCurrentProfile(null)
+                                        authViewModel.lock()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.error) }
                                 )
                             }
                         }
