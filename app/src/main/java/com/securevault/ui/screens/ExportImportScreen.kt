@@ -2,12 +2,14 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,12 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.BackupData
 import com.securevault.data.EncryptedBackup
+import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.BackupManager
 import com.securevault.utils.ExportManager
 import com.securevault.utils.ImportMode
@@ -59,6 +63,11 @@ fun ExportImportScreen(
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
+    //  Состояния для мастер-пароля перед backup
+    var showMasterPasswordDialog by remember { mutableStateOf(false) }
+    var masterPasswordInput by remember { mutableStateOf("") }
+    var masterPasswordError by remember { mutableStateOf<String?>(null) }
+
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
     var backupPassword by remember { mutableStateOf("") }
@@ -68,8 +77,10 @@ fun ExportImportScreen(
     var importResult by remember { mutableStateOf<String?>(null) }
     var showImportModeDialog by remember { mutableStateOf(false) }
     var pendingBackupData by remember { mutableStateOf<BackupData?>(null) }
-    
-    //  Диалог задания PIN для импортируемых профилей
+
+    //  Сохраняем выбранный режим импорта
+    var pendingImportMode by remember { mutableStateOf<ImportMode?>(null) }
+
     var showPinDialog by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
@@ -100,6 +111,7 @@ fun ExportImportScreen(
             } finally {
                 isImporting = false
                 pendingBackupData = null
+                pendingImportMode = null
             }
         }
     }
@@ -143,6 +155,7 @@ fun ExportImportScreen(
         }
     }
 
+    //  Экспорт полного backup (после подтверждения мастер-пароля)
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -293,6 +306,7 @@ fun ExportImportScreen(
 
                     HorizontalDivider()
 
+                    // Полный защищённый backup с мастер-паролем
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -307,13 +321,14 @@ fun ExportImportScreen(
                             Text(
                                 "Экспортирует все профили и пароли в зашифрованном файле.\n" +
                                 "Файл защищён паролем (AES-256-GCM).\n" +
-                                "Можно переносить между устройствами.",
+                                "Можно переносить между устройствами.\n" +
+                                "Требуется подтверждение мастер-паролем.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Spacer(Modifier.height(12.dp))
                             Button(
-                                onClick = { showBackupPasswordDialog = true },
+                                onClick = { showMasterPasswordDialog = true },
                                 modifier = Modifier.fillMaxWidth(),
                                 enabled = profiles.isNotEmpty() && !isExporting
                             ) {
@@ -458,7 +473,7 @@ fun ExportImportScreen(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (importResult!!.startsWith("Готово"))
+                                containerColor = if (importResult!!.startsWith("✅"))
                                     MaterialTheme.colorScheme.primaryContainer
                                 else
                                     MaterialTheme.colorScheme.errorContainer
@@ -474,6 +489,66 @@ fun ExportImportScreen(
                 }
             }
         }
+    }
+
+    //  Диалог мастер-пароля ПЕРЕД экспортом backup
+    if (showMasterPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showMasterPasswordDialog = false
+                masterPasswordInput = ""
+                masterPasswordError = null
+            },
+            icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Подтверждение мастер-паролем") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Для создания полного backup введите мастер-пароль", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = masterPasswordInput,
+                        onValueChange = { masterPasswordInput = it; masterPasswordError = null },
+                        label = { Text("Мастер-пароль") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = masterPasswordError != null
+                    )
+                    if (masterPasswordError != null) {
+                        Text(masterPasswordError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                    val storedHash = prefs.getString("master_hash", null)
+                    val storedSalt = prefs.getString("master_salt", null)
+                    val iterations = prefs.getInt("master_iterations", 100_000)
+
+                    if (storedHash != null && storedSalt != null &&
+                        MasterPasswordHasher.verify(masterPasswordInput, storedHash, storedSalt, iterations)) {
+                        showMasterPasswordDialog = false
+                        masterPasswordInput = ""
+                        masterPasswordError = null
+                        showBackupPasswordDialog = true
+                    } else {
+                        masterPasswordError = "Неверный мастер-пароль"
+                    }
+                }) {
+                    Text("Подтвердить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showMasterPasswordDialog = false
+                    masterPasswordInput = ""
+                    masterPasswordError = null
+                }) {
+                    Text("Отмена")
+                }
+            }
+        )
     }
 
     if (showBackupPasswordDialog) {
@@ -571,8 +646,10 @@ fun ExportImportScreen(
 
                     Spacer(Modifier.height(8.dp))
 
+                    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Сохраняем выбранный режим
                     Button(
                         onClick = {
+                            pendingImportMode = ImportMode.ADD_AS_NEW
                             showImportModeDialog = false
                             showPinDialog = true
                         },
@@ -583,6 +660,7 @@ fun ExportImportScreen(
 
                     OutlinedButton(
                         onClick = {
+                            pendingImportMode = ImportMode.MERGE_IF_EXISTS
                             showImportModeDialog = false
                             showPinDialog = true
                         },
@@ -593,6 +671,7 @@ fun ExportImportScreen(
 
                     OutlinedButton(
                         onClick = {
+                            pendingImportMode = ImportMode.SKIP_IF_EXISTS
                             showImportModeDialog = false
                             showPinDialog = true
                         },
@@ -611,7 +690,7 @@ fun ExportImportScreen(
         )
     }
 
-    //  Диалог задания PIN для импортируемых профилей
+    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Используем сохранённый режим
     if (showPinDialog && pendingBackupData != null) {
         AlertDialog(
             onDismissRequest = { showPinDialog = false; pendingBackupData = null; newPin = ""; confirmPin = "" },
@@ -652,7 +731,9 @@ fun ExportImportScreen(
                             newPin != confirmPin -> pinError = "PIN не совпадают"
                             else -> {
                                 showPinDialog = false
-                                performImport(pendingBackupData!!, ImportMode.ADD_AS_NEW, newPin)
+                                // Используем сохранённый режим
+                                val mode = pendingImportMode ?: ImportMode.ADD_AS_NEW
+                                performImport(pendingBackupData!!, mode, newPin)
                                 newPin = ""
                                 confirmPin = ""
                             }
