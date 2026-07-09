@@ -69,7 +69,6 @@ object BackupManager {
         val backupProfiles = profiles.map { profile ->
             val entries = repository.getByProfileId(profile.id)
             val backupEntries = entries.map { entry ->
-                //  Расшифровываем пароль, чтобы он переносился между устройствами
                 val plainPassword = try {
                     entry.password
                 } catch (e: Exception) {
@@ -78,7 +77,7 @@ object BackupManager {
                 BackupEntry(
                     service = entry.service,
                     username = entry.username,
-                    password = plainPassword, //  plaintext
+                    password = plainPassword,
                     url = entry.url,
                     notes = entry.notes,
                     textHint = entry.textHint,
@@ -105,14 +104,13 @@ object BackupManager {
         repository: VaultRepository,
         backupData: BackupData,
         mode: ImportMode,
-        newPin: String //  Новый PIN для импортируемых профилей
+        newPin: String
     ): ImportResult {
         val profileMapping = mutableMapOf<Int, Int>()
         var importedProfiles = 0
         var importedEntries = 0
         val errors = mutableListOf<String>()
 
-        //  Хеш нового PIN (один для всех импортируемых профилей)
         val pinHashResult = ProfilePasswordHasher.hash(newPin)
 
         for (backupProfile in backupData.profiles) {
@@ -164,15 +162,10 @@ object BackupManager {
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
-                            password = backupEntry.password, //  plaintext -> шифруется внутри
+                            password = backupEntry.password,
                             profileId = newProfileId,
-                            passwordFingerprint = com.securevault.utils.PasswordValidator.buildPasswordFingerprint(
-                                backupEntry.password,
-                                null // fingerprint пересчитывается
-                            ).let {
-                                // Если buildPasswordFingerprint требует Context, используем альтернативу
-                                com.securevault.utils.PasswordValidator.buildPasswordFingerprintSimple(backupEntry.password)
-                            },
+                            //  используем существующий buildLegacyFingerprint
+                            passwordFingerprint = PasswordValidator.buildLegacyFingerprint(backupEntry.password),
                             url = backupEntry.url,
                             notes = backupEntry.notes,
                             textHint = backupEntry.textHint,
