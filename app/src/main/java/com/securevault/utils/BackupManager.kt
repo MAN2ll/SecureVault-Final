@@ -99,7 +99,7 @@ object BackupManager {
         return BackupData(profiles = backupProfiles)
     }
 
-    //  Импорт с заданием PIN и повторным шифрованием
+    //  Импорт с правильным вызовом ProfilePasswordHasher
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
@@ -111,7 +111,9 @@ object BackupManager {
         var importedEntries = 0
         val errors = mutableListOf<String>()
 
-        val pinHashResult = ProfilePasswordHasher.hash(newPin)
+        //  Правильный вызов ProfilePasswordHasher
+        val pinSalt = ProfilePasswordHasher.generateSalt()
+        val pinHash = ProfilePasswordHasher.hash(newPin, pinSalt)
 
         for (backupProfile in backupData.profiles) {
             try {
@@ -122,8 +124,8 @@ object BackupManager {
                         val uniqueName = generateUniqueProfileName(repository, backupProfile.name)
                         val newProfile = Profile(
                             name = uniqueName,
-                            passwordHash = pinHashResult.hash,
-                            passwordSalt = pinHashResult.salt
+                            passwordHash = pinHash,
+                            passwordSalt = pinSalt
                         )
                         repository.insertProfile(newProfile).toInt()
                     }
@@ -133,8 +135,8 @@ object BackupManager {
                         } else {
                             val newProfile = Profile(
                                 name = backupProfile.name,
-                                passwordHash = pinHashResult.hash,
-                                passwordSalt = pinHashResult.salt
+                                passwordHash = pinHash,
+                                passwordSalt = pinSalt
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
@@ -145,8 +147,8 @@ object BackupManager {
                         } else {
                             val newProfile = Profile(
                                 name = backupProfile.name,
-                                passwordHash = pinHashResult.hash,
-                                passwordSalt = pinHashResult.salt
+                                passwordHash = pinHash,
+                                passwordSalt = pinSalt
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
@@ -158,13 +160,12 @@ object BackupManager {
 
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  Заново шифруем пароль на текущем устройстве
+                        //  Entry.create не имеет nextRotationDate, используем copy
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
                             password = backupEntry.password,
                             profileId = newProfileId,
-                            //  используем существующий buildLegacyFingerprint
                             passwordFingerprint = PasswordValidator.buildLegacyFingerprint(backupEntry.password),
                             url = backupEntry.url,
                             notes = backupEntry.notes,
@@ -172,11 +173,11 @@ object BackupManager {
                             isFavorite = backupEntry.isFavorite,
                             rotationEnabled = backupEntry.rotationEnabled,
                             rotationPeriodMonths = backupEntry.rotationPeriodMonths,
-                            nextRotationDate = backupEntry.nextRotationDate,
                             generationType = backupEntry.generationType,
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
                             mnemonicOptionsJson = backupEntry.mnemonicOptionsJson
                         ).copy(
+                            nextRotationDate = backupEntry.nextRotationDate,
                             createdAt = backupEntry.createdAt,
                             lastChanged = backupEntry.lastChanged,
                             passwordHistoryJson = backupEntry.passwordHistoryJson
