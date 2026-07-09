@@ -25,7 +25,6 @@ enum class RotationFilter(val label: String) {
     ALL("Все с ротацией")
 }
 
-//  Типы сортировки
 enum class RotationSort(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     BY_DATE("По сроку", Icons.Default.Schedule),
     BY_NAME("По названию", Icons.Default.SortByAlpha),
@@ -46,6 +45,7 @@ fun RotationScreen(
     }
 
     val allRotationEntries by viewModel.rotationEntries.collectAsState()
+    val allEntries by viewModel.entries.collectAsState() // получаем все записи профиля
     var selectedEntry by remember { mutableStateOf<Entry?>(null) }
     var showBulkRotation by remember { mutableStateOf(false) }
     var showShuffleDialog by remember { mutableStateOf(false) }
@@ -55,7 +55,6 @@ fun RotationScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    //  Фильтрация + сортировка
     val filteredEntries = remember(allRotationEntries, currentFilter, currentSort, daysThreshold) {
         val now = System.currentTimeMillis()
         
@@ -76,7 +75,6 @@ fun RotationScreen(
             }
         }
         
-        //  Сортировка
         result = when (currentSort) {
             RotationSort.BY_DATE -> {
                 result.sortedWith(compareBy({ it.nextRotationDate ?: Long.MAX_VALUE }, { it.service.lowercase() }))
@@ -102,7 +100,6 @@ fun RotationScreen(
                     }
                 },
                 actions = {
-                    //  Меню сортировки
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(Icons.Default.Sort, "Сортировка")
@@ -241,13 +238,16 @@ fun RotationScreen(
         }
     }
 
+    //  передаём все необходимые параметры
     selectedEntry?.let { entry ->
         PasswordRotationDialog(
+            currentEntryId = entry.id, 
             serviceName = entry.service,
             currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
             generationType = entry.generationType,
             rotationMonth = null,
             rotationYear = null,
+            allProfileEntries = allEntries, // 
             onDismiss = { selectedEntry = null },
             onPasswordReplaced = { newPassword, newHint, newGenerationType, mnemonicPhrase, mnemonicOptions ->
                 viewModel.replacePassword(
