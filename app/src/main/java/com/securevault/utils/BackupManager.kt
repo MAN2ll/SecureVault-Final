@@ -1,8 +1,8 @@
 package com.securevault.utils
 
-import android.content.Context
 import android.util.Base64
 import com.securevault.data.*
+import com.securevault.security.ProfilePasswordHasher
 import kotlinx.coroutines.flow.first
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -11,72 +11,74 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 object BackupManager {
-    
+
     private const val KEY_LENGTH = 256
     private const val ITERATIONS = 200000
     private const val GCM_TAG_LENGTH = 128
     private const val SALT_LENGTH = 16
     private const val IV_LENGTH = 12
-    
-    // Шифрование backup-данных
+
     fun encryptBackup(backupData: BackupData, password: String): EncryptedBackup {
         val salt = generateRandomBytes(SALT_LENGTH)
         val iv = generateRandomBytes(IV_LENGTH)
-        
+
         val key = deriveKey(password, salt, ITERATIONS)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
-        
+
         val plaintext = backupData.toJson().toByteArray(Charsets.UTF_8)
         val ciphertext = cipher.doFinal(plaintext)
-        
+
         return EncryptedBackup(
             salt = Base64.encodeToString(salt, Base64.NO_WRAP),
             iv = Base64.encodeToString(iv, Base64.NO_WRAP),
             ciphertext = Base64.encodeToString(ciphertext, Base64.NO_WRAP)
         )
     }
-    
-    // Дешифрование backup-данных
+
     fun decryptBackup(encryptedBackup: EncryptedBackup, password: String): BackupData {
         val salt = Base64.decode(encryptedBackup.salt, Base64.NO_WRAP)
         val iv = Base64.decode(encryptedBackup.iv, Base64.NO_WRAP)
         val ciphertext = Base64.decode(encryptedBackup.ciphertext, Base64.NO_WRAP)
-        
+
         val key = deriveKey(password, salt, encryptedBackup.iterations)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
-        
+
         val plaintext = cipher.doFinal(ciphertext)
         val jsonString = String(plaintext, Charsets.UTF_8)
-        
+
         return BackupData.fromJson(jsonString)
     }
-    
-    // Генерация ключа из пароля через PBKDF2
+
     private fun deriveKey(password: String, salt: ByteArray, iterations: Int): ByteArray {
         val spec = PBEKeySpec(password.toCharArray(), salt, iterations, KEY_LENGTH)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         return factory.generateSecret(spec).encoded
     }
-    
-    // Генерация случайных байтов
+
     private fun generateRandomBytes(length: Int): ByteArray {
         val bytes = ByteArray(length)
         java.security.SecureRandom().nextBytes(bytes)
         return bytes
     }
-    
-    // Экспорт всех профилей и записей (теперь suspend)
+
+    //  Экспорт с расшифровкой пароля (plaintext)
     suspend fun exportAllProfiles(repository: VaultRepository): BackupData {
         val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
             val entries = repository.getByProfileId(profile.id)
             val backupEntries = entries.map { entry ->
+                //  Расшифровываем пароль, чтобы он переносился между устройствами
+                val plainPassword = try {
+                    entry.password
+                } catch (e: Exception) {
+                    throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
+                }
                 BackupEntry(
                     service = entry.service,
                     username = entry.username,
-                    encryptedPassword = entry.encryptedPassword,
+                    password = plainPassword, //  plaintext
                     url = entry.url,
                     notes = entry.notes,
                     textHint = entry.textHint,
@@ -97,33 +99,45 @@ object BackupManager {
         }
         return BackupData(profiles = backupProfiles)
     }
-    
-    // Импорт backup с маппингом профилей
+
+    //  Импорт с заданием PIN и повторным шифрованием
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
-        mode: ImportMode
+        mode: ImportMode,
+        newPin: String //  Новый PIN для импортируемых профилей
     ): ImportResult {
         val profileMapping = mutableMapOf<Int, Int>()
         var importedProfiles = 0
         var importedEntries = 0
         val errors = mutableListOf<String>()
-        
+
+        //  Хеш нового PIN (один для всех импортируемых профилей)
+        val pinHashResult = ProfilePasswordHasher.hash(newPin)
+
         for (backupProfile in backupData.profiles) {
             try {
                 val existingProfile = repository.getProfileByName(backupProfile.name)
-                
+
                 val newProfileId = when (mode) {
                     ImportMode.ADD_AS_NEW -> {
                         val uniqueName = generateUniqueProfileName(repository, backupProfile.name)
-                        val newProfile = Profile(name = uniqueName, passwordHash = "", passwordSalt = "")
+                        val newProfile = Profile(
+                            name = uniqueName,
+                            passwordHash = pinHashResult.hash,
+                            passwordSalt = pinHashResult.salt
+                        )
                         repository.insertProfile(newProfile).toInt()
                     }
                     ImportMode.MERGE_IF_EXISTS -> {
                         if (existingProfile != null) {
                             existingProfile.id
                         } else {
-                            val newProfile = Profile(name = backupProfile.name, passwordHash = "", passwordSalt = "")
+                            val newProfile = Profile(
+                                name = backupProfile.name,
+                                passwordHash = pinHashResult.hash,
+                                passwordSalt = pinHashResult.salt
+                            )
                             repository.insertProfile(newProfile).toInt()
                         }
                     }
@@ -131,22 +145,34 @@ object BackupManager {
                         if (existingProfile != null) {
                             continue
                         } else {
-                            val newProfile = Profile(name = backupProfile.name, passwordHash = "", passwordSalt = "")
+                            val newProfile = Profile(
+                                name = backupProfile.name,
+                                passwordHash = pinHashResult.hash,
+                                passwordSalt = pinHashResult.salt
+                            )
                             repository.insertProfile(newProfile).toInt()
                         }
                     }
                 }
-                
+
                 profileMapping[backupProfile.oldProfileId] = newProfileId
                 importedProfiles++
-                
+
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        val newEntry = Entry.createWithNewId(
+                        //  Заново шифруем пароль на текущем устройстве
+                        val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
-                            encryptedPassword = backupEntry.encryptedPassword,
+                            password = backupEntry.password, //  plaintext -> шифруется внутри
                             profileId = newProfileId,
+                            passwordFingerprint = com.securevault.utils.PasswordValidator.buildPasswordFingerprint(
+                                backupEntry.password,
+                                null // fingerprint пересчитывается
+                            ).let {
+                                // Если buildPasswordFingerprint требует Context, используем альтернативу
+                                com.securevault.utils.PasswordValidator.buildPasswordFingerprintSimple(backupEntry.password)
+                            },
                             url = backupEntry.url,
                             notes = backupEntry.notes,
                             textHint = backupEntry.textHint,
@@ -154,13 +180,13 @@ object BackupManager {
                             rotationEnabled = backupEntry.rotationEnabled,
                             rotationPeriodMonths = backupEntry.rotationPeriodMonths,
                             nextRotationDate = backupEntry.nextRotationDate,
-                            createdAt = backupEntry.createdAt,
-                            lastChanged = backupEntry.lastChanged,
-                            passwordHistoryJson = backupEntry.passwordHistoryJson,
                             generationType = backupEntry.generationType,
-                            passwordFingerprint = backupEntry.passwordFingerprint,
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
                             mnemonicOptionsJson = backupEntry.mnemonicOptionsJson
+                        ).copy(
+                            createdAt = backupEntry.createdAt,
+                            lastChanged = backupEntry.lastChanged,
+                            passwordHistoryJson = backupEntry.passwordHistoryJson
                         )
                         repository.insert(newEntry)
                         importedEntries++
@@ -172,7 +198,7 @@ object BackupManager {
                 errors.add("Ошибка импорта профиля '${backupProfile.name}': ${e.message}")
             }
         }
-        
+
         return ImportResult(
             success = errors.isEmpty(),
             importedProfiles = importedProfiles,
@@ -181,8 +207,7 @@ object BackupManager {
             errors = errors
         )
     }
-    
-    // Генерация уникального имени профиля
+
     private suspend fun generateUniqueProfileName(repository: VaultRepository, baseName: String): String {
         var name = baseName
         var counter = 1
