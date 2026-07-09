@@ -165,7 +165,7 @@ fun ProfileSettingsScreen(
         }
     }
 
-    // Диалог мастер-пароля
+    //  Диалог мастер-пароля
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showMasterPasswordDialog = false },
@@ -241,7 +241,7 @@ fun ProfileSettingsScreen(
         )
     }
 
-    // : Диалог ошибок
+    //  Диалог ошибок
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
@@ -256,7 +256,7 @@ fun ProfileSettingsScreen(
         )
     }
 
-    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 3: Диалог успеха
+    // Диалог успеха
     if (operationSuccess != null) {
         AlertDialog(
             onDismissRequest = { operationSuccess = null },
