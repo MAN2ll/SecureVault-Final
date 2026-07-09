@@ -5,6 +5,8 @@ import android.util.Base64
 import com.securevault.data.*
 import com.securevault.security.ProfilePasswordHasher
 import kotlinx.coroutines.flow.first
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -64,6 +66,7 @@ object BackupManager {
         return bytes
     }
 
+    //  Расшифровка истории при экспорте
     suspend fun exportAllProfiles(repository: VaultRepository): BackupData {
         val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
@@ -74,6 +77,27 @@ object BackupManager {
                 } catch (e: Exception) {
                     throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
                 }
+
+                //  расшифровываем историю паролей
+                val portableHistory = entry.getPasswordHistory().mapNotNull { item ->
+                    item.encryptedOldPassword?.let { encrypted ->
+                        try {
+                            val plainOldPassword = CryptoUtils.decrypt(encrypted)
+                            PortableHistoryItem(
+                                plainOldPassword = plainOldPassword,
+                                date = item.date,
+                                type = item.type,
+                                relatedService = item.relatedService,
+                                relatedEntryId = item.relatedEntryId,
+                                hint = item.hint
+                            )
+                        } catch (e: Exception) {
+                            // Если не удалось расшифровать один элемент — пропускаем его
+                            null
+                        }
+                    }
+                }
+
                 BackupEntry(
                     service = entry.service,
                     username = entry.username,
@@ -91,7 +115,8 @@ object BackupManager {
                     createdAt = entry.createdAt,
                     lastChanged = entry.lastChanged,
                     passwordHistoryJson = entry.passwordHistoryJson,
-                    passwordFingerprint = entry.passwordFingerprint
+                    passwordFingerprint = entry.passwordFingerprint,
+                    portableHistory = portableHistory
                 )
             }
             BackupProfile(profile.id, profile.name, backupEntries)
@@ -99,7 +124,7 @@ object BackupManager {
         return BackupData(profiles = backupProfiles)
     }
 
-    //  Добавлен параметр Context для fingerprint
+    // : Шифрование истории при импорте
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
@@ -160,7 +185,10 @@ object BackupManager {
 
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  Используем актуальный fingerprint с Context
+                        //  строим passwordHistoryJson из portableHistory
+                        val historyJson = buildHistoryJson(backupEntry.portableHistory)
+                            ?: backupEntry.passwordHistoryJson
+
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
@@ -180,7 +208,7 @@ object BackupManager {
                             nextRotationDate = backupEntry.nextRotationDate,
                             createdAt = backupEntry.createdAt,
                             lastChanged = backupEntry.lastChanged,
-                            passwordHistoryJson = backupEntry.passwordHistoryJson
+                            passwordHistoryJson = historyJson
                         )
                         repository.insert(newEntry)
                         importedEntries++
@@ -200,6 +228,31 @@ object BackupManager {
             profileMapping = profileMapping,
             errors = errors
         )
+    }
+
+    //  Построение passwordHistoryJson из portableHistory
+    private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?): String? {
+        if (portableHistory.isNullOrEmpty()) return null
+
+        return try {
+            val jsonArray = JSONArray()
+            for (item in portableHistory) {
+                //  Заново шифруем старый пароль на текущем устройстве
+                val encrypted = CryptoUtils.encrypt(item.plainOldPassword)
+                val obj = JSONObject().apply {
+                    put("encryptedOldPassword", encrypted)
+                    put("date", item.date)
+                    put("type", item.type)
+                    put("relatedService", item.relatedService ?: JSONObject.NULL)
+                    put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
+                    put("hint", item.hint ?: JSONObject.NULL)
+                }
+                jsonArray.put(obj)
+            }
+            jsonArray.toString()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private suspend fun generateUniqueProfileName(repository: VaultRepository, baseName: String): String {
