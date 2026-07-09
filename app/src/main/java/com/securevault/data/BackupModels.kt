@@ -3,7 +3,17 @@ package com.securevault.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-//  password вместо encryptedPassword для переноса между устройствами
+// Модели для защищённого backup v3
+
+//  Переносимая история паролей (plaintext внутри зашифрованного backup)
+data class PortableHistoryItem(
+    val plainOldPassword: String,
+    val date: Long,
+    val type: String,
+    val relatedService: String? = null,
+    val relatedEntryId: String? = null,
+    val hint: String? = null
+)
 
 data class BackupProfile(
     val oldProfileId: Int,
@@ -14,7 +24,7 @@ data class BackupProfile(
 data class BackupEntry(
     val service: String,
     val username: String,
-    val password: String, //  plaintext, а не encrypted
+    val password: String, // plaintext внутри зашифрованного backup
     val url: String?,
     val notes: String?,
     val textHint: String?,
@@ -27,8 +37,9 @@ data class BackupEntry(
     val isFavorite: Boolean,
     val createdAt: Long,
     val lastChanged: Long,
-    val passwordHistoryJson: String?,
-    val passwordFingerprint: String?
+    val passwordHistoryJson: String?, // legacy, для совместимости
+    val passwordFingerprint: String?,
+    val portableHistory: List<PortableHistoryItem>? = null //  переносимая история
 )
 
 data class BackupData(
@@ -52,7 +63,7 @@ data class BackupData(
                 val entryJson = JSONObject()
                 entryJson.put("service", entry.service)
                 entryJson.put("username", entry.username)
-                entryJson.put("password", entry.password) //  plaintext
+                entryJson.put("password", entry.password)
                 entryJson.put("url", entry.url ?: JSONObject.NULL)
                 entryJson.put("notes", entry.notes ?: JSONObject.NULL)
                 entryJson.put("textHint", entry.textHint ?: JSONObject.NULL)
@@ -67,6 +78,23 @@ data class BackupData(
                 entryJson.put("lastChanged", entry.lastChanged)
                 entryJson.put("passwordHistoryJson", entry.passwordHistoryJson ?: JSONObject.NULL)
                 entryJson.put("passwordFingerprint", entry.passwordFingerprint ?: JSONObject.NULL)
+
+                //  сериализация переносимой истории
+                if (entry.portableHistory != null) {
+                    val historyArray = JSONArray()
+                    for (item in entry.portableHistory) {
+                        val itemJson = JSONObject()
+                        itemJson.put("plainOldPassword", item.plainOldPassword)
+                        itemJson.put("date", item.date)
+                        itemJson.put("type", item.type)
+                        itemJson.put("relatedService", item.relatedService ?: JSONObject.NULL)
+                        itemJson.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
+                        itemJson.put("hint", item.hint ?: JSONObject.NULL)
+                        historyArray.put(itemJson)
+                    }
+                    entryJson.put("portableHistory", historyArray)
+                }
+
                 entriesArray.put(entryJson)
             }
             profileJson.put("entries", entriesArray)
@@ -96,11 +124,32 @@ data class BackupData(
 
                 for (j in 0 until entriesArray.length()) {
                     val entryJson = entriesArray.getJSONObject(j)
+
+                    //  десериализация переносимой истории
+                    val portableHistory = if (entryJson.has("portableHistory")) {
+                        val historyArray = entryJson.getJSONArray("portableHistory")
+                        val items = mutableListOf<PortableHistoryItem>()
+                        for (k in 0 until historyArray.length()) {
+                            val itemJson = historyArray.getJSONObject(k)
+                            items.add(
+                                PortableHistoryItem(
+                                    plainOldPassword = itemJson.getString("plainOldPassword"),
+                                    date = itemJson.optLong("date", 0L),
+                                    type = itemJson.optString("type", "unknown"),
+                                    relatedService = itemJson.optString("relatedService").takeIf { it != "null" && it.isNotEmpty() },
+                                    relatedEntryId = itemJson.optString("relatedEntryId").takeIf { it != "null" && it.isNotEmpty() },
+                                    hint = itemJson.optString("hint").takeIf { it != "null" && it.isNotEmpty() }
+                                )
+                            )
+                        }
+                        items
+                    } else null
+
                     entries.add(
                         BackupEntry(
                             service = entryJson.getString("service"),
                             username = entryJson.getString("username"),
-                            password = entryJson.getString("password"), // ✅ plaintext
+                            password = entryJson.getString("password"),
                             url = entryJson.optString("url").takeIf { it != "null" && it.isNotEmpty() },
                             notes = entryJson.optString("notes").takeIf { it != "null" && it.isNotEmpty() },
                             textHint = entryJson.optString("textHint").takeIf { it != "null" && it.isNotEmpty() },
@@ -114,7 +163,8 @@ data class BackupData(
                             createdAt = entryJson.optLong("createdAt", System.currentTimeMillis()),
                             lastChanged = entryJson.optLong("lastChanged", System.currentTimeMillis()),
                             passwordHistoryJson = entryJson.optString("passwordHistoryJson").takeIf { it != "null" && it.isNotEmpty() },
-                            passwordFingerprint = entryJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() }
+                            passwordFingerprint = entryJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() },
+                            portableHistory = portableHistory
                         )
                     )
                 }
