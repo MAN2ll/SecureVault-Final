@@ -25,9 +25,9 @@ fun ReminderScreen(
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val rotationEntries by viewModel.rotationEntries.collectAsState()
+    val allEntries by viewModel.entries.collectAsState() //  получаем все записи профиля
     var selectedEntry by remember { mutableStateOf<Entry?>(null) }
     
-    // Фильтруем только просроченные
     val expiredEntries = remember(rotationEntries) {
         val now = System.currentTimeMillis()
         rotationEntries.filter { it.nextRotationDate != null && it.nextRotationDate <= now }
@@ -122,14 +122,16 @@ fun ReminderScreen(
         }
     }
 
-    //  новая сигнатура с 5 параметрами
-   selectedEntry?.let { entry ->
+    //  передаём все необходимые параметры
+    selectedEntry?.let { entry ->
         PasswordRotationDialog(
+            currentEntryId = entry.id, 
             serviceName = entry.service,
             currentHint = entry.mnemonicPhraseHint ?: Entry.extractShortPhrase(entry.textHint),
             generationType = entry.generationType,
             rotationMonth = null,
             rotationYear = null,
+            allProfileEntries = allEntries, 
             onDismiss = { selectedEntry = null },
             onPasswordReplaced = { newPassword: String, newHint: String?, newGenerationType: String, mnemonicPhrase: String?, mnemonicOptions: String? ->
                 viewModel.replacePassword(
