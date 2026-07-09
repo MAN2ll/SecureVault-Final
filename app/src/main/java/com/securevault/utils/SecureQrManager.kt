@@ -8,6 +8,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.util.UUID
 
 object SecureQrManager {
 
@@ -21,21 +22,16 @@ object SecureQrManager {
         val errorMessage: String? = null
     )
 
-    //  ВЕЧНЫЙ ТОКЕН: создаётся один раз и не меняется
+    //  UUID вместо детерминированного SHA-256
     private fun getOrCreateStableToken(entryId: String, context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val existingToken = prefs.getString("token_$entryId", null)
-        if (existingToken != null) return existingToken
+        val key = "token_$entryId"
+        val existing = prefs.getString(key, null)
+        if (existing != null) return existing
 
-        val token = generateDeterministicToken(entryId)
-        prefs.edit().putString("token_$entryId", token).apply()
+        val token = UUID.randomUUID().toString()
+        prefs.edit().putString(key, token).apply()
         return token
-    }
-
-    private fun generateDeterministicToken(entryId: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(entryId.toByteArray())
-        return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(32)
     }
 
     private fun getDeviceBindingHash(context: Context): String {
@@ -48,7 +44,6 @@ object SecureQrManager {
         return Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP).take(24)
     }
 
-    //  БЕЗ lastChanged - QR вечный
     fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
         val stableToken = getOrCreateStableToken(entryId, context)
         val deviceBindingHash = getDeviceBindingHash(context)
@@ -86,7 +81,6 @@ object SecureQrManager {
         return bitmap
     }
 
-    //  БЕЗ проверки lastChanged - QR всегда действителен
     fun validateQrToken(token: String, currentProfileId: Int, context: Context): QrValidationResult {
         return try {
             val json = JSONObject(token)
@@ -120,7 +114,6 @@ object SecureQrManager {
                 return QrValidationResult(false, errorMessage = "QR-код недействителен")
             }
 
-            //  НЕ проверяем lastChanged - QR вечный
             QrValidationResult(true, entryId = entryId, profileId = currentProfileId)
         } catch (e: Exception) {
             QrValidationResult(false, errorMessage = "Ошибка чтения QR-кода")
