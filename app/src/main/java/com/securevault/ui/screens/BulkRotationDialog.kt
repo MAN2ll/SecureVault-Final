@@ -22,7 +22,6 @@ import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.BulkPasswordReplacement
 import com.securevault.viewmodel.VaultViewModel
 
-//  enum вынесен на верхний уровень файла
 enum class BulkMode { RANDOM, MNEMONIC }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,7 +53,7 @@ fun BulkRotationDialog(
         if (selectedMode == BulkMode.RANDOM) {
             entries.map { entry ->
                 val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
-                Pair(entry, result.password)
+                Triple(entry, result.password, "random")
             }
         } else {
             if (mnemonicPhrase.isNotBlank()) {
@@ -71,7 +70,7 @@ fun BulkRotationDialog(
                         )
                         val variants = MnemonicPasswordGenerator.generateVariants(options, count = 1)
                         if (variants.isNotEmpty()) {
-                            Pair(entry, variants.first().password)
+                            Triple(entry, variants.first().password, "mnemonic")
                         } else null
                     } catch (e: Exception) {
                         null
@@ -83,8 +82,15 @@ fun BulkRotationDialog(
         }
     }
 
+    //  Проверка количества сгенерированных паролей
+    val canReplaceAll = generatedPasswords.size == entries.size
+
+    //  Сохраняем AMPG metadata
+    val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
+        """{"includeLeet":$includeLeet,"includeServiceCode":$includeServiceCode,"includeRotationCode":$includeRotationCode,"targetLength":16,"algorithmName":"AMPG v2"}"""
+    } else null
+
     AlertDialog(
-        //  правильный тип для onDismissRequest
         onDismissRequest = { if (!isProcessing) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -153,9 +159,9 @@ fun BulkRotationDialog(
                 if (generatedPasswords.isNotEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Preview (${generatedPasswords.size} записей):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Preview (${generatedPasswords.size} из ${entries.size} записей):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
-                            generatedPasswords.take(5).forEach { (entry, password) ->
+                            generatedPasswords.take(5).forEach { (entry, password, _) ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -177,6 +183,27 @@ fun BulkRotationDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                    }
+                }
+
+                //  Предупреждение, если не все пароли сгенерированы
+                if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей. Проверьте фразу или параметры.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
                         }
                     }
                 }
@@ -203,7 +230,7 @@ fun BulkRotationDialog(
         confirmButton = {
             Button(
                 onClick = { showMasterPasswordDialog = true },
-                enabled = !isProcessing && generatedPasswords.isNotEmpty()
+                enabled = !isProcessing && canReplaceAll 
             ) {
                 if (isProcessing) {
                     CircularProgressIndicator(
@@ -233,14 +260,14 @@ fun BulkRotationDialog(
                 showMasterPasswordDialog = false
                 isProcessing = true
 
-                val replacements = generatedPasswords.map { (entry, password) ->
+                val replacements = generatedPasswords.map { (entry, password, generationType) ->
                     BulkPasswordReplacement(
                         entryId = entry.id,
                         newPassword = password,
-                        generationType = if (selectedMode == BulkMode.RANDOM) "random" else "mnemonic",
-                        textHint = if (selectedMode == BulkMode.MNEMONIC) mnemonicPhrase else null,
-                        mnemonicPhraseHint = if (selectedMode == BulkMode.MNEMONIC) mnemonicPhrase else null,
-                        mnemonicOptionsJson = null
+                        generationType = generationType,
+                        textHint = if (generationType == "mnemonic") mnemonicPhrase else null,
+                        mnemonicPhraseHint = if (generationType == "mnemonic") mnemonicPhrase else null,
+                        mnemonicOptionsJson = mnemonicOptionsJson 
                     )
                 }
 
