@@ -8,9 +8,12 @@ import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.securevault.data.BackupData
 import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
+import com.securevault.utils.BackupManager
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.ImportMode
 import com.securevault.utils.PasswordValidator
 import com.securevault.utils.RotationCheckWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,11 +22,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
-import kotlinx.coroutines.flow.first
 
 sealed class PasswordOperationResult {
     object Success : PasswordOperationResult()
@@ -106,6 +109,7 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteEntriesByProfileId(pid) }
     }
 
+    //  очистка mnemonic при random/manual
     fun replacePassword(
         entryId: String, newPassword: String, newHint: String?,
         newGenerationType: String, newMnemonicPhraseHint: String?,
@@ -123,12 +127,21 @@ class VaultViewModel @Inject constructor(
             val encryptedPwd = CryptoUtils.encrypt(newPassword)
             val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
             val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
+
+            val updatedHint = when (newGenerationType) {
+                "mnemonic", "manual" -> newHint
+                "random" -> null
+                else -> newHint
+            }
+            val updatedMnemonicPhrase = if (newGenerationType == "mnemonic") newMnemonicPhraseHint else null
+            val updatedMnemonicOptions = if (newGenerationType == "mnemonic") newMnemonicOptionsJson else null
+
             val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                 encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
                 generationType = newGenerationType,
-                textHint = newHint ?: entry.textHint,
-                mnemonicPhraseHint = newMnemonicPhraseHint ?: entry.mnemonicPhraseHint,
-                mnemonicOptionsJson = newMnemonicOptionsJson ?: entry.mnemonicOptionsJson,
+                textHint = updatedHint,
+                mnemonicPhraseHint = updatedMnemonicPhrase,
+                mnemonicOptionsJson = updatedMnemonicOptions,
                 nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
             )
             repository.update(updated)
@@ -136,19 +149,28 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    fun bulkReplacePasswords(replacements: List<Triple<String, String, String>>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
+    //  BulkPasswordReplacement вместо Triple
+    fun bulkReplacePasswords(replacements: List<BulkPasswordReplacement>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
         try {
-            for ((entryId, newPassword, generationType) in replacements) {
-                val entry = repository.getById(entryId) ?: continue
-                val validation = PasswordValidator.validateNewPasswordForEntry(entry, newPassword, appContext)
+            for (replacement in replacements) {
+                val entry = repository.getById(replacement.entryId) ?: continue
+                val validation = PasswordValidator.validateNewPasswordForEntry(entry, replacement.newPassword, appContext)
                 if (!validation.isValid) continue
                 val now = System.currentTimeMillis()
-                val encryptedPwd = CryptoUtils.encrypt(newPassword)
-                val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+                val encryptedPwd = CryptoUtils.encrypt(replacement.newPassword)
+                val newFp = PasswordValidator.buildPasswordFingerprint(replacement.newPassword, appContext)
                 val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
+
+                val updatedHint = if (replacement.generationType == "random") null else replacement.textHint
+                val updatedMnemonicPhrase = if (replacement.generationType == "mnemonic") replacement.mnemonicPhraseHint else null
+                val updatedMnemonicOptions = if (replacement.generationType == "mnemonic") replacement.mnemonicOptionsJson else null
+
                 val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                     encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
-                    generationType = generationType,
+                    generationType = replacement.generationType,
+                    textHint = updatedHint,
+                    mnemonicPhraseHint = updatedMnemonicPhrase,
+                    mnemonicOptionsJson = updatedMnemonicOptions,
                     nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
                 )
                 repository.update(updated)
@@ -188,6 +210,9 @@ class VaultViewModel @Inject constructor(
                 val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                     encryptedPassword = upd.first, passwordFingerprint = upd.second, lastChanged = now,
                     generationType = "shuffled",
+                    textHint = null,
+                    mnemonicPhraseHint = null,
+                    mnemonicOptionsJson = null,
                     nextRotationDate = if (entry.rotationEnabled) now + (entry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
                 )
                 repository.update(updated)
@@ -239,6 +264,9 @@ class VaultViewModel @Inject constructor(
                 val updated = tgt.addToPasswordHistory(tgt.password, tgt.generationType, oldFp).copy(
                     encryptedPassword = enc, passwordFingerprint = newFp, lastChanged = now,
                     generationType = "shuffled",
+                    textHint = null,
+                    mnemonicPhraseHint = null,
+                    mnemonicOptionsJson = null,
                     nextRotationDate = if (tgt.rotationEnabled) now + (tgt.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
                 )
                 repository.update(updated)
@@ -247,43 +275,18 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-          // Экспорт всех профилей и записей для backup
-    suspend fun exportAllProfiles(): com.securevault.data.BackupData {
-        val allProfiles = repository.allProfiles.first()
-        val backupProfiles = allProfiles.map { profile ->
-            val entries = repository.getByProfileId(profile.id)
-            val backupEntries = entries.map { entry ->
-                com.securevault.data.BackupEntry(
-                    service = entry.service,
-                    username = entry.username,
-                    encryptedPassword = entry.encryptedPassword,
-                    url = entry.url,
-                    notes = entry.notes,
-                    textHint = entry.textHint,
-                    generationType = entry.generationType,
-                    mnemonicPhraseHint = entry.mnemonicPhraseHint,
-                    mnemonicOptionsJson = entry.mnemonicOptionsJson,
-                    rotationEnabled = entry.rotationEnabled,
-                    rotationPeriodMonths = entry.rotationPeriodMonths,
-                    nextRotationDate = entry.nextRotationDate,
-                    isFavorite = entry.isFavorite,
-                    createdAt = entry.createdAt,
-                    lastChanged = entry.lastChanged,
-                    passwordHistoryJson = entry.passwordHistoryJson,
-                    passwordFingerprint = entry.passwordFingerprint
-                )
-            }
-            com.securevault.data.BackupProfile(profile.id, profile.name, backupEntries)
-        }
-        return com.securevault.data.BackupData(profiles = backupProfiles)
+    //  Экспорт всех профилей для backup
+    suspend fun exportAllProfiles(): BackupData {
+        return BackupManager.exportAllProfiles(repository)
     }
 
-    //  Импорт backup
+    //  Импорт backup с новым PIN
     suspend fun importBackup(
-        backupData: com.securevault.data.BackupData,
-        mode: com.securevault.utils.ImportMode
+        backupData: BackupData,
+        mode: ImportMode,
+        newPin: String
     ): com.securevault.utils.ImportResult {
-        return com.securevault.utils.BackupManager.importBackup(repository, backupData, mode)
+        return BackupManager.importBackup(repository, backupData, mode, newPin)
     }
 
     // Планирование фоновой проверки ротации
@@ -315,4 +318,14 @@ data class PasswordShuffleAssignment(
 data class PasswordShufflePlanResult(
     val success: Boolean, val assignments: List<PasswordShuffleAssignment>,
     val errorMessage: String?
+)
+
+//  data class для bulk replacement
+data class BulkPasswordReplacement(
+    val entryId: String,
+    val newPassword: String,
+    val generationType: String,
+    val textHint: String? = null,
+    val mnemonicPhraseHint: String? = null,
+    val mnemonicOptionsJson: String? = null
 )
