@@ -85,7 +85,7 @@ fun BulkRotationDialog(
     //  Проверка количества сгенерированных паролей
     val canReplaceAll = generatedPasswords.size == entries.size
 
-    //  Сохраняем AMPG metadata
+    //  Сохраняем AMPG metadata в JSON
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
         """{"includeLeet":$includeLeet,"includeServiceCode":$includeServiceCode,"includeRotationCode":$includeRotationCode,"targetLength":16,"algorithmName":"AMPG v2"}"""
     } else null
@@ -187,7 +187,7 @@ fun BulkRotationDialog(
                     }
                 }
 
-                //  Предупреждение, если не все пароли сгенерированы
+                // Предупреждение, если не все пароли сгенерированы
                 if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -267,7 +267,7 @@ fun BulkRotationDialog(
                         generationType = generationType,
                         textHint = if (generationType == "mnemonic") mnemonicPhrase else null,
                         mnemonicPhraseHint = if (generationType == "mnemonic") mnemonicPhrase else null,
-                        mnemonicOptionsJson = mnemonicOptionsJson 
+                        mnemonicOptionsJson = mnemonicOptionsJson // ✅ ИСПРАВЛЕНИЕ ПУНКТА 7
                     )
                 }
 
