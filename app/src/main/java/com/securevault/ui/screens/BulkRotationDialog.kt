@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -19,8 +20,10 @@ import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.BulkPasswordReplacement
-import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
+
+//  enum вынесен на верхний уровень файла
+enum class BulkMode { RANDOM, MNEMONIC }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,28 +33,23 @@ fun BulkRotationDialog(
     onBulkReplace: (List<BulkPasswordReplacement>) -> Unit,
     viewModel: VaultViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    enum class BulkMode { RANDOM, MNEMONIC }
+    val context = LocalContext.current
 
     var selectedMode by remember { mutableStateOf(BulkMode.RANDOM) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Параметры для random
     var randomLength by remember { mutableIntStateOf(16) }
     var useUpper by remember { mutableStateOf(true) }
     var useDigits by remember { mutableStateOf(true) }
     var useSpecial by remember { mutableStateOf(true) }
 
-    // Параметры для AMPG
     var mnemonicPhrase by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
 
-    // Генерация паролей для preview
     val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet, includeServiceCode, includeRotationCode) {
         if (selectedMode == BulkMode.RANDOM) {
             entries.map { entry ->
@@ -86,7 +84,8 @@ fun BulkRotationDialog(
     }
 
     AlertDialog(
-        onDismissRequest = if (isProcessing) {} else onDismiss,
+        //  правильный тип для onDismissRequest
+        onDismissRequest = { if (!isProcessing) onDismiss() },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Group, null, tint = MaterialTheme.colorScheme.primary)
@@ -101,7 +100,6 @@ fun BulkRotationDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Выбор режима
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -117,7 +115,6 @@ fun BulkRotationDialog(
                     }
                 }
 
-                // Параметры для выбранного режима
                 when (selectedMode) {
                     BulkMode.RANDOM -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
@@ -153,7 +150,6 @@ fun BulkRotationDialog(
                     }
                 }
 
-                // Preview сгенерированных паролей
                 if (generatedPasswords.isNotEmpty()) {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
@@ -230,7 +226,6 @@ fun BulkRotationDialog(
         }
     )
 
-    // Диалог мастер-пароля
     if (showMasterPasswordDialog) {
         MasterPasswordConfirmDialog(
             title = "Подтверждение массовой ротации",
@@ -256,7 +251,6 @@ fun BulkRotationDialog(
         )
     }
 
-    // Ошибки
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { errorMessage = null },
