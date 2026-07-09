@@ -23,6 +23,11 @@ import com.securevault.viewmodel.VaultViewModel
 fun ProfileSettingsScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onNavigateToRotation: () -> Unit,
+    onNavigateToRotationJournal: () -> Unit,
+    onNavigateToAudit: () -> Unit,
+    onNavigateToExport: () -> Unit,
+    onNavigateToQrScanner: () -> Unit,
     vaultViewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -33,6 +38,7 @@ fun ProfileSettingsScreen(
     }
 
     val profiles by profileViewModel.profiles.collectAsState()
+    val entries by vaultViewModel.entries.collectAsState()
     val profile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
     Scaffold(
@@ -57,7 +63,7 @@ fun ProfileSettingsScreen(
         ) {
             // Информация о профиле
             Text("Профиль", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-            
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -65,34 +71,99 @@ fun ProfileSettingsScreen(
                 ) {
                     Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(profile?.name ?: "—", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("ID: ${profile?.id ?: "—"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Записей: ${entries.size}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
 
             HorizontalDivider()
-            
-            // Действия профиля
-            Text("Действия", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-            
-            Text(
-                "Основные действия с паролями доступны из меню списка записей (⋮):",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+
+            // Действия с паролями
+            Text("Действия с паролями", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+
+            SettingsActionCard(
+                icon = Icons.Default.Schedule,
+                title = "Ротация паролей",
+                subtitle = "Обновление просроченных паролей",
+                onClick = onNavigateToRotation
             )
-            
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("• Ротация паролей", fontSize = 13.sp)
-                    Text("• Аудит безопасности", fontSize = 13.sp)
-                    Text("• Экспорт / импорт записей", fontSize = 13.sp)
-                    Text("• Мнемонический генератор", fontSize = 13.sp)
-                    Text("• Сканировать QR", fontSize = 13.sp)
-                    Text("• Массовое удаление", fontSize = 13.sp)
+
+            SettingsActionCard(
+                icon = Icons.Default.History,
+                title = "Журнал ротации",
+                subtitle = "История всех изменений паролей",
+                onClick = onNavigateToRotationJournal
+            )
+
+            SettingsActionCard(
+                icon = Icons.Default.Security,
+                title = "Аудит безопасности",
+                subtitle = "Проверка качества паролей",
+                onClick = onNavigateToAudit
+            )
+
+            SettingsActionCard(
+                icon = Icons.Default.Upload,
+                title = "Экспорт / импорт",
+                subtitle = "Резервное копирование записей",
+                onClick = onNavigateToExport
+            )
+
+            SettingsActionCard(
+                icon = Icons.Default.QrCodeScanner,
+                title = "Сканировать QR",
+                subtitle = "Получить пароль по QR-коду",
+                onClick = onNavigateToQrScanner
+            )
+
+            HorizontalDivider()
+
+            // Опасная зона
+            Text("Опасная зона", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Удалить все пароли", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Все записи профиля будут удалены безвозвратно", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
