@@ -81,20 +81,17 @@ fun ExportImportScreen(
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
     var backupPassword by remember { mutableStateOf("") }
-    // Подтверждение пароля backup-файла
     var confirmBackupPassword by remember { mutableStateOf("") }
     var backupPasswordError by remember { mutableStateOf<String?>(null) }
     var importPassword by remember { mutableStateOf("") }
     var isExporting by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
 
-    // Используем OperationResult с верхнего уровня
     var importResult by remember { mutableStateOf<OperationResult?>(null) }
 
     var showImportModeDialog by remember { mutableStateOf(false) }
     var pendingBackupData by remember { mutableStateOf<BackupData?>(null) }
 
-    // Сохраняем выбранный режим импорта
     var pendingImportMode by remember { mutableStateOf<ImportMode?>(null) }
 
     var showPinDialog by remember { mutableStateOf(false) }
@@ -172,40 +169,49 @@ fun ExportImportScreen(
         }
     }
 
-    // Экспорт полного backup (после подтверждения мастер-пароля)
+    // : backupExportLauncher — очистка пароля только в finally
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
-        uri?.let {
-            scope.launch {
-                isExporting = true
-                try {
-                    val backupData = withContext(Dispatchers.IO) {
-                        vaultViewModel.exportAllProfiles()
-                    }
-                    val encrypted = withContext(Dispatchers.IO) {
-                        BackupManager.encryptBackup(backupData, backupPassword)
-                    }
-                    val jsonString = encrypted.toJson()
-
-                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                        outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
-                    }
-
-                    val profileCount = backupData.profiles.size
-                    val entryCount = backupData.profiles.sumOf { it.entries.size }
+        scope.launch {
+            isExporting = true
+            try {
+                // Если пользователь отменил выбор файла — uri == null
+                if (uri == null) {
                     importResult = OperationResult(
-                        success = true,
-                        message = "Backup создан\nПрофилей: $profileCount\nЗаписей: $entryCount"
+                        success = false,
+                        message = "Создание backup отменено"
                     )
-                } catch (e: Exception) {
-                    importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
-                } finally {
-                    isExporting = false
-                    backupPassword = ""
-                    confirmBackupPassword = ""
-                    backupPasswordError = null
+                    return@launch
                 }
+
+                val backupData = withContext(Dispatchers.IO) {
+                    vaultViewModel.exportAllProfiles()
+                }
+                val encrypted = withContext(Dispatchers.IO) {
+                    // Используем backupPassword, который ещё НЕ очищен
+                    BackupManager.encryptBackup(backupData, backupPassword)
+                }
+                val jsonString = encrypted.toJson()
+
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                }
+
+                val profileCount = backupData.profiles.size
+                val entryCount = backupData.profiles.sumOf { it.entries.size }
+                importResult = OperationResult(
+                    success = true,
+                    message = "Backup создан\nПрофилей: $profileCount\nЗаписей: $entryCount"
+                )
+            } catch (e: Exception) {
+                importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
+            } finally {
+                isExporting = false
+                // ОЧИСТКА ТОЛЬКО ЗДЕСЬ — после завершения операции
+                backupPassword = ""
+                confirmBackupPassword = ""
+                backupPasswordError = null
             }
         }
     }
@@ -213,27 +219,35 @@ fun ExportImportScreen(
     val backupImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        uri?.let {
-            scope.launch {
-                isImporting = true
-                try {
-                    val jsonString = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader ->
-                            reader.readText()
-                        } ?: throw Exception("Не удалось прочитать файл")
-                    }
-                    val encrypted = EncryptedBackup.fromJson(jsonString)
-                    val backupData = withContext(Dispatchers.IO) {
-                        BackupManager.decryptBackup(encrypted, importPassword)
-                    }
-                    pendingBackupData = backupData
-                    isImporting = false
-                    showImportModeDialog = true
-                } catch (e: Exception) {
-                    importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
+        scope.launch {
+            isImporting = true
+            try {
+                if (uri == null) {
+                    importResult = OperationResult(
+                        success = false,
+                        message = "Импорт отменён"
+                    )
                     isImporting = false
                     importPassword = ""
+                    return@launch
                 }
+
+                val jsonString = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        reader.readText()
+                    } ?: throw Exception("Не удалось прочитать файл")
+                }
+                val encrypted = EncryptedBackup.fromJson(jsonString)
+                val backupData = withContext(Dispatchers.IO) {
+                    BackupManager.decryptBackup(encrypted, importPassword)
+                }
+                pendingBackupData = backupData
+                isImporting = false
+                showImportModeDialog = true
+            } catch (e: Exception) {
+                importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
+                isImporting = false
+                importPassword = ""
             }
         }
     }
@@ -328,7 +342,6 @@ fun ExportImportScreen(
 
                     HorizontalDivider()
 
-                    // Полный защищённый backup с мастер-паролем
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -374,7 +387,6 @@ fun ExportImportScreen(
                         }
                     }
 
-                    // Отображение результата
                     if (importResult != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -511,7 +523,6 @@ fun ExportImportScreen(
                         }
                     }
 
-                    //  Отображение результата
                     if (importResult != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -546,7 +557,7 @@ fun ExportImportScreen(
         }
     }
 
-    //  Диалог мастер-пароля ПЕРЕД backup/импортом
+    // Диалог мастер-пароля ПЕРЕД backup/импортом
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -621,7 +632,8 @@ fun ExportImportScreen(
         )
     }
 
-    //  Подтверждение пароля backup-файла (два поля)
+    // Подтверждение пароля backup-файла
+    // Пароль очищается ТОЛЬКО в finally внутри backupExportLauncher
     if (showBackupPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -670,11 +682,10 @@ fun ExportImportScreen(
                                 backupPasswordError = "Пароли не совпадают"
                             }
                             else -> {
+                                //  НЕ очищаем пароли здесь!
+                                // Они нужны позже в backupExportLauncher
                                 showBackupPasswordDialog = false
                                 backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
-                                backupPassword = ""
-                                confirmBackupPassword = ""
-                                backupPasswordError = null
                             }
                         }
                     }
