@@ -36,6 +36,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// Вынесено на верхний уровень файла
+data class OperationResult(val success: Boolean, val message: String)
+
+//  Переименовано, чтобы не конфликтовать с MasterPasswordAction из VaultListScreen
+enum class BackupMasterPasswordAction {
+    CREATE_BACKUP,
+    IMPORT_BACKUP
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportImportScreen(
@@ -67,7 +76,7 @@ fun ExportImportScreen(
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var masterPasswordInput by remember { mutableStateOf("") }
     var masterPasswordError by remember { mutableStateOf<String?>(null) }
-    var pendingMasterPasswordAction by remember { mutableStateOf<MasterPasswordAction?>(null) }
+    var pendingMasterPasswordAction by remember { mutableStateOf<BackupMasterPasswordAction?>(null) }
 
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
@@ -76,28 +85,19 @@ fun ExportImportScreen(
     var isExporting by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
 
-    //  Флаг success/error вместо строки
+    // Используем OperationResult с верхнего уровня
     var importResult by remember { mutableStateOf<OperationResult?>(null) }
 
     var showImportModeDialog by remember { mutableStateOf(false) }
     var pendingBackupData by remember { mutableStateOf<BackupData?>(null) }
 
-    //  Сохраняем выбранный режим импорта
+    // Сохраняем выбранный режим импорта
     var pendingImportMode by remember { mutableStateOf<ImportMode?>(null) }
 
     var showPinDialog by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
-
-    //Класс для результата операции
-    data class OperationResult(val success: Boolean, val message: String)
-
-    //  Действия, требующие мастер-пароль
-    enum class MasterPasswordAction {
-        CREATE_BACKUP,
-        IMPORT_BACKUP
-    }
 
     fun performImport(
         backupData: BackupData,
@@ -169,7 +169,7 @@ fun ExportImportScreen(
         }
     }
 
-    //  Экспорт полного backup (после подтверждения мастер-пароля)
+    // Экспорт полного backup (после подтверждения мастер-пароля)
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -191,13 +191,12 @@ fun ExportImportScreen(
 
                     val profileCount = backupData.profiles.size
                     val entryCount = backupData.profiles.sumOf { it.entries.size }
-                    //  Используем OperationResult
                     importResult = OperationResult(
                         success = true,
                         message = "Backup создан\nПрофилей: $profileCount\nЗаписей: $entryCount"
                     )
                 } catch (e: Exception) {
-                    importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
+                    importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
                 } finally {
                     isExporting = false
                     backupPassword = ""
@@ -226,7 +225,7 @@ fun ExportImportScreen(
                     isImporting = false
                     showImportModeDialog = true
                 } catch (e: Exception) {
-                    importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
+                    importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
                     isImporting = false
                     importPassword = ""
                 }
@@ -324,7 +323,7 @@ fun ExportImportScreen(
 
                     HorizontalDivider()
 
-                    //  Полный защищённый backup с мастер-паролем
+                    // Полный защищённый backup с мастер-паролем
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -348,7 +347,7 @@ fun ExportImportScreen(
                             Button(
                                 onClick = {
                                     //  Сначала мастер-пароль
-                                    pendingMasterPasswordAction = MasterPasswordAction.CREATE_BACKUP
+                                    pendingMasterPasswordAction = BackupMasterPasswordAction.CREATE_BACKUP
                                     showMasterPasswordDialog = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -486,7 +485,7 @@ fun ExportImportScreen(
                             Button(
                                 onClick = {
                                     //  Сначала мастер-пароль
-                                    pendingMasterPasswordAction = MasterPasswordAction.IMPORT_BACKUP
+                                    pendingMasterPasswordAction = BackupMasterPasswordAction.IMPORT_BACKUP
                                     showMasterPasswordDialog = true
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -559,8 +558,8 @@ fun ExportImportScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         when (pendingMasterPasswordAction) {
-                            MasterPasswordAction.CREATE_BACKUP -> "Для создания полного backup введите мастер-пароль"
-                            MasterPasswordAction.IMPORT_BACKUP -> "Для импорта полного backup введите мастер-пароль"
+                            BackupMasterPasswordAction.CREATE_BACKUP -> "Для создания полного backup введите мастер-пароль"
+                            BackupMasterPasswordAction.IMPORT_BACKUP -> "Для импорта полного backup введите мастер-пароль"
                             else -> "Введите мастер-пароль"
                         },
                         fontSize = 13.sp
@@ -593,10 +592,10 @@ fun ExportImportScreen(
                         masterPasswordInput = ""
                         masterPasswordError = null
 
-                        // ✅ Открываем следующий диалог в зависимости от действия
+                        //  Открываем следующий диалог в зависимости от действия
                         when (pendingMasterPasswordAction) {
-                            MasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
-                            MasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
+                            BackupMasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
+                            BackupMasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
                             else -> {}
                         }
                         pendingMasterPasswordAction = null
