@@ -149,10 +149,9 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    //  Валидация всех replacements перед применением
+    // Валидация всех replacements перед применением
     fun bulkReplacePasswords(replacements: List<BulkPasswordReplacement>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
         try {
-            // 1. Сначала валидируем ВСЕ замены
             val validationErrors = mutableListOf<String>()
             val validatedReplacements = mutableListOf<Pair<Entry, BulkPasswordReplacement>>()
 
@@ -172,7 +171,6 @@ class VaultViewModel @Inject constructor(
                 validatedReplacements.add(Pair(entry, replacement))
             }
 
-            // 2. Если есть ошибки — отменяем всю операцию
             if (validationErrors.isNotEmpty()) {
                 val errorMessage = buildString {
                     append("Не удалось выполнить массовую ротацию:\n")
@@ -184,7 +182,6 @@ class VaultViewModel @Inject constructor(
                 return@launch
             }
 
-            // 3. Если все валидно — применяем изменения
             for ((entry, replacement) in validatedReplacements) {
                 val now = System.currentTimeMillis()
                 val encryptedPwd = CryptoUtils.encrypt(replacement.newPassword)
@@ -306,12 +303,111 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
+    //  Управляемая перекрёстная ротация с полной валидацией
+    fun applyManagedShuffle(
+        assignments: Map<String, String?>,
+        onResult: (PasswordOperationResult) -> Unit
+    ) = viewModelScope.launch {
+        try {
+            // 1. Проверяем, что все назначения заполнены
+            val incomplete = assignments.filter { it.value == null }
+            if (incomplete.isNotEmpty()) {
+                onResult(PasswordOperationResult.Error("Не для всех записей выбран донор"))
+                return@launch
+            }
+
+            // 2. Проверяем, что нет дубликатов доноров
+            val sources = assignments.values.mapNotNull { it }
+            if (sources.size != sources.toSet().size) {
+                onResult(PasswordOperationResult.Error("Один донор не может быть назначен двум получателям"))
+                return@launch
+            }
+
+            // 3. Проверяем, что target != source
+            for ((targetId, sourceId) in assignments) {
+                if (targetId == sourceId) {
+                    onResult(PasswordOperationResult.Error("Запись не может получить свой же пароль"))
+                    return@launch
+                }
+            }
+
+            // 4. Получаем все записи
+            val allEntries = assignments.keys.mapNotNull { repository.getById(it) }
+            if (allEntries.size != assignments.size) {
+                onResult(PasswordOperationResult.Error("Не все записи найдены"))
+                return@launch
+            }
+
+            // 5. ПРЕДВАРИТЕЛЬНАЯ ВАЛИДАЦИЯ всех пар
+            val validationErrors = mutableListOf<String>()
+            val validatedPairs = mutableListOf<Triple<Entry, Entry, String>>()
+
+            for ((targetId, sourceId) in assignments) {
+                val target = allEntries.find { it.id == targetId } ?: continue
+                val source = repository.getById(sourceId!!) ?: continue
+
+                val newPassword = try {
+                    source.password
+                } catch (e: Exception) {
+                    validationErrors.add("${target.service}: не удалось расшифровать пароль ${source.service}")
+                    continue
+                }
+
+                val validation = PasswordValidator.validateNewPasswordForEntry(target, newPassword, appContext)
+                if (!validation.isValid) {
+                    validationErrors.add("${target.service} ← ${source.service}: ${validation.errorMessage}")
+                    continue
+                }
+
+                validatedPairs.add(Triple(target, source, newPassword))
+            }
+
+            // 6. Если есть ошибки — отменяем всю операцию
+            if (validationErrors.isNotEmpty()) {
+                val errorMessage = buildString {
+                    append("Не удалось выполнить перекрёстную ротацию:\n")
+                    validationErrors.forEach { error ->
+                        append("• $error\n")
+                    }
+                }
+                onResult(PasswordOperationResult.Error(errorMessage))
+                return@launch
+            }
+
+            // 7. Применяем все изменения
+            val now = System.currentTimeMillis()
+            for ((target, source, newPassword) in validatedPairs) {
+                val encryptedPwd = CryptoUtils.encrypt(newPassword)
+                val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
+                val oldFp = PasswordValidator.buildPasswordFingerprint(target.password, appContext)
+
+                val updated = target.addToPasswordHistory(target.password, target.generationType, oldFp).copy(
+                    encryptedPassword = encryptedPwd,
+                    passwordFingerprint = newFp,
+                    lastChanged = now,
+                    generationType = "shuffled",
+                    textHint = null,
+                    mnemonicPhraseHint = null,
+                    mnemonicOptionsJson = null,
+                    nextRotationDate = if (target.rotationEnabled) {
+                        now + (target.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                    } else null
+                )
+                repository.update(updated)
+            }
+
+            onResult(PasswordOperationResult.Success)
+        } catch (e: Exception) {
+            onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+        }
+    }
+
     // Экспорт всех профилей для backup
     suspend fun exportAllProfiles(): BackupData {
         return BackupManager.exportAllProfiles(repository)
     }
 
-    //  Передаём appContext в BackupManager
+    // Импорт backup с новым PIN (передаём appContext)
     suspend fun importBackup(
         backupData: BackupData,
         mode: ImportMode,
