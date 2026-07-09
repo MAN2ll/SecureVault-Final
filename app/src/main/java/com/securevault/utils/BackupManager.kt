@@ -1,5 +1,6 @@
 package com.securevault.utils
 
+import android.content.Context
 import android.util.Base64
 import com.securevault.data.*
 import com.securevault.security.ProfilePasswordHasher
@@ -63,7 +64,6 @@ object BackupManager {
         return bytes
     }
 
-    //  Экспорт с расшифровкой пароля (plaintext)
     suspend fun exportAllProfiles(repository: VaultRepository): BackupData {
         val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
@@ -99,19 +99,19 @@ object BackupManager {
         return BackupData(profiles = backupProfiles)
     }
 
-    //  Импорт с правильным вызовом ProfilePasswordHasher
+    // Добавлен параметр Context для fingerprint
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
         mode: ImportMode,
-        newPin: String
+        newPin: String,
+        context: Context 
     ): ImportResult {
         val profileMapping = mutableMapOf<Int, Int>()
         var importedProfiles = 0
         var importedEntries = 0
         val errors = mutableListOf<String>()
 
-        //  Правильный вызов ProfilePasswordHasher
         val pinSalt = ProfilePasswordHasher.generateSalt()
         val pinHash = ProfilePasswordHasher.hash(newPin, pinSalt)
 
@@ -160,13 +160,13 @@ object BackupManager {
 
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  Entry.create не имеет nextRotationDate, используем copy
+                        //  Используем актуальный fingerprint с Context
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
                             password = backupEntry.password,
                             profileId = newProfileId,
-                            passwordFingerprint = PasswordValidator.buildLegacyFingerprint(backupEntry.password),
+                            passwordFingerprint = PasswordValidator.buildPasswordFingerprint(backupEntry.password, context),
                             url = backupEntry.url,
                             notes = backupEntry.notes,
                             textHint = backupEntry.textHint,
