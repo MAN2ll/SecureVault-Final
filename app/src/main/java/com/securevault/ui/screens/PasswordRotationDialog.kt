@@ -2,7 +2,10 @@
 
 package com.securevault.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,18 +21,22 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
+import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
+    currentEntryId: String,
     serviceName: String,
     currentHint: String?,
     generationType: String,
     rotationMonth: Int?,
     rotationYear: Int?,
+    allProfileEntries: List<Entry>,
     onDismiss: () -> Unit,
     onPasswordReplaced: (
         newPassword: String,
@@ -37,17 +44,17 @@ fun PasswordRotationDialog(
         newGenerationType: String,
         mnemonicPhrase: String?,
         mnemonicOptions: String?
-    ) -> Unit
+    ) -> Unit,
+    viewModel: VaultViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
-    var selectedMode by remember { mutableStateOf(if (generationType == "mnemonic") "mnemonic" else "random") }
+    enum class RotationMode { RANDOM, MNEMONIC, MANUAL, FROM_EXISTING }
+
+    var selectedMode by remember { mutableStateOf(RotationMode.RANDOM) }
     var manualPassword by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf<String?>(null) }
-    
-    var showReplaceErrorDialog by remember { mutableStateOf(false) }
-    var replaceErrorMessage by remember { mutableStateOf<String?>(null) }
 
     var phrase by remember { mutableStateOf(currentHint ?: "") }
     var includeLeet by remember { mutableStateOf(true) }
@@ -63,6 +70,12 @@ fun PasswordRotationDialog(
     var useDigits by remember { mutableStateOf(true) }
     var useSpecial by remember { mutableStateOf(true) }
 
+    var selectedExistingEntry by remember { mutableStateOf<Entry?>(null) }
+
+    val availableEntries = remember(allProfileEntries, currentEntryId) {
+        allProfileEntries.filter { it.id != currentEntryId }
+    }
+
     fun generateRandom() {
         val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
         generatedRandomPwd = result.password
@@ -73,7 +86,6 @@ fun PasswordRotationDialog(
             variants = emptyList()
             return
         }
-
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
@@ -85,27 +97,17 @@ fun PasswordRotationDialog(
             rotationYear = rotationYear,
             variantOffset = variantOffset
         )
-
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
-        
-        if (variants.isEmpty()) {
-            showError = "Не удалось создать варианты без повторов. Измените фразу или параметры."
-        }
     }
 
     LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
-        if (selectedMode == "mnemonic") {
-            generateMnemonicVariants()
-        }
+        if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
     }
 
     LaunchedEffect(selectedMode) {
-        if (selectedMode == "random") {
-            generateRandom()
-        } else {
-            generateMnemonicVariants()
-        }
+        if (selectedMode == RotationMode.RANDOM) generateRandom()
+        else if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
     }
 
     AlertDialog(
@@ -119,154 +121,80 @@ fun PasswordRotationDialog(
         },
         text = {
             Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .fillMaxWidth(),
+                modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "random", onClick = { selectedMode = "random" })
-                            Text("Случайный пароль", Modifier.padding(start = 8.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "mnemonic", onClick = { selectedMode = "mnemonic" })
-                            Text("Мнемонический (AMPG v2)", Modifier.padding(start = 8.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = selectedMode == "manual", onClick = { selectedMode = "manual" })
-                            Text("Ввести вручную", Modifier.padding(start = 8.dp))
+                        RotationMode.entries.forEach { mode ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                RadioButton(
+                                    selected = selectedMode == mode,
+                                    onClick = { selectedMode = mode }
+                                )
+                                Text(
+                                    when (mode) {
+                                        RotationMode.RANDOM -> "Случайный пароль"
+                                        RotationMode.MNEMONIC -> "Мнемонический (AMPG v2)"
+                                        RotationMode.MANUAL -> "Ввести вручную"
+                                        RotationMode.FROM_EXISTING -> "Взять из другой записи"
+                                    },
+                                    Modifier.padding(start = 8.dp)
+                                )
+                            }
                         }
                     }
                 }
 
                 when (selectedMode) {
-                    "random" -> {
+                    RotationMode.RANDOM -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Параметры", fontWeight = FontWeight.Bold)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Длина: $randomLength", modifier = Modifier.weight(1f))
-                                    Slider(
-                                        value = randomLength.toFloat(),
-                                        onValueChange = { randomLength = it.toInt() },
-                                        valueRange = 8f..32f,
-                                        steps = 24,
-                                        modifier = Modifier.weight(2f)
-                                    )
+                                    Slider(value = randomLength.toFloat(), onValueChange = { randomLength = it.toInt() }, valueRange = 8f..32f, steps = 24, modifier = Modifier.weight(2f))
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
-                                    Text("Заглавные", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
-                                    Text("Цифры", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
-                                    Text("Спецсимволы", Modifier.padding(start = 8.dp))
-                                }
-                                
+                                Row { Checkbox(checked = useUpper, onCheckedChange = { useUpper = it }); Text("A-Z", Modifier.padding(start = 8.dp)) }
+                                Row { Checkbox(checked = useDigits, onCheckedChange = { useDigits = it }); Text("0-9", Modifier.padding(start = 8.dp)) }
+                                Row { Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it }); Text("!@#", Modifier.padding(start = 8.dp)) }
+
                                 if (generatedRandomPwd.isNotEmpty()) {
-                                    Text(
-                                        generatedRandomPwd,
-                                        fontSize = 16.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Text(generatedRandomPwd, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 }
-                                
                                 Row {
-                                    OutlinedButton(onClick = { generateRandom() }) {
-                                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Ещё раз")
-                                    }
+                                    OutlinedButton(onClick = { generateRandom() }) { Icon(Icons.Default.Refresh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Ещё раз") }
                                     Spacer(Modifier.width(8.dp))
-                                    OutlinedButton(onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedRandomPwd))
-                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Копировать")
-                                    }
+                                    OutlinedButton(onClick = { clipboardManager.setText(AnnotatedString(generatedRandomPwd)); android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Копировать") }
                                 }
                             }
                         }
                     }
-                    
-                    "mnemonic" -> {
+
+                    RotationMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2 — Уникальный поток", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                
-                                OutlinedTextField(
-                                    value = phrase,
-                                    onValueChange = { phrase = it },
-                                    label = { Text("Мнемоническая фраза") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Leet-замены", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                                    Text("Код сервиса", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                                    Text("Код ротации", Modifier.padding(start = 8.dp))
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = { variantOffset++ },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ещё варианты (набор №${variantOffset + 1})")
-                                }
-                                
+                                OutlinedTextField(value = phrase, onValueChange = { phrase = it }, label = { Text("Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
+                                Row { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp)) }
+                                Row { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp)) }
+                                Row { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации", Modifier.padding(start = 8.dp)) }
+
+                                OutlinedButton(onClick = { variantOffset++ }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Refresh, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("Ещё варианты (набор №${variantOffset + 1})") }
+
                                 if (variants.isNotEmpty()) {
                                     Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
-                                    
                                     variants.forEachIndexed { index, result ->
                                         val isSelected = selectedVariantIndex == index
-                                        
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) 
-                                                    MaterialTheme.colorScheme.primaryContainer 
-                                                else 
-                                                    MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(8.dp).fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
+                                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                                            Row(modifier = Modifier.padding(8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                                    Text(
-                                                        result.password,
-                                                        fontSize = 12.sp,
-                                                        fontFamily = FontFamily.Monospace,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
+                                                    Text(result.password, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                                                 }
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = { selectedVariantIndex = index }
-                                                )
+                                                RadioButton(selected = isSelected, onClick = { selectedVariantIndex = index })
                                             }
                                         }
                                         Spacer(Modifier.height(4.dp))
@@ -275,14 +203,44 @@ fun PasswordRotationDialog(
                             }
                         }
                     }
-                    
-                    "manual" -> {
+
+                    RotationMode.MANUAL -> {
                         OutlinedTextField(
                             value = manualPassword,
                             onValueChange = { manualPassword = it; showError = null },
                             label = { Text("Новый пароль") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+
+                    RotationMode.FROM_EXISTING -> {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Выберите запись, пароль которой будет использован:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(8.dp))
+                                if (availableEntries.isEmpty()) {
+                                    Text("В этом профиле нет других записей.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                } else {
+                                    LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        items(availableEntries) { entry ->
+                                            val isSelected = selectedExistingEntry?.id == entry.id
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth().clickable { selectedExistingEntry = entry },
+                                                colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                                            ) {
+                                                Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                                        Text(entry.username, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                    RadioButton(selected = isSelected, onClick = { selectedExistingEntry = entry })
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -294,40 +252,30 @@ fun PasswordRotationDialog(
         confirmButton = {
             Button(onClick = {
                 when (selectedMode) {
-                    "random" -> {
-                        if (generatedRandomPwd.isBlank()) {
-                            showError = "Сгенерируйте пароль"
-                            return@Button
-                        }
+                    RotationMode.RANDOM -> {
+                        if (generatedRandomPwd.isBlank()) { showError = "Сгенерируйте пароль"; return@Button }
+                        // ✅ ИСПРАВЛЕНО: передаём null для mnemonic полей при random
                         onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
                     }
-                    "mnemonic" -> {
-                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                            showError = "Выберите вариант"
-                            return@Button
-                        }
+                    RotationMode.MNEMONIC -> {
+                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) { showError = "Выберите вариант"; return@Button }
                         val selected = variants[selectedVariantIndex]
-                        
-                        if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                            replaceErrorMessage = "Вариант содержит повторяющиеся символы. Нажмите 'Ещё варианты'."
-                            showReplaceErrorDialog = true
-                            return@Button
-                        }
-                        
-                        onPasswordReplaced(
-                            selected.password,
-                            selected.mnemonicHint,
-                            "mnemonic",
-                            phrase,
-                            null
-                        )
+                        onPasswordReplaced(selected.password, selected.mnemonicHint, "mnemonic", phrase, null)
                     }
-                    "manual" -> {
-                        if (manualPassword.isBlank()) {
-                            showError = "Введите пароль"
-                            return@Button
-                        }
+                    RotationMode.MANUAL -> {
+                        if (manualPassword.isBlank()) { showError = "Введите пароль"; return@Button }
+                        // передаём null для mnemonic полей при manual
                         onPasswordReplaced(manualPassword, null, "manual", null, null)
+                    }
+                    RotationMode.FROM_EXISTING -> {
+                        if (selectedExistingEntry == null) { showError = "Выберите запись"; return@Button }
+                        val passwordToUse = try {
+                            selectedExistingEntry!!.password
+                        } catch (e: Exception) {
+                            showError = "Не удалось расшифровать пароль выбранной записи"; return@Button
+                        }
+                        //  передаём null для mnemonic полей при shuffled
+                        onPasswordReplaced(passwordToUse, null, "shuffled", null, null)
                     }
                 }
             }) {
@@ -335,23 +283,7 @@ fun PasswordRotationDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
-            }
+            TextButton(onClick = onDismiss) { Text("Отмена") }
         }
     )
-
-    if (showReplaceErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showReplaceErrorDialog = false },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка замены пароля") },
-            text = { Text(replaceErrorMessage ?: "Неизвестная ошибка") },
-            confirmButton = {
-                TextButton(onClick = { showReplaceErrorDialog = false }) {
-                    Text("Понятно")
-                }
-            }
-        )
-    }
 }
