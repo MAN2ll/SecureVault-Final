@@ -3,16 +3,15 @@ package com.securevault.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Модели для защищённого backup v3
-
-//  Переносимая история паролей (plaintext внутри зашифрованного backup)
+// Переносимая история паролей с fingerprint
 data class PortableHistoryItem(
     val plainOldPassword: String,
     val date: Long,
     val type: String,
     val relatedService: String? = null,
     val relatedEntryId: String? = null,
-    val hint: String? = null
+    val hint: String? = null,
+    val passwordFingerprint: String? = null //  fingerprint старого пароля
 )
 
 data class BackupProfile(
@@ -24,7 +23,7 @@ data class BackupProfile(
 data class BackupEntry(
     val service: String,
     val username: String,
-    val password: String, // plaintext внутри зашифрованного backup
+    val password: String,
     val url: String?,
     val notes: String?,
     val textHint: String?,
@@ -37,9 +36,9 @@ data class BackupEntry(
     val isFavorite: Boolean,
     val createdAt: Long,
     val lastChanged: Long,
-    val passwordHistoryJson: String?, // legacy, для совместимости
+    val passwordHistoryJson: String?,
     val passwordFingerprint: String?,
-    val portableHistory: List<PortableHistoryItem>? = null //  переносимая история
+    val portableHistory: List<PortableHistoryItem>? = null
 )
 
 data class BackupData(
@@ -79,7 +78,6 @@ data class BackupData(
                 entryJson.put("passwordHistoryJson", entry.passwordHistoryJson ?: JSONObject.NULL)
                 entryJson.put("passwordFingerprint", entry.passwordFingerprint ?: JSONObject.NULL)
 
-                //  сериализация переносимой истории
                 if (entry.portableHistory != null) {
                     val historyArray = JSONArray()
                     for (item in entry.portableHistory) {
@@ -90,6 +88,8 @@ data class BackupData(
                         itemJson.put("relatedService", item.relatedService ?: JSONObject.NULL)
                         itemJson.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
                         itemJson.put("hint", item.hint ?: JSONObject.NULL)
+                        //  сохраняем fingerprint в JSON
+                        itemJson.put("passwordFingerprint", item.passwordFingerprint ?: JSONObject.NULL)
                         historyArray.put(itemJson)
                     }
                     entryJson.put("portableHistory", historyArray)
@@ -125,7 +125,6 @@ data class BackupData(
                 for (j in 0 until entriesArray.length()) {
                     val entryJson = entriesArray.getJSONObject(j)
 
-                    //  десериализация переносимой истории
                     val portableHistory = if (entryJson.has("portableHistory")) {
                         val historyArray = entryJson.getJSONArray("portableHistory")
                         val items = mutableListOf<PortableHistoryItem>()
@@ -138,7 +137,9 @@ data class BackupData(
                                     type = itemJson.optString("type", "unknown"),
                                     relatedService = itemJson.optString("relatedService").takeIf { it != "null" && it.isNotEmpty() },
                                     relatedEntryId = itemJson.optString("relatedEntryId").takeIf { it != "null" && it.isNotEmpty() },
-                                    hint = itemJson.optString("hint").takeIf { it != "null" && it.isNotEmpty() }
+                                    hint = itemJson.optString("hint").takeIf { it != "null" && it.isNotEmpty() },
+                                    //  читаем fingerprint из JSON
+                                    passwordFingerprint = itemJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() }
                                 )
                             )
                         }
