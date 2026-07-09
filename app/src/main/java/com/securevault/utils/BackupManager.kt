@@ -66,8 +66,8 @@ object BackupManager {
         return bytes
     }
 
-    //  Расшифровка истории при экспорте
-    suspend fun exportAllProfiles(repository: VaultRepository): BackupData {
+    // Расшифровка истории + вычисление fingerprint
+    suspend fun exportAllProfiles(repository: VaultRepository, context: Context? = null): BackupData {
         val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
             val entries = repository.getByProfileId(profile.id)
@@ -78,21 +78,27 @@ object BackupManager {
                     throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
                 }
 
-                //  расшифровываем историю паролей
+                //  расшифровываем историю + вычисляем fingerprint
                 val portableHistory = entry.getPasswordHistory().mapNotNull { item ->
                     item.encryptedOldPassword?.let { encrypted ->
                         try {
                             val plainOldPassword = CryptoUtils.decrypt(encrypted)
+                            //  Вычисляем fingerprint для старого пароля
+                            val fingerprint = if (context != null) {
+                                PasswordValidator.buildPasswordFingerprint(plainOldPassword, context)
+                            } else {
+                                PasswordValidator.buildLegacyFingerprint(plainOldPassword)
+                            }
                             PortableHistoryItem(
                                 plainOldPassword = plainOldPassword,
                                 date = item.date,
                                 type = item.type,
                                 relatedService = item.relatedService,
                                 relatedEntryId = item.relatedEntryId,
-                                hint = item.hint
+                                hint = item.hint,
+                                passwordFingerprint = fingerprint
                             )
                         } catch (e: Exception) {
-                            // Если не удалось расшифровать один элемент — пропускаем его
                             null
                         }
                     }
@@ -124,7 +130,6 @@ object BackupManager {
         return BackupData(profiles = backupProfiles)
     }
 
-    // : Шифрование истории при импорте
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
@@ -185,8 +190,8 @@ object BackupManager {
 
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  строим passwordHistoryJson из portableHistory
-                        val historyJson = buildHistoryJson(backupEntry.portableHistory)
+                        //  строим JSON с fingerprint
+                        val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
                         val newEntry = Entry.create(
@@ -230,15 +235,18 @@ object BackupManager {
         )
     }
 
-    //  Построение passwordHistoryJson из portableHistory
-    private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?): String? {
+    //  ИСПРАВЛЕНИЕ ПУНКТА 2: Включаем fingerprint в JSON истории
+    private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?, context: Context): String? {
         if (portableHistory.isNullOrEmpty()) return null
 
         return try {
             val jsonArray = JSONArray()
             for (item in portableHistory) {
-                //  Заново шифруем старый пароль на текущем устройстве
                 val encrypted = CryptoUtils.encrypt(item.plainOldPassword)
+                //  Вычисляем fingerprint на текущем устройстве (или используем сохранённый)
+                val fingerprint = item.passwordFingerprint
+                    ?: PasswordValidator.buildPasswordFingerprint(item.plainOldPassword, context)
+
                 val obj = JSONObject().apply {
                     put("encryptedOldPassword", encrypted)
                     put("date", item.date)
@@ -246,6 +254,8 @@ object BackupManager {
                     put("relatedService", item.relatedService ?: JSONObject.NULL)
                     put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
                     put("hint", item.hint ?: JSONObject.NULL)
+                    // ✅ НОВОЕ: сохраняем fingerprint в истории
+                    put("passwordFingerprint", fingerprint)
                 }
                 jsonArray.put(obj)
             }
