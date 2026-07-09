@@ -3,7 +3,7 @@ package com.securevault.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Модели для защищённого backup v3
+//  password вместо encryptedPassword для переноса между устройствами
 
 data class BackupProfile(
     val oldProfileId: Int,
@@ -14,7 +14,7 @@ data class BackupProfile(
 data class BackupEntry(
     val service: String,
     val username: String,
-    val encryptedPassword: String,
+    val password: String, //  plaintext, а не encrypted
     val url: String?,
     val notes: String?,
     val textHint: String?,
@@ -40,19 +40,19 @@ data class BackupData(
         val json = JSONObject()
         json.put("version", version)
         json.put("exportedAt", exportedAt)
-        
+
         val profilesArray = JSONArray()
         for (profile in profiles) {
             val profileJson = JSONObject()
             profileJson.put("oldProfileId", profile.oldProfileId)
             profileJson.put("name", profile.name)
-            
+
             val entriesArray = JSONArray()
             for (entry in profile.entries) {
                 val entryJson = JSONObject()
                 entryJson.put("service", entry.service)
                 entryJson.put("username", entry.username)
-                entryJson.put("encryptedPassword", entry.encryptedPassword)
+                entryJson.put("password", entry.password) //  plaintext
                 entryJson.put("url", entry.url ?: JSONObject.NULL)
                 entryJson.put("notes", entry.notes ?: JSONObject.NULL)
                 entryJson.put("textHint", entry.textHint ?: JSONObject.NULL)
@@ -73,61 +73,60 @@ data class BackupData(
             profilesArray.put(profileJson)
         }
         json.put("profiles", profilesArray)
-        
+
         return json.toString()
     }
-    
+
     companion object {
         fun fromJson(jsonString: String): BackupData {
             val json = JSONObject(jsonString)
             val version = json.optInt("version", 3)
             val exportedAt = json.optLong("exportedAt", System.currentTimeMillis())
-            
+
             val profilesArray = json.getJSONArray("profiles")
             val profiles = mutableListOf<BackupProfile>()
-            
+
             for (i in 0 until profilesArray.length()) {
                 val profileJson = profilesArray.getJSONObject(i)
                 val oldProfileId = profileJson.getInt("oldProfileId")
                 val name = profileJson.getString("name")
-                
+
                 val entriesArray = profileJson.getJSONArray("entries")
                 val entries = mutableListOf<BackupEntry>()
-                
+
                 for (j in 0 until entriesArray.length()) {
                     val entryJson = entriesArray.getJSONObject(j)
                     entries.add(
                         BackupEntry(
                             service = entryJson.getString("service"),
                             username = entryJson.getString("username"),
-                            encryptedPassword = entryJson.getString("encryptedPassword"),
-                            url = entryJson.optString("url").takeIf { it != "null" },
-                            notes = entryJson.optString("notes").takeIf { it != "null" },
-                            textHint = entryJson.optString("textHint").takeIf { it != "null" },
+                            password = entryJson.getString("password"), // ✅ plaintext
+                            url = entryJson.optString("url").takeIf { it != "null" && it.isNotEmpty() },
+                            notes = entryJson.optString("notes").takeIf { it != "null" && it.isNotEmpty() },
+                            textHint = entryJson.optString("textHint").takeIf { it != "null" && it.isNotEmpty() },
                             generationType = entryJson.optString("generationType", "random"),
-                            mnemonicPhraseHint = entryJson.optString("mnemonicPhraseHint").takeIf { it != "null" },
-                            mnemonicOptionsJson = entryJson.optString("mnemonicOptionsJson").takeIf { it != "null" },
+                            mnemonicPhraseHint = entryJson.optString("mnemonicPhraseHint").takeIf { it != "null" && it.isNotEmpty() },
+                            mnemonicOptionsJson = entryJson.optString("mnemonicOptionsJson").takeIf { it != "null" && it.isNotEmpty() },
                             rotationEnabled = entryJson.optBoolean("rotationEnabled", false),
                             rotationPeriodMonths = entryJson.optInt("rotationPeriodMonths", 6),
                             nextRotationDate = entryJson.optLong("nextRotationDate").takeIf { it != 0L },
                             isFavorite = entryJson.optBoolean("isFavorite", false),
                             createdAt = entryJson.optLong("createdAt", System.currentTimeMillis()),
                             lastChanged = entryJson.optLong("lastChanged", System.currentTimeMillis()),
-                            passwordHistoryJson = entryJson.optString("passwordHistoryJson").takeIf { it != "null" },
-                            passwordFingerprint = entryJson.optString("passwordFingerprint").takeIf { it != "null" }
+                            passwordHistoryJson = entryJson.optString("passwordHistoryJson").takeIf { it != "null" && it.isNotEmpty() },
+                            passwordFingerprint = entryJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() }
                         )
                     )
                 }
-                
+
                 profiles.add(BackupProfile(oldProfileId, name, entries))
             }
-            
+
             return BackupData(version, exportedAt, profiles)
         }
     }
 }
 
-// Модель для зашифрованного файла
 data class EncryptedBackup(
     val type: String = "securevault_backup_v3",
     val version: Int = 3,
@@ -148,7 +147,7 @@ data class EncryptedBackup(
         json.put("ciphertext", ciphertext)
         return json.toString()
     }
-    
+
     companion object {
         fun fromJson(jsonString: String): EncryptedBackup {
             val json = JSONObject(jsonString)
