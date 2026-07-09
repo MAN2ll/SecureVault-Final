@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalGetImage::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.camera.core.ExperimentalGetImage::class)
 
 package com.securevault.ui.screens
 
@@ -49,7 +49,6 @@ fun QrScannerScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    //  Устанавливаем профиль при входе
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
@@ -161,6 +160,13 @@ fun QrScannerScreen(
 
                                                             if (result.isValid && result.entryId != null) {
                                                                 viewModel.findEntryById(result.entryId)?.let { entry ->
+                                                                    // ✅ ИСПРАВЛЕНО: проверка profileId
+                                                                    if (entry.profileId != currentProfileId) {
+                                                                        errorMessage = "QR-код не принадлежит этому профилю"
+                                                                        scannedToken = null
+                                                                        validationResult = null
+                                                                        return@addOnSuccessListener
+                                                                    }
                                                                     foundEntry = entry
                                                                     showPasswordDialog = true
                                                                 } ?: run {
@@ -260,7 +266,7 @@ fun QrScannerScreen(
 
     if (errorMessage != null) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 errorMessage = null
                 scannedToken = null
                 validationResult = null
@@ -295,7 +301,7 @@ private fun QrResultDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
@@ -318,7 +324,7 @@ private fun QrResultDialog(
                         }
                     }
                 }
-                
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -335,7 +341,7 @@ private fun QrResultDialog(
                         )
                     }
                 }
-                
+
                 OutlinedButton(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(password))
