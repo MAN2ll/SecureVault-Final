@@ -133,7 +133,7 @@ fun EntryEditorScreen(
                             showSaveErrorDialog = true
                             return@IconButton
                         }
-                        
+
                         val finalProfileId = effectiveProfileId
                         if (finalProfileId == null) {
                             saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей и войдите в профиль."
@@ -243,16 +243,33 @@ fun EntryEditorScreen(
                         }
 
                         isSaving = true
-                        viewModel.insertEntry(finalEntry) { result ->
-                            isSaving = false
-                            when (result) {
-                                is PasswordOperationResult.Success -> {
-                                    showSuccess = true
-                                    onBack()
+                        //  updateEntry для существующих, insertEntry для новых
+                        if (isNewEntry) {
+                            viewModel.insertEntry(finalEntry) { result ->
+                                isSaving = false
+                                when (result) {
+                                    is PasswordOperationResult.Success -> {
+                                        showSuccess = true
+                                        onBack()
+                                    }
+                                    is PasswordOperationResult.Error -> {
+                                        saveErrorMessage = result.message
+                                        showSaveErrorDialog = true
+                                    }
                                 }
-                                is PasswordOperationResult.Error -> {
-                                    saveErrorMessage = result.message
-                                    showSaveErrorDialog = true
+                            }
+                        } else {
+                            viewModel.updateEntry(finalEntry) { result ->
+                                isSaving = false
+                                when (result) {
+                                    is PasswordOperationResult.Success -> {
+                                        showSuccess = true
+                                        onBack()
+                                    }
+                                    is PasswordOperationResult.Error -> {
+                                        saveErrorMessage = result.message
+                                        showSaveErrorDialog = true
+                                    }
                                 }
                             }
                         }
@@ -830,7 +847,7 @@ private fun MnemonicGeneratorDialog(
 
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
-        
+
         if (variants.isEmpty()) {
             validationError = "Не удалось сгенерировать варианты без повторов"
         }
