@@ -110,6 +110,12 @@ fun SecureVaultNavHost() {
                 },
                 onNavigateToQrScanner = {
                     navController.navigate("qr_scanner/${profileId ?: return@VaultListScreen}")
+                },
+                //  Выход к профилям без блокировки
+                onNavigateToProfiles = {
+                    navController.navigate("profiles") {
+                        popUpTo("profiles") { inclusive = true }
+                    }
                 }
             )
         }
@@ -117,7 +123,6 @@ fun SecureVaultNavHost() {
         composable("editor/{id}/{profileId}") { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
-
             EntryEditorScreen(
                 id = id,
                 profileId = profileId,
@@ -141,7 +146,6 @@ fun SecureVaultNavHost() {
             )
         }
 
-        //  Журнал ротации
         composable("rotation_journal/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             RotationJournalScreen(
@@ -181,11 +185,27 @@ fun SecureVaultNavHost() {
             )
         }
 
+        //  Настройки профиля с навигацией
         composable("profile_settings/{profileId}") { backStackEntry ->
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
             ProfileSettingsScreen(
                 profileId = profileId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToRotation = {
+                    navController.navigate("rotation/${profileId ?: return@ProfileSettingsScreen}")
+                },
+                onNavigateToRotationJournal = {
+                    navController.navigate("rotation_journal/${profileId ?: return@ProfileSettingsScreen}")
+                },
+                onNavigateToAudit = {
+                    navController.navigate("audit/${profileId ?: return@ProfileSettingsScreen}")
+                },
+                onNavigateToExport = {
+                    navController.navigate("export/${profileId ?: return@ProfileSettingsScreen}")
+                },
+                onNavigateToQrScanner = {
+                    navController.navigate("qr_scanner/${profileId ?: return@ProfileSettingsScreen}")
+                }
             )
         }
 
