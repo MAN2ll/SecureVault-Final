@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 // Вынесено на верхний уровень файла
 data class OperationResult(val success: Boolean, val message: String)
 
-//  Переименовано, чтобы не конфликтовать с MasterPasswordAction из VaultListScreen
+// Вынесено на верхний уровень файла
 enum class BackupMasterPasswordAction {
     CREATE_BACKUP,
     IMPORT_BACKUP
@@ -72,7 +72,7 @@ fun ExportImportScreen(
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
-    //  Мастер-пароль перед backup/импортом
+    // Мастер-пароль перед backup/импортом
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var masterPasswordInput by remember { mutableStateOf("") }
     var masterPasswordError by remember { mutableStateOf<String?>(null) }
@@ -81,6 +81,9 @@ fun ExportImportScreen(
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showImportPasswordDialog by remember { mutableStateOf(false) }
     var backupPassword by remember { mutableStateOf("") }
+    // Подтверждение пароля backup-файла
+    var confirmBackupPassword by remember { mutableStateOf("") }
+    var backupPasswordError by remember { mutableStateOf<String?>(null) }
     var importPassword by remember { mutableStateOf("") }
     var isExporting by remember { mutableStateOf(false) }
     var isImporting by remember { mutableStateOf(false) }
@@ -200,6 +203,8 @@ fun ExportImportScreen(
                 } finally {
                     isExporting = false
                     backupPassword = ""
+                    confirmBackupPassword = ""
+                    backupPasswordError = null
                 }
             }
         }
@@ -346,7 +351,6 @@ fun ExportImportScreen(
                             Spacer(Modifier.height(12.dp))
                             Button(
                                 onClick = {
-                                    //  Сначала мастер-пароль
                                     pendingMasterPasswordAction = BackupMasterPasswordAction.CREATE_BACKUP
                                     showMasterPasswordDialog = true
                                 },
@@ -370,7 +374,7 @@ fun ExportImportScreen(
                         }
                     }
 
-                    //  Отображение результата
+                    // Отображение результата
                     if (importResult != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -484,7 +488,6 @@ fun ExportImportScreen(
                             Spacer(Modifier.height(12.dp))
                             Button(
                                 onClick = {
-                                    //  Сначала мастер-пароль
                                     pendingMasterPasswordAction = BackupMasterPasswordAction.IMPORT_BACKUP
                                     showMasterPasswordDialog = true
                                 },
@@ -592,7 +595,6 @@ fun ExportImportScreen(
                         masterPasswordInput = ""
                         masterPasswordError = null
 
-                        //  Открываем следующий диалог в зависимости от действия
                         when (pendingMasterPasswordAction) {
                             BackupMasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
                             BackupMasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
@@ -619,9 +621,15 @@ fun ExportImportScreen(
         )
     }
 
+    //  Подтверждение пароля backup-файла (два поля)
     if (showBackupPasswordDialog) {
         AlertDialog(
-            onDismissRequest = { showBackupPasswordDialog = false },
+            onDismissRequest = {
+                showBackupPasswordDialog = false
+                backupPassword = ""
+                confirmBackupPassword = ""
+                backupPasswordError = null
+            },
             icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Защитить backup паролем") },
             text = {
@@ -630,31 +638,57 @@ fun ExportImportScreen(
                     Text("Запомните этот пароль — без него невозможно будет восстановить данные!", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                     OutlinedTextField(
                         value = backupPassword,
-                        onValueChange = { backupPassword = it },
+                        onValueChange = { backupPassword = it; backupPasswordError = null },
                         label = { Text("Пароль") },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = backupPasswordError != null
                     )
+                    OutlinedTextField(
+                        value = confirmBackupPassword,
+                        onValueChange = { confirmBackupPassword = it; backupPasswordError = null },
+                        label = { Text("Повторите пароль") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = backupPasswordError != null
+                    )
+                    if (backupPasswordError != null) {
+                        Text(backupPasswordError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (backupPassword.length >= 4) {
-                            showBackupPasswordDialog = false
-                            backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
-                        } else {
-                            Toast.makeText(context, "Пароль должен быть минимум 4 символа", Toast.LENGTH_SHORT).show()
+                        when {
+                            backupPassword.length < 4 -> {
+                                backupPasswordError = "Пароль должен быть минимум 4 символа"
+                            }
+                            backupPassword != confirmBackupPassword -> {
+                                backupPasswordError = "Пароли не совпадают"
+                            }
+                            else -> {
+                                showBackupPasswordDialog = false
+                                backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
+                                backupPassword = ""
+                                confirmBackupPassword = ""
+                                backupPasswordError = null
+                            }
                         }
-                    },
-                    enabled = backupPassword.length >= 4
+                    }
                 ) {
                     Text("Создать")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showBackupPasswordDialog = false; backupPassword = "" }) {
+                TextButton(onClick = {
+                    showBackupPasswordDialog = false
+                    backupPassword = ""
+                    confirmBackupPassword = ""
+                    backupPasswordError = null
+                }) {
                     Text("Отмена")
                 }
             }
@@ -714,7 +748,6 @@ fun ExportImportScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    //  Сохраняем выбранный режим
                     Button(
                         onClick = {
                             pendingImportMode = ImportMode.ADD_AS_NEW
@@ -758,7 +791,6 @@ fun ExportImportScreen(
         )
     }
 
-    //  Используем сохранённый режим
     if (showPinDialog && pendingBackupData != null) {
         AlertDialog(
             onDismissRequest = { showPinDialog = false; pendingBackupData = null; newPin = ""; confirmPin = "" },
@@ -799,7 +831,6 @@ fun ExportImportScreen(
                             newPin != confirmPin -> pinError = "PIN не совпадают"
                             else -> {
                                 showPinDialog = false
-                                //  Используем сохранённый режим
                                 val mode = pendingImportMode ?: ImportMode.ADD_AS_NEW
                                 performImport(pendingBackupData!!, mode, newPin)
                                 newPin = ""
