@@ -402,9 +402,9 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Экспорт всех профилей для backup
+    //  Передаём appContext для вычисления fingerprint истории
     suspend fun exportAllProfiles(): BackupData {
-        return BackupManager.exportAllProfiles(repository)
+        return BackupManager.exportAllProfiles(repository, appContext)
     }
 
     // Импорт backup с новым PIN (передаём appContext)
