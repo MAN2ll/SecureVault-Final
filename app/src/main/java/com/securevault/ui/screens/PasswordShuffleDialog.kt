@@ -56,7 +56,7 @@ fun PasswordShuffleDialog(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Shuffle, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
-                Text("Перекрёстная ротация", fontWeight = FontWeight.Bold)
+                Text("Автоматическое перемешивание по кругу", fontWeight = FontWeight.Bold)
             }
         },
         text = {
@@ -66,8 +66,10 @@ fun PasswordShuffleDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    "Пароли будут заменены по кругу. Каждый сервис получит пароль от следующего.",
+               Text(
+                    "Пароли будут автоматически перемешаны по кругу:\n" +
+                    "каждый сервис получит пароль от следующего сервиса в списке.\n" +
+                    "Последний сервис получит пароль от первого.",
                     fontSize = 13.sp
                 )
 
