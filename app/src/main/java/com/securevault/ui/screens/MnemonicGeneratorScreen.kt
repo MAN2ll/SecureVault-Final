@@ -190,7 +190,28 @@ fun MnemonicGeneratorScreen(
                         onClick = { selectedVariantIndex = index }
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(result.variantName, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(result.variantName, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                
+                                //  Иконка копирования вместо текста
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(result.password))
+                                        Toast.makeText(context, "Скопировано!", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.ContentCopy,
+                                        contentDescription = "Копировать пароль",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 result.password,
@@ -223,39 +244,23 @@ fun MnemonicGeneratorScreen(
 
                             Spacer(Modifier.height(8.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(result.password))
-                                        Toast.makeText(context, "Скопировано!", Toast.LENGTH_SHORT).show()
-                                    }
-                                ) {
-                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Копировать", fontSize = 11.sp)
+                            Text(
+                                result.strength.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when (result.strength) {
+                                    PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
+                                    PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
+                                    PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
+                                    PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
-
-                                //  when с else веткой
-                                Text(
-                                    result.strength.name,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when (result.strength) {
-                                        PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
-                                        PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-                                        PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                        PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
+                            )
                         }
                     }
                 }
 
+                //  Кнопка с иконкой и коротким текстом
                 Button(
                     onClick = {
                         globalOffset += variants.size
@@ -265,7 +270,7 @@ fun MnemonicGeneratorScreen(
                 ) {
                     Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Сгенерировать ещё раз (набор №${(globalOffset / variants.size) + 2})")
+                    Text("Ещё варианты (набор №${(globalOffset / variants.size) + 2})")
                 }
             }
         }
