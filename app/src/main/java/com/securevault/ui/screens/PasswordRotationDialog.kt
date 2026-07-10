@@ -207,6 +207,7 @@ fun PasswordRotationDialog(
                             }
                         }
                     }
+                }
 
                     RotationMode.MANUAL -> {
                         OutlinedTextField(
