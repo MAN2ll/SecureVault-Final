@@ -54,6 +54,36 @@ fun PasswordShuffleDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var expandedFor by remember { mutableStateOf<String?>(null) }
 
+    //  Состояние для режима swap
+    var swapSelectionMode by remember { mutableStateOf<Boolean>(false) }
+    var firstSwapTarget by remember { mutableStateOf<String?>(null) }
+
+    //  Корректная функция swap
+    fun trySwap(targetId1: String, targetId2: String): Boolean {
+        val source1 = assignments[targetId1] ?: return false
+        val source2 = assignments[targetId2] ?: return false
+
+        // Если доноры одинаковые — swap невозможен (будет повтор донора)
+        if (source1 == source2) return false
+
+        val newAssignments = assignments.toMutableMap()
+        newAssignments[targetId1] = source2
+        newAssignments[targetId2] = source1
+
+        // Проверка self-assignment
+        if (targetId1 == source2 || targetId2 == source1) return false
+
+        // Проверка уникальности доноров
+        val donors = newAssignments.values.filterNotNull()
+        if (donors.size != donors.toSet().size) return false
+
+        // Проверка: все получатели должны иметь донора
+        if (newAssignments.values.any { it == null }) return false
+
+        assignments = newAssignments
+        return true
+    }
+
     val validationErrors = remember(assignments) {
         val errors = mutableMapOf<String, String>()
         val usedSources = mutableSetOf<String>()
@@ -113,29 +143,6 @@ fun PasswordShuffleDialog(
         errors
     }
 
-    //  Функция swap — поменять местами донора и получателя
-    fun trySwap(targetId: String, sourceId: String): Boolean {
-        val newAssignments = assignments.toMutableMap()
-        
-        // Освобождаем текущий донор
-        newAssignments[targetId] = null
-        
-        // Назначаем targetId как донора для sourceId
-        newAssignments[sourceId] = targetId
-        
-        // Проверяем валидность
-        val donors = newAssignments.values.filterNotNull()
-        val isValid = donors.size == donors.toSet().size &&
-                newAssignments.all { (t, s) -> s == null || t != s }
-        
-        return if (isValid) {
-            assignments = newAssignments
-            true
-        } else {
-            false
-        }
-    }
-
     AlertDialog(
         onDismissRequest = { if (!isShuffling) onDismiss() },
         title = {
@@ -154,24 +161,61 @@ fun PasswordShuffleDialog(
             ) {
                 Text(
                     "Для каждой записи выберите, от какого сервиса взять пароль.\n" +
-                    "Один донор может быть назначен только одному получателю.",
+                    "Один донор может быть назначен только одному получателю.\n" +
+                    "Кнопка swap позволяет поменять местами доноров двух строк.",
                     fontSize = 12.sp
                 )
+
+                // Подсказка в режиме swap
+                if (swapSelectionMode && firstSwapTarget != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.SwapHoriz,
+                                null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Выберите вторую строку для swap",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = {
+                                    swapSelectionMode = false
+                                    firstSwapTarget = null
+                                }
+                            ) {
+                                Text("Отмена", color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            }
+                        }
+                    }
+                }
 
                 entries.forEach { target ->
                     val selectedSourceId = assignments[target.id]
                     val isExpanded = expandedFor == target.id
                     val rowError = validationErrors[target.id]
+                    val isSelectedForSwap = swapSelectionMode && firstSwapTarget == target.id
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (rowError != null)
-                                MaterialTheme.colorScheme.errorContainer
-                            else if (selectedSourceId != null)
-                                MaterialTheme.colorScheme.primaryContainer
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = when {
+                                isSelectedForSwap -> MaterialTheme.colorScheme.tertiaryContainer
+                                rowError != null -> MaterialTheme.colorScheme.errorContainer
+                                selectedSourceId != null -> MaterialTheme.colorScheme.primaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            }
                         )
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -219,26 +263,59 @@ fun PasswordShuffleDialog(
                                     }
                                 }
 
-                                //  Кнопка swap
-                                if (selectedSourceId != null) {
-                                    IconButton(
-                                        onClick = {
-                                            val success = trySwap(target.id, selectedSourceId)
-                                            if (!success) {
-                                                errorMessage = "Невозможно поменять местами: это нарушит правила ротации"
+                                //  Кнопка swap с корректной логикой
+                                IconButton(
+                                    onClick = {
+                                        if (selectedSourceId == null) {
+                                            errorMessage = "Невозможно swap: у строки нет донора"
+                                            return@IconButton
+                                        }
+
+                                        if (!swapSelectionMode) {
+                                            // Первый выбор — входим в режим swap
+                                            firstSwapTarget = target.id
+                                            swapSelectionMode = true
+                                            expandedFor = null // Закрываем список выбора донора
+                                        } else {
+                                            // Второй выбор
+                                            if (firstSwapTarget == target.id) {
+                                                // Пользователь выбрал ту же строку — отмена
+                                                swapSelectionMode = false
+                                                firstSwapTarget = null
+                                            } else {
+                                                // Выполняем swap
+                                                val success = trySwap(firstSwapTarget!!, target.id)
+                                                if (!success) {
+                                                    errorMessage = "Невозможно поменять местами: это нарушит правила ротации (self-assignment или повтор донора)"
+                                                }
+                                                swapSelectionMode = false
+                                                firstSwapTarget = null
                                             }
                                         }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.SwapHoriz,
-                                            contentDescription = "Поменять местами",
-                                            tint = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
+                                    },
+                                    enabled = selectedSourceId != null
+                                ) {
+                                    Icon(
+                                        Icons.Default.SwapHoriz,
+                                        contentDescription = "Поменять местами доноров",
+                                        tint = if (isSelectedForSwap)
+                                            MaterialTheme.colorScheme.tertiary
+                                        else if (selectedSourceId != null)
+                                            MaterialTheme.colorScheme.secondary
+                                        else
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    )
                                 }
 
                                 IconButton(
-                                    onClick = { expandedFor = if (isExpanded) null else target.id }
+                                    onClick = {
+                                        expandedFor = if (isExpanded) null else target.id
+                                        // Закрываем режим swap при открытии списка выбора донора
+                                        if (expandedFor != null) {
+                                            swapSelectionMode = false
+                                            firstSwapTarget = null
+                                        }
+                                    }
                                 ) {
                                     Icon(
                                         Icons.Default.Edit,
