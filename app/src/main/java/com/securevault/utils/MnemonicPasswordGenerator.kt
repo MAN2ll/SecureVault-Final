@@ -5,6 +5,12 @@ import kotlin.random.Random
 
 object MnemonicPasswordGenerator {
 
+    // Режим генерации
+    enum class SplitMode {
+        SINGLE_USER,    // Обычный пароль для одного пользователя
+        TWO_USERS       // Один пароль на две равные части
+    }
+
     data class GenerationOptions(
         val phrase: String,
         val serviceName: String,
@@ -16,7 +22,8 @@ object MnemonicPasswordGenerator {
         val rotationYear: Int? = null,
         val variantOffset: Int = 0,
         val separator: String = "",
-        val enforceUniqueChars: Boolean = true
+        val enforceUniqueChars: Boolean = true,
+        val splitMode: SplitMode = SplitMode.SINGLE_USER // ✅ НОВОЕ
     )
 
     data class GenerationResult(
@@ -24,9 +31,10 @@ object MnemonicPasswordGenerator {
         val mnemonicHint: String,
         val variantName: String,
         val strength: PasswordGenerator.Strength,
-        val part1: String,
-        val part2: String,
-        val hasUniqueChars: Boolean
+        val part1: String?,
+        val part2: String?,
+        val hasUniqueChars: Boolean,
+        val splitMode: SplitMode
     )
 
     private val uppercaseLetters = ('A'..'Z').toList()
@@ -46,7 +54,7 @@ object MnemonicPasswordGenerator {
         'l' to listOf('1')
     )
 
-    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Case-insensitive проверка
+    //  Case-insensitive проверка (уже исправлено)
     private fun key(char: Char): Char = char.lowercaseChar()
 
     private fun isUsed(char: Char, usedChars: Set<Char>): Boolean {
@@ -60,8 +68,20 @@ object MnemonicPasswordGenerator {
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
 
+        //  Для режима двух пользователей длина должна быть чётной
+        val effectiveOptions = if (options.splitMode == SplitMode.TWO_USERS) {
+            val evenLength = when {
+                options.targetLength < 16 -> 16
+                options.targetLength % 2 != 0 -> options.targetLength + 1
+                else -> options.targetLength
+            }.coerceAtMost(20)
+            options.copy(targetLength = evenLength)
+        } else {
+            options
+        }
+
         for (i in 0 until count) {
-            val variantOptions = options.copy(variantOffset = options.variantOffset + i)
+            val variantOptions = effectiveOptions.copy(variantOffset = effectiveOptions.variantOffset + i)
             try {
                 val result = generateSingleVariant(variantOptions)
                 if (result != null) {
@@ -77,14 +97,124 @@ object MnemonicPasswordGenerator {
 
     private fun generateSingleVariant(options: GenerationOptions): GenerationResult? {
         val words = extractWords(options.phrase)
+        if (words.isEmpty()) return null
+
+        return when (options.splitMode) {
+            SplitMode.SINGLE_USER -> generateSingleUserPassword(options, words)
+            SplitMode.TWO_USERS -> generateTwoUsersPassword(options, words)
+        }
+    }
+
+    //  Сценарий 1: Обычный пароль для одного пользователя
+    private fun generateSingleUserPassword(
+        options: GenerationOptions,
+        words: List<String>
+    ): GenerationResult? {
+        val usedChars = mutableSetOf<Char>()
+        val chars = mutableListOf<Char>()
+
+        // Берём первое слово из фразы
+        val word = words[options.variantOffset % words.size]
+        val transliterated = transliterate(word)
+
+        // Первая буква заглавная
+        val firstChar = transliterated.first().uppercaseChar()
+        if (!isUsed(firstChar, usedChars)) {
+            chars.add(firstChar)
+            markUsed(firstChar, usedChars)
+        }
+
+        // Обрабатываем остальные буквы
+        for (i in 1 until transliterated.length) {
+            val char = transliterated[i]
+            if (isUsed(char, usedChars)) {
+                if (options.includeLeet && char in leetMap) {
+                    val replacement = leetMap[char]!!.firstOrNull { !isUsed(it, usedChars) }
+                    if (replacement != null) {
+                        chars.add(replacement)
+                        markUsed(replacement, usedChars)
+                    }
+                }
+                continue
+            }
+
+            if (options.includeLeet && char in leetMap && Random.nextBoolean()) {
+                val replacement = leetMap[char]!!.firstOrNull { !isUsed(it, usedChars) }
+                if (replacement != null) {
+                    chars.add(replacement)
+                    markUsed(replacement, usedChars)
+                    continue
+                }
+            }
+
+            chars.add(char)
+            markUsed(char, usedChars)
+        }
+
+        // Добавляем цифры и спецсимволы для усиления
+        addRandomChars(chars, usedChars, options)
+
+        // Добавляем код сервиса
+        if (options.includeServiceCode && options.serviceName.isNotBlank()) {
+            addServiceCode(chars, usedChars, options.serviceName)
+        }
+
+        // Добавляем код ротации
+        if (options.includeRotationCode) {
+            addRotationCode(chars, usedChars, options)
+        }
+
+        val password = chars.joinToString("")
+
+        // Проверка длины
+        if (password.length < options.targetLength) {
+            // Добавляем случайные символы до нужной длины
+            while (password.length < options.targetLength) {
+                val randomChar = getRandomChar(usedChars) ?: break
+                chars.add(randomChar)
+                markUsed(randomChar, usedChars)
+            }
+        }
+
+        val finalPassword = chars.joinToString("").take(options.targetLength)
+        val hasUniqueChars = !PasswordValidator.hasDuplicateCharacters(finalPassword)
+
+        if (options.enforceUniqueChars && !hasUniqueChars) {
+            return null
+        }
+
+        val hint = if (options.phrase.isNotBlank()) options.phrase.take(30) else ""
+        val variantName = "Вариант ${options.variantOffset + 1}"
+        val strength = calculateStrength(finalPassword)
+
+        return GenerationResult(
+            password = finalPassword,
+            mnemonicHint = hint,
+            variantName = variantName,
+            strength = strength,
+            part1 = null,
+            part2 = null,
+            hasUniqueChars = hasUniqueChars,
+            splitMode = SplitMode.SINGLE_USER
+        )
+    }
+
+    //  Сценарий 2: Один пароль на две равные части
+    private fun generateTwoUsersPassword(
+        options: GenerationOptions,
+        words: List<String>
+    ): GenerationResult? {
         if (words.size < 2) return null
 
         val word1 = words[options.variantOffset % words.size]
         val word2 = words[(options.variantOffset + 1) % words.size]
 
         val usedChars = mutableSetOf<Char>()
-        val part1 = generatePart(word1, usedChars, options, isFirstPart = true) ?: return null
-        val part2 = generatePart(word2, usedChars, options, isFirstPart = false) ?: return null
+
+        // Генерируем две части одинаковой длины
+        val halfLength = options.targetLength / 2
+        val part1 = generatePart(word1, usedChars, options, halfLength) ?: return null
+        val part2 = generatePart(word2, usedChars, options, halfLength) ?: return null
 
         val password = part1 + options.separator + part2
 
@@ -94,7 +224,7 @@ object MnemonicPasswordGenerator {
             return null
         }
 
-        val hint = "${words.joinToString(" ").take(30)}..."
+        val hint = if (options.phrase.isNotBlank()) options.phrase.take(30) else ""
         val variantName = "Вариант ${options.variantOffset + 1}"
         val strength = calculateStrength(password)
 
@@ -105,24 +235,17 @@ object MnemonicPasswordGenerator {
             strength = strength,
             part1 = part1,
             part2 = part2,
-            hasUniqueChars = hasUniqueChars
+            hasUniqueChars = hasUniqueChars,
+            splitMode = SplitMode.TWO_USERS
         )
     }
 
-    private fun extractWords(phrase: String): List<String> {
-        return phrase
-            .lowercase()
-            .replace(Regex("[^а-яёa-z\\s]"), "")
-            .split(Regex("\\s+"))
-            .filter { it.length >= 3 }
-            .distinct()
-    }
-
+    //  Генерация одной части для режима двух пользователей
     private fun generatePart(
         word: String,
         usedChars: MutableSet<Char>,
         options: GenerationOptions,
-        isFirstPart: Boolean
+        targetLength: Int
     ): String? {
         val transliterated = transliterate(word)
         val chars = mutableListOf<Char>()
@@ -138,25 +261,24 @@ object MnemonicPasswordGenerator {
             markUsed(freeUppercase, usedChars)
         }
 
-        // Обрабатываем остальные буквы слова
+        // Обрабатываем остальные буквы
         for (i in 1 until transliterated.length) {
+            if (chars.size >= targetLength) break
+
             val char = transliterated[i]
             if (isUsed(char, usedChars)) {
                 if (options.includeLeet && char in leetMap) {
-                    val replacements = leetMap[char]!!
-                    val replacement = replacements.firstOrNull { !isUsed(it, usedChars) }
+                    val replacement = leetMap[char]!!.firstOrNull { !isUsed(it, usedChars) }
                     if (replacement != null) {
                         chars.add(replacement)
                         markUsed(replacement, usedChars)
-                        continue
                     }
                 }
                 continue
             }
 
             if (options.includeLeet && char in leetMap && Random.nextBoolean()) {
-                val replacements = leetMap[char]!!
-                val replacement = replacements.firstOrNull { !isUsed(it, usedChars) }
+                val replacement = leetMap[char]!!.firstOrNull { !isUsed(it, usedChars) }
                 if (replacement != null) {
                     chars.add(replacement)
                     markUsed(replacement, usedChars)
@@ -168,97 +290,96 @@ object MnemonicPasswordGenerator {
             markUsed(char, usedChars)
         }
 
-        // ✅ Усиление каждой части
-        val currentUppercase = chars.count { it.isUpperCase() }
-        val currentLowercase = chars.count { it.isLowerCase() }
-        val currentDigits = chars.count { it.isDigit() }
-        val currentSpecials = chars.count { !it.isLetterOrDigit() }
-
-        // Добавляем недостающие заглавные
-        val neededUppercase = maxOf(0, 2 - currentUppercase)
-        var addedUppercase = 0
-        for (letter in uppercaseLetters.shuffled()) {
-            if (addedUppercase >= neededUppercase) break
-            if (!isUsed(letter, usedChars)) {
-                val insertPos = Random.nextInt(1, chars.size)
-                chars.add(insertPos, letter)
-                markUsed(letter, usedChars)
-                addedUppercase++
-            }
+        // Добавляем цифры и спецсимволы до нужной длины
+        while (chars.size < targetLength) {
+            val randomChar = getRandomChar(usedChars) ?: break
+            chars.add(randomChar)
+            markUsed(randomChar, usedChars)
         }
 
-        // Добавляем недостающие маленькие
-        val neededLowercase = maxOf(0, 2 - currentLowercase)
-        var addedLowercase = 0
-        for (letter in lowercaseLetters.shuffled()) {
-            if (addedLowercase >= neededLowercase) break
-            if (!isUsed(letter, usedChars)) {
-                val insertPos = Random.nextInt(1, chars.size)
-                chars.add(insertPos, letter)
-                markUsed(letter, usedChars)
-                addedLowercase++
-            }
-        }
+        return chars.take(targetLength).joinToString("")
+    }
 
-        // Добавляем недостающие цифры
-        val neededDigits = maxOf(0, 2 - currentDigits)
-        var addedDigits = 0
+    //  Добавление случайных символов для усиления
+    private fun addRandomChars(
+        chars: MutableList<Char>,
+        usedChars: MutableSet<Char>,
+        options: GenerationOptions
+    ) {
+        // Добавляем цифры
         for (digit in digits.shuffled()) {
-            if (addedDigits >= neededDigits) break
+            if (chars.size >= options.targetLength) break
             if (!isUsed(digit, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, digit)
                 markUsed(digit, usedChars)
-                addedDigits++
             }
         }
 
-        // Добавляем недостающие спецсимволы
-        val neededSpecials = maxOf(0, 2 - currentSpecials)
-        var addedSpecials = 0
+        // Добавляем спецсимволы
         for (special in specialChars.shuffled()) {
-            if (addedSpecials >= neededSpecials) break
+            if (chars.size >= options.targetLength) break
             if (!isUsed(special, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, special)
                 markUsed(special, usedChars)
-                addedSpecials++
             }
         }
+    }
 
-        // Код сервиса
-        if (options.includeServiceCode && options.serviceName.isNotBlank() && isFirstPart) {
-            val serviceLetters = transliterate(options.serviceName.lowercase())
-                .replace(Regex("[^a-z]"), "")
-                .take(2)
+    //  Добавление кода сервиса
+    private fun addServiceCode(
+        chars: MutableList<Char>,
+        usedChars: MutableSet<Char>,
+        serviceName: String
+    ) {
+        val serviceLetters = transliterate(serviceName.lowercase())
+            .replace(Regex("[^a-z]"), "")
+            .take(2)
 
-            for (letter in serviceLetters) {
-                val upper = letter.uppercaseChar()
-                if (!isUsed(upper, usedChars)) {
-                    chars.add(upper)
-                    markUsed(upper, usedChars)
-                }
+        for (letter in serviceLetters) {
+            val upper = letter.uppercaseChar()
+            if (!isUsed(upper, usedChars)) {
+                chars.add(upper)
+                markUsed(upper, usedChars)
             }
         }
+    }
 
-        // Код ротации
-        if (options.includeRotationCode && !isFirstPart) {
-            val now = LocalDate.now()
-            val month = options.rotationMonth ?: now.monthValue
-            val year = options.rotationYear ?: (now.year % 100)
-            val mm = month.toString().padStart(2, '0')
-            val yy = year.toString().padStart(2, '0').takeLast(2)
-            val rotationCode = mm + yy
+    //  Добавление кода ротации
+    private fun addRotationCode(
+        chars: MutableList<Char>,
+        usedChars: MutableSet<Char>,
+        options: GenerationOptions
+    ) {
+        val now = LocalDate.now()
+        val month = options.rotationMonth ?: now.monthValue
+        val year = options.rotationYear ?: (now.year % 100)
+        val mm = month.toString().padStart(2, '0')
+        val yy = year.toString().padStart(2, '0').takeLast(2)
+        val rotationCode = mm + yy
 
-            for (digit in rotationCode) {
-                if (!isUsed(digit, usedChars)) {
-                    chars.add(digit)
-                    markUsed(digit, usedChars)
-                }
+        for (digit in rotationCode) {
+            if (!isUsed(digit, usedChars)) {
+                chars.add(digit)
+                markUsed(digit, usedChars)
             }
         }
+    }
 
-        return chars.joinToString("")
+    // Получение случайного символа
+    private fun getRandomChar(usedChars: Set<Char>): Char? {
+        val allChars = uppercaseLetters + lowercaseLetters + digits + specialChars
+        return allChars.shuffled().firstOrNull { !isUsed(it, usedChars) }
+    }
+
+    private fun extractWords(phrase: String): List<String> {
+        return phrase
+            .lowercase()
+            .replace(Regex("[^а-яёa-z\\s]"), "")
+            .split(Regex("\\s+"))
+            .filter { it.length >= 3 }
+            .distinct()
     }
 
     private fun transliterate(text: String): String {
