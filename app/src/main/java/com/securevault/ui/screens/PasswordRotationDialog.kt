@@ -177,25 +177,28 @@ fun PasswordRotationDialog(
                     RotationMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Уникальный поток", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG v2 — Два слова без разделителя", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(value = phrase, onValueChange = { phrase = it }, label = { Text("Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
                                 Row { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp)) }
                                 Row { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp)) }
                                 Row { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации", Modifier.padding(start = 8.dp)) }
 
-                                OutlinedButton(onClick = { variantOffset++ }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Refresh, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("Ещё варианты (набор №${variantOffset + 1})") }
+                                OutlinedButton(onClick = { variantOffset += variants.size }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
+                                }
 
                                 if (variants.isNotEmpty()) {
                                     Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                     variants.forEachIndexed { index, result ->
                                         val isSelected = selectedVariantIndex == index
                                         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
-                                            Row(modifier = Modifier.padding(8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                                    Text(result.password, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                                                }
-                                                RadioButton(selected = isSelected, onClick = { selectedVariantIndex = index })
+                                            Column(modifier = Modifier.padding(8.dp)) {
+                                                Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
+                                                Text(result.password, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                                Text("Формат: два слова без разделителя", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                         Spacer(Modifier.height(4.dp))
