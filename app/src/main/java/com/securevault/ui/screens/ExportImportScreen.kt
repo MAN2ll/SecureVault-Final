@@ -72,6 +72,13 @@ fun ExportImportScreen(
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
+    //  Автоматический выбор профиля, если importTargetProfileId == 0
+    LaunchedEffect(profiles, profileId, currentProfileId) {
+        if (importTargetProfileId == 0 && profiles.isNotEmpty()) {
+            importTargetProfileId = profileId ?: currentProfileId ?: profiles.first().id
+        }
+    }
+
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var masterPasswordInput by remember { mutableStateOf("") }
     var masterPasswordError by remember { mutableStateOf<String?>(null) }
@@ -129,7 +136,7 @@ fun ExportImportScreen(
         }
     }
 
-    //  CSV экспорт с расшифровкой паролей
+    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Передаём исходные записи, ExportManager сам расшифрует
     val csvExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -145,7 +152,6 @@ fun ExportImportScreen(
                     return@launch
                 }
 
-                //  Берём записи из текущего профиля ИЛИ из всех профилей
                 val entriesToExport = if (profileId != null) {
                     entries.filter { entry -> selectedEntryIds.contains(entry.id) }
                 } else {
@@ -161,30 +167,17 @@ fun ExportImportScreen(
                     return@launch
                 }
 
-                //  Расшифровываем пароли для CSV (режим совместимости)
-                val entriesWithPlainPasswords = entriesToExport.map { entry ->
-                    try {
-                        val plainPassword = entry.password
-                        entry.copy(encryptedPassword = plainPassword)
-                    } catch (e: Exception) {
-                        throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
-                    }
-                }
-
-                //  Явно указываем тип outputStream
+                // ✅ Передаём исходные записи — ExportManager сам расшифрует пароли
                 val success = withContext(Dispatchers.IO) {
-                    val outputStream = context.contentResolver.openOutputStream(uri)
-                    if (outputStream != null) {
-                        exportManager.exportToCsv(entriesWithPlainPasswords, outputStream)
-                    } else {
-                        false
-                    }
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        exportManager.exportToCsv(entriesToExport, outputStream)
+                    } ?: false
                 }
 
                 importResult = OperationResult(
                     success = success,
                     message = if (success) {
-                        "Экспортировано записей: ${entriesWithPlainPasswords.size}\nПароли включены в файл."
+                        "Экспортировано записей: ${entriesToExport.size}\nПароли включены в файл."
                     } else {
                         "Ошибка экспорта"
                     }
@@ -336,7 +329,6 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    //  CSV экспорт с мастер-паролем
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("CSV экспорт записей", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -539,10 +531,11 @@ fun ExportImportScreen(
                             }
 
                             Spacer(Modifier.height(12.dp))
+                            //  Кнопка активна только если профиль выбран
                             Button(
                                 onClick = { csvImportLauncher.launch(arrayOf("text/csv", "*/*")) },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = profiles.isNotEmpty()
+                                enabled = profiles.isNotEmpty() && importTargetProfileId != 0
                             ) {
                                 Icon(Icons.Default.Download, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -632,7 +625,6 @@ fun ExportImportScreen(
         }
     }
 
-    //  Диалог мастер-пароля
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -711,7 +703,6 @@ fun ExportImportScreen(
         )
     }
 
-    //  Диалог пароля backup с подтверждением
     if (showBackupPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
