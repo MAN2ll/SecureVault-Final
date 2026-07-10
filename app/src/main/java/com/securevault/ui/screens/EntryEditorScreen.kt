@@ -86,12 +86,11 @@ fun EntryEditorScreen(
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
 
-    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Загружаем ВСЕ поля существующей записи
     LaunchedEffect(existingEntry) {
         existingEntry?.let { entry ->
             service = entry.service
             username = entry.username
-            password = "" // Пароль не загружаем для безопасности
+            password = ""
             url = entry.url ?: ""
             notes = entry.notes ?: ""
             textHint = entry.textHint ?: ""
@@ -148,10 +147,8 @@ fun EntryEditorScreen(
 
                         val now = System.currentTimeMillis()
 
-                        // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Для существующей записи используем .copy()
                         val finalEntry = if (existingEntry != null) {
                             if (passwordChanged) {
-                                // Пароль изменился — валидируем и шифруем
                                 val finalPassword = if (password.isBlank()) existingEntry.password else password
 
                                 val validation = PasswordValidator.validateNewPasswordForEntry(
@@ -169,7 +166,6 @@ fun EntryEditorScreen(
                                 val newFingerprint = PasswordValidator.buildPasswordFingerprint(finalPassword, context)
                                 val oldFingerprint = PasswordValidator.buildPasswordFingerprint(existingEntry.password, context)
 
-                                // ✅ Рассчитываем nextRotationDate
                                 val newNextRotationDate = if (rotationEnabled) {
                                     if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
@@ -180,14 +176,13 @@ fun EntryEditorScreen(
                                     null
                                 }
 
-                                // ✅ Добавляем в историю только если пароль изменился
                                 existingEntry.addToPasswordHistory(
                                     oldPassword = existingEntry.password,
                                     generationType = existingEntry.generationType,
                                     oldPasswordFingerprint = oldFingerprint
                                 ).copy(
-                                    id = existingEntry.id, // ✅ Сохраняем ID
-                                    profileId = existingEntry.profileId, // ✅ Сохраняем profileId
+                                    id = existingEntry.id,
+                                    profileId = existingEntry.profileId,
                                     service = service,
                                     username = username,
                                     encryptedPassword = encryptedPwd,
@@ -203,10 +198,9 @@ fun EntryEditorScreen(
                                     passwordFingerprint = newFingerprint,
                                     mnemonicPhraseHint = mnemonicPhraseHint,
                                     mnemonicOptionsJson = mnemonicOptionsJson,
-                                    createdAt = existingEntry.createdAt // ✅ Сохраняем createdAt
+                                    createdAt = existingEntry.createdAt
                                 )
                             } else {
-                                // ✅ Пароль НЕ менялся — не добавляем в историю
                                 val newNextRotationDate = if (rotationEnabled) {
                                     if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
@@ -234,7 +228,6 @@ fun EntryEditorScreen(
                                 )
                             }
                         } else {
-                            // ✅ Новая запись
                             val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
                             if (!uniqueCheck.isValid) {
                                 saveErrorMessage = uniqueCheck.errorMessage
@@ -249,6 +242,7 @@ fun EntryEditorScreen(
                                 null
                             }
 
+                            // Entry.create не имеет nextRotationDate, используем .copy()
                             Entry.create(
                                 service = service,
                                 username = username,
@@ -260,11 +254,12 @@ fun EntryEditorScreen(
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled,
                                 rotationPeriodMonths = rotationMonths,
-                                nextRotationDate = nextRotationDate,
                                 isFavorite = isFavorite,
                                 generationType = generationType,
                                 mnemonicPhraseHint = mnemonicPhraseHint,
                                 mnemonicOptionsJson = mnemonicOptionsJson
+                            ).copy(
+                                nextRotationDate = nextRotationDate
                             )
                         }
 
@@ -284,7 +279,6 @@ fun EntryEditorScreen(
                                 }
                             }
                         } else {
-                            // ✅ ИСПРАВЛЕНИЕ: Используем updateEntry для существующих
                             viewModel.updateEntry(finalEntry) { result ->
                                 isSaving = false
                                 when (result) {
