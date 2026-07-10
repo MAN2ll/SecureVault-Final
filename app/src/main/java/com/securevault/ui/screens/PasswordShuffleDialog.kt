@@ -21,6 +21,16 @@ import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 
+//  Вынесена функция построения автоматической схемы
+private fun buildAutoAssignments(entries: List<Entry>): Map<String, String?> {
+    if (entries.size < 2) return entries.associate { it.id to null }
+
+    return entries.mapIndexed { index, entry ->
+        val source = entries[(index + 1) % entries.size]
+        entry.id to source.id
+    }.toMap()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordShuffleDialog(
@@ -37,15 +47,10 @@ fun PasswordShuffleDialog(
         )
     }
 
+    //  Используем buildAutoAssignments для начальной схемы
     LaunchedEffect(entries) {
         if (entries.size >= 2 && assignments.values.all { it == null }) {
-            val initialAssignments = mutableMapOf<String, String?>()
-            for (i in entries.indices) {
-                val targetId = entries[i].id
-                val sourceId = entries[(i + 1) % entries.size].id
-                initialAssignments[targetId] = sourceId
-            }
-            assignments = initialAssignments
+            assignments = buildAutoAssignments(entries)
         }
     }
 
@@ -54,30 +59,24 @@ fun PasswordShuffleDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var expandedFor by remember { mutableStateOf<String?>(null) }
 
-    //  Состояние для режима swap
     var swapSelectionMode by remember { mutableStateOf<Boolean>(false) }
     var firstSwapTarget by remember { mutableStateOf<String?>(null) }
 
-    //  Корректная функция swap
     fun trySwap(targetId1: String, targetId2: String): Boolean {
         val source1 = assignments[targetId1] ?: return false
         val source2 = assignments[targetId2] ?: return false
 
-        // Если доноры одинаковые — swap невозможен (будет повтор донора)
         if (source1 == source2) return false
 
         val newAssignments = assignments.toMutableMap()
         newAssignments[targetId1] = source2
         newAssignments[targetId2] = source1
 
-        // Проверка self-assignment
         if (targetId1 == source2 || targetId2 == source1) return false
 
-        // Проверка уникальности доноров
         val donors = newAssignments.values.filterNotNull()
         if (donors.size != donors.toSet().size) return false
 
-        // Проверка: все получатели должны иметь донора
         if (newAssignments.values.any { it == null }) return false
 
         assignments = newAssignments
@@ -166,7 +165,22 @@ fun PasswordShuffleDialog(
                     fontSize = 12.sp
                 )
 
-                // Подсказка в режиме swap
+                //  Кнопка "Сбросить схему" перед списком строк
+                OutlinedButton(
+                    onClick = {
+                        assignments = buildAutoAssignments(entries)
+                        swapSelectionMode = false
+                        firstSwapTarget = null
+                        expandedFor = null
+                        errorMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.RestartAlt, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Сбросить схему")
+                }
+
                 if (swapSelectionMode && firstSwapTarget != null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -263,7 +277,6 @@ fun PasswordShuffleDialog(
                                     }
                                 }
 
-                                //  Кнопка swap с корректной логикой
                                 IconButton(
                                     onClick = {
                                         if (selectedSourceId == null) {
@@ -272,18 +285,14 @@ fun PasswordShuffleDialog(
                                         }
 
                                         if (!swapSelectionMode) {
-                                            // Первый выбор — входим в режим swap
                                             firstSwapTarget = target.id
                                             swapSelectionMode = true
-                                            expandedFor = null // Закрываем список выбора донора
+                                            expandedFor = null
                                         } else {
-                                            // Второй выбор
                                             if (firstSwapTarget == target.id) {
-                                                // Пользователь выбрал ту же строку — отмена
                                                 swapSelectionMode = false
                                                 firstSwapTarget = null
                                             } else {
-                                                // Выполняем swap
                                                 val success = trySwap(firstSwapTarget!!, target.id)
                                                 if (!success) {
                                                     errorMessage = "Невозможно поменять местами: это нарушит правила ротации (self-assignment или повтор донора)"
@@ -310,7 +319,6 @@ fun PasswordShuffleDialog(
                                 IconButton(
                                     onClick = {
                                         expandedFor = if (isExpanded) null else target.id
-                                        // Закрываем режим swap при открытии списка выбора донора
                                         if (expandedFor != null) {
                                             swapSelectionMode = false
                                             firstSwapTarget = null
