@@ -815,7 +815,7 @@ private fun MnemonicGeneratorDialog(
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
 
-    // Режим генерации
+    //  Режим генерации
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
@@ -839,7 +839,7 @@ private fun MnemonicGeneratorDialog(
             return
         }
 
-        //  Для TWO_USERS длина только чётная
+        // Для TWO_USERS длина только чётная
         val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
             when {
                 targetLength <= 16 -> 16
@@ -899,7 +899,7 @@ private fun MnemonicGeneratorDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                //  Переключатель режимов
+                // Переключатель режимов
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text("Режим", fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -909,7 +909,11 @@ private fun MnemonicGeneratorDialog(
                                 selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
                                 onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER }
                             )
-                            Text("Обычный", fontSize = 12.sp, Modifier.padding(start = 4.dp))
+                            Text(
+                                text = "Обычный",
+                                modifier = Modifier.padding(start = 4.dp),
+                                fontSize = 12.sp
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
@@ -946,7 +950,7 @@ private fun MnemonicGeneratorDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                //  Длина пароля
+                // Длина пароля
                 if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp)
@@ -1054,7 +1058,7 @@ private fun MnemonicGeneratorDialog(
                     }
                 }
 
-                //  Короткая кнопка "Ещё варианты"
+                // Короткая кнопка "Ещё варианты"
                 OutlinedButton(
                     onClick = { variantOffset += 5 },
                     modifier = Modifier.fillMaxWidth().height(44.dp),
