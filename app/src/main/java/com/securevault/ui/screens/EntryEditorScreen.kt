@@ -926,15 +926,15 @@ private fun MnemonicGeneratorDialog(
                 }
 
                OutlinedButton(
-            // variantOffset += 5 вместо ++
-            onClick = { variantOffset += 5 },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
-        ) {
-            Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
-        }
+                    // variantOffset += 5 вместо ++
+                    onClick = { variantOffset += 5 },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
+                }
 
                 if (variants.isNotEmpty()) {
                     Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
