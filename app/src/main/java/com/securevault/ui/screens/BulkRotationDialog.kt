@@ -49,24 +49,28 @@ fun BulkRotationDialog(
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
 
+    //  Уникальный offset для каждой записи
     val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet, includeServiceCode, includeRotationCode) {
         if (selectedMode == BulkMode.RANDOM) {
-            entries.map { entry ->
+            entries.mapIndexed { index, entry ->
                 val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
                 Triple(entry, result.password, "random")
             }
         } else {
             if (mnemonicPhrase.isNotBlank()) {
-                entries.mapNotNull { entry ->
+                entries.mapIndexedNotNull { index, entry ->
                     try {
                         val options = MnemonicPasswordGenerator.GenerationOptions(
                             phrase = mnemonicPhrase,
-                            serviceName = entry.service,
+                            serviceName = entry.service, //  Сервис реально влияет
                             targetLength = 16,
                             includeLeet = includeLeet,
                             includeServiceCode = includeServiceCode,
                             includeRotationCode = includeRotationCode,
-                            variantOffset = 0
+                            variantOffset = index, //  Уникальный offset для каждой записи
+                            separator = "",
+                            enforceUniqueChars = true,
+                            splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER
                         )
                         val variants = MnemonicPasswordGenerator.generateVariants(options, count = 1)
                         if (variants.isNotEmpty()) {
@@ -82,10 +86,11 @@ fun BulkRotationDialog(
         }
     }
 
-    //  Проверка количества сгенерированных паролей
     val canReplaceAll = generatedPasswords.size == entries.size
 
-    //  Сохраняем AMPG metadata в JSON
+    //  Проверка на уникальность паролей
+    val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
+
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
         """{"includeLeet":$includeLeet,"includeServiceCode":$includeServiceCode,"includeRotationCode":$includeRotationCode,"targetLength":16,"algorithmName":"AMPG v2"}"""
     } else null
@@ -128,18 +133,34 @@ fun BulkRotationDialog(
                                 Text("Параметры", fontWeight = FontWeight.Bold)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Длина: $randomLength", modifier = Modifier.weight(1f))
-                                    Slider(value = randomLength.toFloat(), onValueChange = { randomLength = it.toInt() }, valueRange = 8f..32f, steps = 24, modifier = Modifier.weight(2f))
+                                    Slider(
+                                        value = randomLength.toFloat(),
+                                        onValueChange = { randomLength = it.toInt() },
+                                        valueRange = 8f..32f,
+                                        steps = 24,
+                                        modifier = Modifier.weight(2f)
+                                    )
                                 }
-                                Row { Checkbox(checked = useUpper, onCheckedChange = { useUpper = it }); Text("A-Z", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = useDigits, onCheckedChange = { useDigits = it }); Text("0-9", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it }); Text("!@#", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
+                                    Text("A-Z", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
+                                    Text("0-9", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
+                                    Text("!@#", Modifier.padding(start = 8.dp))
+                                }
                             }
                         }
                     }
+
                     BulkMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Два слова без разделителя", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG v2 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(
                                     value = mnemonicPhrase,
                                     onValueChange = { mnemonicPhrase = it },
@@ -147,11 +168,24 @@ fun BulkRotationDialog(
                                     placeholder = { Text("например: метроном жёлтый камень") },
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Row { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
+                                    Text("Leet-замены", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
+                                    Text("Код сервиса", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
+                                    Text("Код ротации", Modifier.padding(start = 8.dp))
+                                }
 
-                                Text("Формат: два трансформированных слова без разделителя", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "Каждый сервис получит уникальный пароль",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -188,7 +222,7 @@ fun BulkRotationDialog(
                     }
                 }
 
-                // Предупреждение, если не все пароли сгенерированы
+                // Предупреждение о неуникальных паролях
                 if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -201,7 +235,27 @@ fun BulkRotationDialog(
                             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей. Проверьте фразу или параметры.",
+                                "Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+
+                if (!hasUniquePasswords && canReplaceAll) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Некоторые пароли совпадают. Измените фразу или параметры.",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
@@ -220,7 +274,7 @@ fun BulkRotationDialog(
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Все старые пароли будут сохранены в истории. Это действие необратимо.",
+                            "Все старые пароли будут сохранены в истории.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -231,7 +285,7 @@ fun BulkRotationDialog(
         confirmButton = {
             Button(
                 onClick = { showMasterPasswordDialog = true },
-                enabled = !isProcessing && canReplaceAll 
+                enabled = !isProcessing && canReplaceAll && hasUniquePasswords
             ) {
                 if (isProcessing) {
                     CircularProgressIndicator(
@@ -268,7 +322,7 @@ fun BulkRotationDialog(
                         generationType = generationType,
                         textHint = if (generationType == "mnemonic") mnemonicPhrase else null,
                         mnemonicPhraseHint = if (generationType == "mnemonic") mnemonicPhrase else null,
-                        mnemonicOptionsJson = mnemonicOptionsJson // ✅ ИСПРАВЛЕНИЕ ПУНКТА 7
+                        mnemonicOptionsJson = mnemonicOptionsJson
                     )
                 }
 
