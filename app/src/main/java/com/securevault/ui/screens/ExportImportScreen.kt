@@ -39,10 +39,10 @@ import kotlinx.coroutines.withContext
 // Вынесено на верхний уровень файла
 data class OperationResult(val success: Boolean, val message: String)
 
-// Вынесено на верхний уровень файла
 enum class BackupMasterPasswordAction {
     CREATE_BACKUP,
-    IMPORT_BACKUP
+    IMPORT_BACKUP,
+    EXPORT_CSV  // ✅ НОВОЕ: экспорт CSV тоже требует мастер-пароль
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,12 +67,14 @@ fun ExportImportScreen(
     val profiles by profileViewModel.profiles.collectAsState()
     val currentProfileId by vaultViewModel.currentProfileId.collectAsState()
 
+    //  Получаем ВСЕ записи из всех профилей для общего экспорта
+    val allProfilesEntries by vaultViewModel.allEntries.collectAsState()
+
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var importTargetProfileId by remember { mutableIntStateOf(profileId ?: currentProfileId ?: 0) }
     var expandedTargetProfile by remember { mutableStateOf(false) }
 
-    // Мастер-пароль перед backup/импортом
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var masterPasswordInput by remember { mutableStateOf("") }
     var masterPasswordError by remember { mutableStateOf<String?>(null) }
@@ -121,7 +123,7 @@ fun ExportImportScreen(
                 }
                 importResult = OperationResult(success = result.success, message = message)
             } catch (e: Exception) {
-                importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
+                importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
             } finally {
                 isImporting = false
                 pendingBackupData = null
@@ -130,18 +132,60 @@ fun ExportImportScreen(
         }
     }
 
+    //  CSV экспорт с расшифровкой паролей
     val csvExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         uri?.let {
-            val entriesToExport = entries.filter { entry -> selectedEntryIds.contains(entry.id) }
-            context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                val success = exportManager.exportToCsv(entriesToExport, outputStream)
-                Toast.makeText(
-                    context,
-                    if (success) "Экспортировано: ${entriesToExport.size} записей" else "Ошибка экспорта",
-                    Toast.LENGTH_SHORT
-                ).show()
+            scope.launch {
+                isExporting = true
+                try {
+                    //  Берём записи из текущего профиля ИЛИ из всех профилей
+                    val entriesToExport = if (profileId != null) {
+                        entries.filter { entry -> selectedEntryIds.contains(entry.id) }
+                    } else {
+                        // Общий экспорт — все записи из всех профилей
+                        allProfilesEntries.filter { entry -> selectedEntryIds.contains(entry.id) }
+                    }
+
+                    if (entriesToExport.isEmpty()) {
+                        importResult = OperationResult(
+                            success = false,
+                            message = "Нет записей для экспорта"
+                        )
+                        isExporting = false
+                        return@launch
+                    }
+
+                    //  Расшифровываем пароли для CSV (режим совместимости)
+                    val entriesWithPlainPasswords = entriesToExport.map { entry ->
+                        try {
+                            val plainPassword = entry.password
+                            entry.copy(encryptedPassword = plainPassword)
+                        } catch (e: Exception) {
+                            throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
+                        }
+                    }
+
+                    val success = withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                            exportManager.exportToCsv(entriesWithPlainPasswords, outputStream)
+                        } ?: false
+                    }
+
+                    importResult = OperationResult(
+                        success = success,
+                        message = if (success) {
+                            "Экспортировано записей: ${entriesWithPlainPasswords.size}\nПароли включены в файл."
+                        } else {
+                            "Ошибка экспорта"
+                        }
+                    )
+                } catch (e: Exception) {
+                    importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
+                } finally {
+                    isExporting = false
+                }
             }
         }
     }
@@ -169,14 +213,12 @@ fun ExportImportScreen(
         }
     }
 
-    // : backupExportLauncher — очистка пароля только в finally
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         scope.launch {
             isExporting = true
             try {
-                // Если пользователь отменил выбор файла — uri == null
                 if (uri == null) {
                     importResult = OperationResult(
                         success = false,
@@ -189,7 +231,6 @@ fun ExportImportScreen(
                     vaultViewModel.exportAllProfiles()
                 }
                 val encrypted = withContext(Dispatchers.IO) {
-                    // Используем backupPassword, который ещё НЕ очищен
                     BackupManager.encryptBackup(backupData, backupPassword)
                 }
                 val jsonString = encrypted.toJson()
@@ -205,10 +246,9 @@ fun ExportImportScreen(
                     message = "Backup создан\nПрофилей: $profileCount\nЗаписей: $entryCount"
                 )
             } catch (e: Exception) {
-                importResult = OperationResult(success = false, message = "❌ Ошибка: ${e.message}")
+                importResult = OperationResult(success = false, message = "Ошибка: ${e.message}")
             } finally {
                 isExporting = false
-                // ОЧИСТКА ТОЛЬКО ЗДЕСЬ — после завершения операции
                 backupPassword = ""
                 confirmBackupPassword = ""
                 backupPasswordError = null
@@ -287,27 +327,41 @@ fun ExportImportScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // CSV экспорт с мастер-паролем
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("CSV экспорт записей", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             Spacer(Modifier.height(8.dp))
-                            Text("Для совместимости с другими приложениями", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Для совместимости с другими приложениями.\n" +
+                                "Пароли будут экспортированы в открытом виде.\n" +
+                                "Требуется подтверждение мастер-паролем.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
                             Spacer(Modifier.height(12.dp))
+
+                            //  Берём записи из текущего профиля ИЛИ из всех
+                            val displayEntries = if (profileId != null) entries else allProfilesEntries
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Выберите записи", fontWeight = FontWeight.Medium)
+                                Text("Выберите записи (${displayEntries.size})", fontWeight = FontWeight.Medium)
                                 TextButton(onClick = {
-                                    selectedEntryIds = if (selectedEntryIds.size == entries.size) emptySet() else entries.map { it.id }.toSet()
+                                    selectedEntryIds = if (selectedEntryIds.size == displayEntries.size) {
+                                        emptySet()
+                                    } else {
+                                        displayEntries.map { it.id }.toSet()
+                                    }
                                 }) {
-                                    Text(if (selectedEntryIds.size == entries.size) "Снять все" else "Выбрать все")
+                                    Text(if (selectedEntryIds.size == displayEntries.size) "Снять все" else "Выбрать все")
                                 }
                             }
 
-                            entries.forEach { entry ->
+                            displayEntries.forEach { entry ->
                                 val isSelected = selectedEntryIds.contains(entry.id)
                                 Row(
                                     modifier = Modifier
@@ -329,13 +383,27 @@ fun ExportImportScreen(
 
                             Spacer(Modifier.height(12.dp))
                             Button(
-                                onClick = { csvExportLauncher.launch(exportManager.generateExportFilename()) },
+                                onClick = {
+                                    //  Сначала мастер-пароль
+                                    pendingMasterPasswordAction = BackupMasterPasswordAction.EXPORT_CSV
+                                    showMasterPasswordDialog = true
+                                },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = selectedEntryIds.isNotEmpty()
+                                enabled = selectedEntryIds.isNotEmpty() && !isExporting
                             ) {
-                                Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Экспортировать CSV (${selectedEntryIds.size})")
+                                if (isExporting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Экспорт...")
+                                } else {
+                                    Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Экспортировать CSV (${selectedEntryIds.size})")
+                                }
                             }
                         }
                     }
@@ -557,7 +625,7 @@ fun ExportImportScreen(
         }
     }
 
-    // Диалог мастер-пароля ПЕРЕД backup/импортом
+    //  Диалог мастер-пароля для всех действий
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -574,6 +642,7 @@ fun ExportImportScreen(
                         when (pendingMasterPasswordAction) {
                             BackupMasterPasswordAction.CREATE_BACKUP -> "Для создания полного backup введите мастер-пароль"
                             BackupMasterPasswordAction.IMPORT_BACKUP -> "Для импорта полного backup введите мастер-пароль"
+                            BackupMasterPasswordAction.EXPORT_CSV -> "Для экспорта CSV с паролями введите мастер-пароль.\nПароли будут в открытом виде в файле."
                             else -> "Введите мастер-пароль"
                         },
                         fontSize = 13.sp
@@ -609,6 +678,10 @@ fun ExportImportScreen(
                         when (pendingMasterPasswordAction) {
                             BackupMasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
                             BackupMasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
+                            BackupMasterPasswordAction.EXPORT_CSV -> {
+                                // Сразу запускаем экспорт CSV после подтверждения мастер-пароля
+                                csvExportLauncher.launch(exportManager.generateExportFilename())
+                            }
                             else -> {}
                         }
                         pendingMasterPasswordAction = null
@@ -632,8 +705,6 @@ fun ExportImportScreen(
         )
     }
 
-    // Подтверждение пароля backup-файла
-    // Пароль очищается ТОЛЬКО в finally внутри backupExportLauncher
     if (showBackupPasswordDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -682,8 +753,6 @@ fun ExportImportScreen(
                                 backupPasswordError = "Пароли не совпадают"
                             }
                             else -> {
-                                //  НЕ очищаем пароли здесь!
-                                // Они нужны позже в backupExportLauncher
                                 showBackupPasswordDialog = false
                                 backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
                             }
