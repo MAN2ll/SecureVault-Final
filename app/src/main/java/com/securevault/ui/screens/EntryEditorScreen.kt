@@ -47,7 +47,15 @@ fun EntryEditorScreen(
     val isNewEntry = id == null || id == "new"
     val context = LocalContext.current
 
-    val allEntries by viewModel.entries.collectAsState()
+    //  Устанавливаем профиль при открытии
+    LaunchedEffect(profileId) {
+        if (profileId != null) {
+            viewModel.setCurrentProfile(profileId)
+        }
+    }
+
+    //  Используем allEntries вместо entries
+    val allEntries by viewModel.allEntries.collectAsState()
     val existingEntry = remember(id, allEntries) {
         if (isNewEntry) null else allEntries.find { e -> e.id == id }
     }
@@ -201,6 +209,7 @@ fun EntryEditorScreen(
                                     createdAt = existingEntry.createdAt
                                 )
                             } else {
+                                // ✅ ИСПРАВЛЕНИЕ: nextRotationDate = null при выключении ротации
                                 val newNextRotationDate = if (rotationEnabled) {
                                     if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
@@ -242,7 +251,6 @@ fun EntryEditorScreen(
                                 null
                             }
 
-                            // Entry.create не имеет nextRotationDate, используем .copy()
                             Entry.create(
                                 service = service,
                                 username = username,
@@ -877,7 +885,7 @@ private fun MnemonicGeneratorDialog(
             includeServiceCode = includeServiceCode,
             includeRotationCode = includeRotationCode,
             variantOffset = variantOffset,
-            separator = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) "" else "",
+            separator = "",
             enforceUniqueChars = true,
             splitMode = splitMode
         )
