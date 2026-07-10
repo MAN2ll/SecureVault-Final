@@ -52,21 +52,15 @@ class VaultViewModel @Inject constructor(
     val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
-    val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
-    val favoritesOnly = MutableStateFlow(false)
-
-    init {
-        viewModelScope.launch {
-            _currentProfileId.collect { pid ->
-                if (pid != null) {
-                    _rotationEntries.value = repository.getEntriesWithRotation().filter { it.profileId == pid }
-                } else {
-                    _rotationEntries.value = emptyList()
-                }
-            }
+    //  Вычисляемый поток, реагирующий на изменения allEntries
+    val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
+        .combine(_currentProfileId) { all, pid ->
+            if (pid == null) emptyList()
+            else all.filter { it.profileId == pid && it.rotationEnabled }
         }
-    }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val favoritesOnly = MutableStateFlow(false)
 
     fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
     fun toggleFavoritesOnly() { favoritesOnly.value = !favoritesOnly.value }
@@ -139,7 +133,11 @@ class VaultViewModel @Inject constructor(
             val updatedMnemonicPhrase = if (newGenerationType == "mnemonic") newMnemonicPhraseHint else null
             val updatedMnemonicOptions = if (newGenerationType == "mnemonic") newMnemonicOptionsJson else null
 
-            val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+            val updated = entry.addToPasswordHistory(
+                oldPassword = entry.password,
+                generationType = entry.generationType,
+                oldPasswordFingerprint = oldFp
+            ).copy(
                 encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
                 generationType = newGenerationType,
                 textHint = updatedHint,
@@ -194,7 +192,11 @@ class VaultViewModel @Inject constructor(
                 val updatedMnemonicPhrase = if (replacement.generationType == "mnemonic") replacement.mnemonicPhraseHint else null
                 val updatedMnemonicOptions = if (replacement.generationType == "mnemonic") replacement.mnemonicOptionsJson else null
 
-                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+                val updated = entry.addToPasswordHistory(
+                    oldPassword = entry.password,
+                    generationType = entry.generationType,
+                    oldPasswordFingerprint = oldFp
+                ).copy(
                     encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
                     generationType = replacement.generationType,
                     textHint = updatedHint,
@@ -237,7 +239,11 @@ class VaultViewModel @Inject constructor(
             for (entry in entries) {
                 val upd = updates[entry.id] ?: continue
                 val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
+                val updated = entry.addToPasswordHistory(
+                    oldPassword = entry.password,
+                    generationType = entry.generationType,
+                    oldPasswordFingerprint = oldFp
+                ).copy(
                     encryptedPassword = upd.first, passwordFingerprint = upd.second, lastChanged = now,
                     generationType = "shuffled",
                     textHint = null,
@@ -291,7 +297,11 @@ class VaultViewModel @Inject constructor(
                 val enc = CryptoUtils.encrypt(newPwd)
                 val newFp = PasswordValidator.buildPasswordFingerprint(newPwd, appContext)
                 val oldFp = PasswordValidator.buildPasswordFingerprint(tgt.password, appContext)
-                val updated = tgt.addToPasswordHistory(tgt.password, tgt.generationType, oldFp).copy(
+                val updated = tgt.addToPasswordHistory(
+                    oldPassword = tgt.password,
+                    generationType = tgt.generationType,
+                    oldPasswordFingerprint = oldFp
+                ).copy(
                     encryptedPassword = enc, passwordFingerprint = newFp, lastChanged = now,
                     generationType = "shuffled",
                     textHint = null,
@@ -305,6 +315,7 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
+    //  Передаём relatedService и relatedEntryId в историю
     fun applyManagedShuffle(
         assignments: Map<String, String?>,
         onResult: (PasswordOperationResult) -> Unit
@@ -375,7 +386,14 @@ class VaultViewModel @Inject constructor(
                 val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
                 val oldFp = PasswordValidator.buildPasswordFingerprint(target.password, appContext)
 
-                val updated = target.addToPasswordHistory(target.password, target.generationType, oldFp).copy(
+                //  Передаём relatedService и relatedEntryId
+                val updated = target.addToPasswordHistory(
+                    oldPassword = target.password,
+                    generationType = target.generationType,
+                    oldPasswordFingerprint = oldFp,
+                    relatedService = source.service,
+                    relatedEntryId = source.id
+                ).copy(
                     encryptedPassword = encryptedPwd,
                     passwordFingerprint = newFp,
                     lastChanged = now,
