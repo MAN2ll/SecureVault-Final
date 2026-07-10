@@ -2,6 +2,7 @@
 
 package com.securevault.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,60 +22,42 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
-import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
-import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MnemonicGeneratorScreen(
-    profileId: Int?, //  принимаем profileId из маршрута
+    profileId: Int?,
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    //  Принудительно устанавливаем профиль
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
         }
     }
 
-    val currentProfileId by viewModel.currentProfileId.collectAsState()
-    val effectiveProfileId = profileId ?: currentProfileId
-
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
-    var variantOffset by remember { mutableIntStateOf(0) }
+    var separator by remember { mutableStateOf("") } // ✅ НОВОЕ: разделитель (по умолчанию пустой)
+    var enforceUniqueChars by remember { mutableStateOf(true) }
 
+    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Глобальный offset для всех вариантов
+    var globalOffset by remember { mutableIntStateOf(0) }
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
-    var showError by remember { mutableStateOf<String?>(null) }
-    var validationError by remember { mutableStateOf<String?>(null) }
-    
-    // ✅ НОВОЕ: AlertDialog для ошибок сохранения
-    var showSaveErrorDialog by remember { mutableStateOf(false) }
-    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
-    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     fun generateVariants() {
-        validationError = null
-
         if (phrase.isBlank()) {
-            variants = emptyList()
-            validationError = "Введите мнемоническую фразу"
-            return
-        }
-
-        if (includeServiceCode && serviceName.isBlank()) {
-            variants = emptyList()
-            validationError = "Введите название сервиса для кода сервиса"
+            errorMessage = "Введите мнемоническую фразу"
             return
         }
 
@@ -85,31 +68,32 @@ fun MnemonicGeneratorScreen(
             includeLeet = includeLeet,
             includeServiceCode = includeServiceCode,
             includeRotationCode = includeRotationCode,
-            variantOffset = variantOffset
+            variantOffset = globalOffset,
+            separator = separator,
+            enforceUniqueChars = enforceUniqueChars
         )
 
-        variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
-        selectedVariantIndex = -1
-        
-        if (variants.isEmpty()) {
-            validationError = "Не удалось сгенерировать варианты без повторов. Попробуйте другую фразу."
+        val results = MnemonicPasswordGenerator.generateVariants(options, count = 5)
+
+        if (results.isEmpty()) {
+            //  Показываем ошибку
+            errorMessage = "Не удалось создать все варианты по выбранным правилам. Увеличьте фразу или измените параметры."
+        } else {
+            variants = results
+            selectedVariantIndex = -1
+            errorMessage = null
         }
-    }
-
-    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode) {
-        variantOffset = 0
-        generateVariants()
-    }
-
-    LaunchedEffect(variantOffset) {
-        generateVariants()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AMPG v2 Генератор", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                title = { Text("AMPG v2 генератор", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Назад")
+                    }
+                }
             )
         }
     ) { padding ->
@@ -117,86 +101,92 @@ fun MnemonicGeneratorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("AMPG v2 — Unique Mnemonic Flow", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("Гарантированно без повторяющихся символов", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-            }
-
+            // Ввод фразы
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
-                label = { Text("Мнемоническая фраза *") },
-                placeholder = { Text("например: моя кошка любит рыбу") },
+                label = { Text("Мнемоническая фраза") },
+                placeholder = { Text("например: метроном жёлтый камень") },
                 modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
                 value = serviceName,
                 onValueChange = { serviceName = it },
-                label = {
-                    Text(if (includeServiceCode) "Название сервиса *" else "Название сервиса (необяз.)")
-                },
+                label = { Text("Название сервиса") },
                 placeholder = { Text("например: Gmail") },
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Параметры", fontWeight = FontWeight.Bold)
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                        Text("Leet-замены (a→@, o→0, e→3...)", Modifier.padding(start = 8.dp))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                        Text("Код сервиса", Modifier.padding(start = 8.dp))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                        Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
-                    }
+            //  Выбор разделителя
+            Text("Разделитель между частями:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("" to "Нет", "-" to "-", "*" to "*", "@" to "@").forEach { (value, label) ->
+                    FilterChip(
+                        selected = separator == value,
+                        onClick = { separator = value },
+                        label = { Text(label) }
+                    )
                 }
             }
 
-            if (validationError != null) {
-                Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            // Настройки
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
+                Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
+                Text("Код сервиса", Modifier.padding(start = 8.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
+                Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = enforceUniqueChars, onCheckedChange = { enforceUniqueChars = it })
+                Text("Без повторяющихся символов", Modifier.padding(start = 8.dp))
             }
 
-            if (variants.isNotEmpty()) {
-                Text(
-                    "Текущий набор: №${variantOffset + 1}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium
+            // Кнопка генерации
+            Button(
+                onClick = { generateVariants() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Сгенерировать")
+            }
+
+            //  Отображение ошибки
+            if (errorMessage != null) {
+                AlertDialog(
+                    onDismissRequest = { errorMessage = null },
+                    icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+                    title = { Text("Не удалось создать пароль") },
+                    text = { Text(errorMessage ?: "") },
+                    confirmButton = {
+                        TextButton(onClick = { errorMessage = null }) {
+                            Text("Понятно")
+                        }
+                    }
                 )
             }
 
-            OutlinedButton(
-                onClick = { variantOffset++ },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
-            ) {
-                Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Ещё варианты", fontWeight = FontWeight.Medium)
-            }
-
+            // Карточки вариантов
             if (variants.isNotEmpty()) {
                 Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
 
                 variants.forEachIndexed { index, result ->
                     val isSelected = selectedVariantIndex == index
-                    
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -204,161 +194,72 @@ fun MnemonicGeneratorScreen(
                                 MaterialTheme.colorScheme.primaryContainer
                             else
                                 MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        ),
+                        onClick = { selectedVariantIndex = index }
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
+                            Text(result.variantName, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                result.password,
+                                fontSize = 14.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(4.dp))
+
+                            //  Информация о формате
+                            Text("Формат: два слова ${if (separator.isEmpty()) "без разделителя" else "с разделителем '$separator'"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Каждая часть усилена цифрами и спецсимволами", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Подсказка: ${result.mnemonicHint}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                            Spacer(Modifier.height(8.dp))
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        result.variantName,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        result.password,
-                                        fontSize = 14.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Сложность: ", fontSize = 10.sp)
-                                        Text(
-                                            result.strength.name,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = when (result.strength) {
-                                                PasswordGenerator.Strength.VERY_STRONG -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
-                                                PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-                                                PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                                PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-                                            }
-                                        )
+                                OutlinedButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(result.password))
+                                        Toast.makeText(context, "Скопировано!", Toast.LENGTH_SHORT).show()
                                     }
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        result.mnemonicHint,
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Копировать", fontSize = 11.sp)
                                 }
 
-                                Column {
-                                    IconButton(onClick = {
-                                        clipboardManager.setText(AnnotatedString(result.password))
-                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
+                                Text(
+                                    result.strength.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (result.strength) {
+                                        PasswordGenerator.Strength.VERY_STRONG -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+                                        PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
+                                        PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
+                                        PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
                                     }
-                                    RadioButton(
-                                        selected = isSelected,
-                                        onClick = { selectedVariantIndex = index }
-                                    )
-                                }
+                                )
                             }
                         }
                     }
                 }
-            }
 
-            if (showError != null) {
-                Text(showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-            }
-
-            Button(
-                onClick = {
-                    if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
-                        showError = "Выберите вариант из списка"
-                        return@Button
-                    }
-                    if (serviceName.isBlank()) {
-                        saveErrorMessage = "Введите название сервиса для записи"
-                        showSaveErrorDialog = true
-                        return@Button
-                    }
-                    
-                    val finalProfileId = effectiveProfileId
-                    if (finalProfileId == null) {
-                        saveErrorMessage = "Профиль не выбран. Вернитесь в список профилей."
-                        showSaveErrorDialog = true
-                        return@Button
-                    }
-
-                    val selected = variants[selectedVariantIndex]
-
-                    if (PasswordValidator.hasDuplicateCharacters(selected.password)) {
-                        saveErrorMessage = "Выбранный пароль содержит повторяющиеся символы. Выберите другой вариант."
-                        showSaveErrorDialog = true
-                        return@Button
-                    }
-
-                    val fingerprint = PasswordValidator.buildPasswordFingerprint(selected.password, context)
-
-                    val entry = Entry.create(
-                        service = serviceName,
-                        username = "",
-                        password = selected.password,
-                        profileId = finalProfileId,
-                        passwordFingerprint = fingerprint,
-                        textHint = selected.mnemonicHint,
-                        generationType = "mnemonic",
-                        mnemonicPhraseHint = phrase,
-                        mnemonicOptionsJson = null
-                    )
-                    
-                    //  Ждём завершения сохранения
-                    isSaving = true
-                    viewModel.insertEntry(entry) { result ->
-                        isSaving = false
-                        when (result) {
-                            is PasswordOperationResult.Success -> {
-                                onBack()
-                            }
-                            is PasswordOperationResult.Error -> {
-                                saveErrorMessage = result.message
-                                showSaveErrorDialog = true
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = variants.isNotEmpty() && selectedVariantIndex >= 0 && !isSaving
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.size(4.dp))
-                    Text("Сохранение...")
-                } else {
-                    Icon(Icons.Default.Save, null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Сохранить")
+                //  Кнопка "Ещё раз" обновляет ВСЕ варианты
+                Button(
+                    onClick = {
+                        globalOffset += variants.size //  Увеличиваем offset на количество вариантов
+                        generateVariants()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Сгенерировать ещё раз (набор №${(globalOffset / variants.size) + 2})")
                 }
             }
         }
-    }
-
-    //  AlertDialog для ошибок сохранения
-    if (showSaveErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveErrorDialog = false },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка сохранения") },
-            text = { Text(saveErrorMessage ?: "Неизвестная ошибка") },
-            confirmButton = {
-                TextButton(onClick = { showSaveErrorDialog = false }) {
-                    Text("Понятно")
-                }
-            }
-        )
     }
 }
