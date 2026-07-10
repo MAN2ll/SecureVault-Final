@@ -136,21 +136,22 @@ fun BulkRotationDialog(
                             }
                         }
                     }
-
                     BulkMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG v2 — Два слова без разделителя", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(
                                     value = mnemonicPhrase,
                                     onValueChange = { mnemonicPhrase = it },
                                     label = { Text("Мнемоническая фраза") },
-                                    placeholder = { Text("например: моя кошка любит рыбу") },
+                                    placeholder = { Text("например: метроном жёлтый камень") },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Row { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp)) }
                                 Row { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp)) }
                                 Row { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации", Modifier.padding(start = 8.dp)) }
+
+                                Text("Формат: два трансформированных слова без разделителя", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
