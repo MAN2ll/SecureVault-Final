@@ -60,7 +60,12 @@ fun PasswordRotationDialog(
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
+
+    // Режим генерации
+    var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
+    var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
+
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
 
@@ -86,24 +91,36 @@ fun PasswordRotationDialog(
             variants = emptyList()
             return
         }
+
+        val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+            when {
+                targetLength <= 16 -> 16
+                targetLength <= 18 -> 18
+                else -> 20
+            }
+        } else {
+            targetLength
+        }
+
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
-            targetLength = 16,
+            targetLength = effectiveLength,
             includeLeet = includeLeet,
             includeServiceCode = includeServiceCode,
             includeRotationCode = includeRotationCode,
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
             variantOffset = variantOffset,
-            separator = "",
-            enforceUniqueChars = true
+            separator = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) "" else "",
+            enforceUniqueChars = true,
+            splitMode = splitMode
         )
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
     }
 
-    LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset) {
+    LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset, splitMode, targetLength) {
         if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
     }
 
@@ -124,7 +141,7 @@ fun PasswordRotationDialog(
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -141,9 +158,10 @@ fun PasswordRotationDialog(
                                         RotationMode.RANDOM -> "Случайный пароль"
                                         RotationMode.MNEMONIC -> "Мнемонический (AMPG v2)"
                                         RotationMode.MANUAL -> "Ввести вручную"
-                                        RotationMode.FROM_EXISTING -> "Взять из другой записи"
+                                        RotationMode.FROM_EXISTING -> "Из другой записи"
                                     },
-                                    Modifier.padding(start = 8.dp)
+                                    Modifier.padding(start = 8.dp),
+                                    fontSize = 12.sp
                                 )
                             }
                         }
@@ -187,8 +205,7 @@ fun PasswordRotationDialog(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
-                                
-                                //  Иконки вместо текста
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,36 +241,80 @@ fun PasswordRotationDialog(
                     RotationMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Два слова без разделителя", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG v2", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+                                // Переключатель режимов
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(
+                                        selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
+                                        onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER }
+                                    )
+                                    Text("Обычный", fontSize = 12.sp, Modifier.padding(start = 4.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(
+                                        selected = splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS,
+                                        onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS }
+                                    )
+                                    Text("Для двух пользователей", fontSize = 12.sp, Modifier.padding(start = 4.dp))
+                                }
+
                                 OutlinedTextField(
                                     value = phrase,
                                     onValueChange = { phrase = it },
                                     label = { Text("Мнемоническая фраза") },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+
+                                //  Длина пароля
+                                if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                        Slider(
+                                            value = targetLength.toFloat(),
+                                            onValueChange = { targetLength = it.toInt() },
+                                            valueRange = 12f..24f,
+                                            steps = 12,
+                                            modifier = Modifier.weight(2f)
+                                        )
+                                    }
+                                } else {
+                                    Text("Длина:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        listOf(16, 18, 20).forEach { length ->
+                                            FilterChip(
+                                                selected = targetLength == length,
+                                                onClick = { targetLength = length },
+                                                label = { Text("$length") }
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Leet-замены", Modifier.padding(start = 8.dp))
+                                    Text("Leet-замены", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                                    Text("Код сервиса", Modifier.padding(start = 8.dp))
+                                    Text("Код сервиса", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                                    Text("Код ротации", Modifier.padding(start = 8.dp))
+                                    Text("Код ротации", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
 
-                                OutlinedButton(
-                                    onClick = { variantOffset += 5 },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
-                                }
-
+                                //  Номер набора вынесен над кнопкой
                                 if (variants.isNotEmpty()) {
+                                    Text(
+                                        "Набор №${(variantOffset / 5) + 1}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
                                     Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                     variants.forEachIndexed { index, result ->
                                         val isSelected = selectedVariantIndex == index
@@ -276,20 +337,27 @@ fun PasswordRotationDialog(
                                                     fontFamily = FontFamily.Monospace,
                                                     fontWeight = FontWeight.Bold
                                                 )
-                                                Text(
-                                                    "Формат: два слова без разделителя",
-                                                    fontSize = 9.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Text(
-                                                    "Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}",
-                                                    fontSize = 9.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                                if (result.splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+                                                    Text(
+                                                        "Части: ${result.part1?.length ?: 0} + ${result.part2?.length ?: 0}",
+                                                        fontSize = 9.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                             }
                                         }
                                         Spacer(Modifier.height(4.dp))
                                     }
+                                }
+
+                                // Короткая кнопка
+                                OutlinedButton(
+                                    onClick = { variantOffset += 5 },
+                                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Ещё варианты")
                                 }
                             }
                         }
