@@ -224,7 +224,6 @@ fun VaultListScreen(
                                     leadingIcon = { Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.error) }
                                 )
                                 HorizontalDivider()
-                                // ✅ ИСПРАВЛЕНО: Выйти к профилям (не блокирует)
                                 DropdownMenuItem(
                                     text = { Text("Выйти к профилям") },
                                     onClick = {
@@ -234,7 +233,6 @@ fun VaultListScreen(
                                     },
                                     leadingIcon = { Icon(Icons.Default.ExitToApp, null) }
                                 )
-                                // ✅ НОВОЕ: Заблокировать приложение
                                 DropdownMenuItem(
                                     text = { Text("Заблокировать приложение", color = MaterialTheme.colorScheme.error) },
                                     onClick = {
@@ -689,8 +687,9 @@ private fun EntryCard(
                             },
                             leadingIcon = { Icon(Icons.Default.Visibility, null) }
                         )
+                        // "Изменить" вместо "Редактировать"
                         DropdownMenuItem(
-                            text = { Text("Редактировать") },
+                            text = { Text("Изменить") },
                             onClick = {
                                 showMenu = false
                                 onEditClick()
