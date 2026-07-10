@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -20,9 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
-import com.securevault.utils.PasswordValidator
+import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,10 +46,9 @@ fun MnemonicGeneratorScreen(
     var includeLeet by remember { mutableStateOf(true) }
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
-    var separator by remember { mutableStateOf("") } // ✅ НОВОЕ: разделитель (по умолчанию пустой)
+    var separator by remember { mutableStateOf("") }
     var enforceUniqueChars by remember { mutableStateOf(true) }
 
-    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Глобальный offset для всех вариантов
     var globalOffset by remember { mutableIntStateOf(0) }
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
@@ -76,7 +75,6 @@ fun MnemonicGeneratorScreen(
         val results = MnemonicPasswordGenerator.generateVariants(options, count = 5)
 
         if (results.isEmpty()) {
-            //  Показываем ошибку
             errorMessage = "Не удалось создать все варианты по выбранным правилам. Увеличьте фразу или измените параметры."
         } else {
             variants = results
@@ -105,7 +103,6 @@ fun MnemonicGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Ввод фразы
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
@@ -122,7 +119,6 @@ fun MnemonicGeneratorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            //  Выбор разделителя
             Text("Разделитель между частями:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -137,7 +133,6 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            // Настройки
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
                 Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
@@ -155,7 +150,6 @@ fun MnemonicGeneratorScreen(
                 Text("Без повторяющихся символов", Modifier.padding(start = 8.dp))
             }
 
-            // Кнопка генерации
             Button(
                 onClick = { generateVariants() },
                 modifier = Modifier.fillMaxWidth()
@@ -165,7 +159,6 @@ fun MnemonicGeneratorScreen(
                 Text("Сгенерировать")
             }
 
-            //  Отображение ошибки
             if (errorMessage != null) {
                 AlertDialog(
                     onDismissRequest = { errorMessage = null },
@@ -180,7 +173,6 @@ fun MnemonicGeneratorScreen(
                 )
             }
 
-            // Карточки вариантов
             if (variants.isNotEmpty()) {
                 Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
 
@@ -208,11 +200,26 @@ fun MnemonicGeneratorScreen(
                             )
                             Spacer(Modifier.height(4.dp))
 
-                            //  Информация о формате
-                            Text("Формат: два слова ${if (separator.isEmpty()) "без разделителя" else "с разделителем '$separator'"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Каждая часть усилена цифрами и спецсимволами", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Подсказка: ${result.mnemonicHint}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Формат: два слова ${if (separator.isEmpty()) "без разделителя" else "с разделителем '$separator'"}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Каждая часть усилена цифрами и спецсимволами",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Подсказка: ${result.mnemonicHint}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
 
                             Spacer(Modifier.height(8.dp))
 
@@ -231,15 +238,17 @@ fun MnemonicGeneratorScreen(
                                     Text("Копировать", fontSize = 11.sp)
                                 }
 
+                                //  when с else веткой
                                 Text(
                                     result.strength.name,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = when (result.strength) {
-                                        PasswordGenerator.Strength.VERY_STRONG -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+                                        PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
                                         PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
                                         PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
                                         PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                                     }
                                 )
                             }
@@ -247,10 +256,9 @@ fun MnemonicGeneratorScreen(
                     }
                 }
 
-                //  Кнопка "Ещё раз" обновляет ВСЕ варианты
                 Button(
                     onClick = {
-                        globalOffset += variants.size //  Увеличиваем offset на количество вариантов
+                        globalOffset += variants.size
                         generateVariants()
                     },
                     modifier = Modifier.fillMaxWidth()
