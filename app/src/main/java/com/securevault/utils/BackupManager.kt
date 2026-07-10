@@ -66,7 +66,6 @@ object BackupManager {
         return bytes
     }
 
-    // Расшифровка истории + вычисление fingerprint
     suspend fun exportAllProfiles(repository: VaultRepository, context: Context? = null): BackupData {
         val profiles = repository.allProfiles.first()
         val backupProfiles = profiles.map { profile ->
@@ -78,12 +77,12 @@ object BackupManager {
                     throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
                 }
 
-                //  расшифровываем историю + вычисляем fingerprint
+                // Расшифровываем историю паролей
                 val portableHistory = entry.getPasswordHistory().mapNotNull { item ->
                     item.encryptedOldPassword?.let { encrypted ->
                         try {
                             val plainOldPassword = CryptoUtils.decrypt(encrypted)
-                            //  Вычисляем fingerprint для старого пароля
+                            // fingerprint всегда пересчитывается на текущем устройстве
                             val fingerprint = if (context != null) {
                                 PasswordValidator.buildPasswordFingerprint(plainOldPassword, context)
                             } else {
@@ -140,6 +139,7 @@ object BackupManager {
         val profileMapping = mutableMapOf<Int, Int>()
         var importedProfiles = 0
         var importedEntries = 0
+        var skippedEntries = 0
         val errors = mutableListOf<String>()
 
         val pinSalt = ProfilePasswordHasher.generateSalt()
@@ -188,9 +188,24 @@ object BackupManager {
                 profileMapping[backupProfile.oldProfileId] = newProfileId
                 importedProfiles++
 
+                //  Для MERGE получаем существующие записи для проверки дубликатов
+                val existingEntriesInProfile = if (mode == ImportMode.MERGE_IF_EXISTS) {
+                    repository.getByProfileId(newProfileId).associateBy { "${it.service}||${it.username}" }
+                } else {
+                    emptyMap()
+                }
+
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  строим JSON с fingerprint
+                        //  Проверка дубликатов для MERGE
+                        val key = "${backupEntry.service}||${backupEntry.username}"
+                        if (mode == ImportMode.MERGE_IF_EXISTS && key in existingEntriesInProfile) {
+                            errors.add("Пропущено: ${backupEntry.service} / ${backupEntry.username} — запись уже есть в профиле")
+                            skippedEntries++
+                            continue
+                        }
+
+                        //  fingerprint всегда пересчитывается на текущем устройстве
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
@@ -227,15 +242,16 @@ object BackupManager {
         }
 
         return ImportResult(
-            success = errors.isEmpty(),
+            success = errors.all { it.startsWith("Пропущено:") },
             importedProfiles = importedProfiles,
             importedEntries = importedEntries,
             profileMapping = profileMapping,
-            errors = errors
+            errors = errors,
+            skippedEntries = skippedEntries
         )
     }
 
-    //  ИСПРАВЛЕНИЕ ПУНКТА 2: Включаем fingerprint в JSON истории
+    //  fingerprint всегда пересчитывается на текущем устройстве
     private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?, context: Context): String? {
         if (portableHistory.isNullOrEmpty()) return null
 
@@ -243,9 +259,8 @@ object BackupManager {
             val jsonArray = JSONArray()
             for (item in portableHistory) {
                 val encrypted = CryptoUtils.encrypt(item.plainOldPassword)
-                //  Вычисляем fingerprint на текущем устройстве (или используем сохранённый)
-                val fingerprint = item.passwordFingerprint
-                    ?: PasswordValidator.buildPasswordFingerprint(item.plainOldPassword, context)
+                //  Всегда пересчитываем fingerprint на текущем устройстве
+                val fingerprint = PasswordValidator.buildPasswordFingerprint(item.plainOldPassword, context)
 
                 val obj = JSONObject().apply {
                     put("encryptedOldPassword", encrypted)
@@ -254,8 +269,8 @@ object BackupManager {
                     put("relatedService", item.relatedService ?: JSONObject.NULL)
                     put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
                     put("hint", item.hint ?: JSONObject.NULL)
-                    // ✅ НОВОЕ: сохраняем fingerprint в истории
                     put("passwordFingerprint", fingerprint)
+                    put("passwordHash", fingerprint)
                 }
                 jsonArray.put(obj)
             }
@@ -287,5 +302,6 @@ data class ImportResult(
     val importedProfiles: Int,
     val importedEntries: Int,
     val profileMapping: Map<Int, Int>,
-    val errors: List<String>
+    val errors: List<String>,
+    val skippedEntries: Int = 0
 )
