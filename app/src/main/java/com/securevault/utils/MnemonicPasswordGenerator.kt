@@ -46,6 +46,17 @@ object MnemonicPasswordGenerator {
         'l' to listOf('1')
     )
 
+    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Case-insensitive проверка
+    private fun key(char: Char): Char = char.lowercaseChar()
+
+    private fun isUsed(char: Char, usedChars: Set<Char>): Boolean {
+        return key(char) in usedChars
+    }
+
+    private fun markUsed(char: Char, usedChars: MutableSet<Char>) {
+        usedChars.add(key(char))
+    }
+
     fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
 
@@ -118,25 +129,25 @@ object MnemonicPasswordGenerator {
 
         // Первая буква заглавная
         val firstChar = transliterated.first().uppercaseChar()
-        if (firstChar !in usedChars) {
+        if (!isUsed(firstChar, usedChars)) {
             chars.add(firstChar)
-            usedChars.add(firstChar)
+            markUsed(firstChar, usedChars)
         } else {
-            val freeUppercase = uppercaseLetters.firstOrNull { it !in usedChars } ?: return null
+            val freeUppercase = uppercaseLetters.firstOrNull { !isUsed(it, usedChars) } ?: return null
             chars.add(freeUppercase)
-            usedChars.add(freeUppercase)
+            markUsed(freeUppercase, usedChars)
         }
 
         // Обрабатываем остальные буквы слова
         for (i in 1 until transliterated.length) {
             val char = transliterated[i]
-            if (char in usedChars) {
+            if (isUsed(char, usedChars)) {
                 if (options.includeLeet && char in leetMap) {
                     val replacements = leetMap[char]!!
-                    val replacement = replacements.firstOrNull { it !in usedChars }
+                    val replacement = replacements.firstOrNull { !isUsed(it, usedChars) }
                     if (replacement != null) {
                         chars.add(replacement)
-                        usedChars.add(replacement)
+                        markUsed(replacement, usedChars)
                         continue
                     }
                 }
@@ -145,19 +156,19 @@ object MnemonicPasswordGenerator {
 
             if (options.includeLeet && char in leetMap && Random.nextBoolean()) {
                 val replacements = leetMap[char]!!
-                val replacement = replacements.firstOrNull { it !in usedChars }
+                val replacement = replacements.firstOrNull { !isUsed(it, usedChars) }
                 if (replacement != null) {
                     chars.add(replacement)
-                    usedChars.add(replacement)
+                    markUsed(replacement, usedChars)
                     continue
                 }
             }
 
             chars.add(char)
-            usedChars.add(char)
+            markUsed(char, usedChars)
         }
 
-        //  Усиление каждой части
+        // ✅ Усиление каждой части
         val currentUppercase = chars.count { it.isUpperCase() }
         val currentLowercase = chars.count { it.isLowerCase() }
         val currentDigits = chars.count { it.isDigit() }
@@ -168,10 +179,10 @@ object MnemonicPasswordGenerator {
         var addedUppercase = 0
         for (letter in uppercaseLetters.shuffled()) {
             if (addedUppercase >= neededUppercase) break
-            if (letter !in usedChars) {
+            if (!isUsed(letter, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, letter)
-                usedChars.add(letter)
+                markUsed(letter, usedChars)
                 addedUppercase++
             }
         }
@@ -181,10 +192,10 @@ object MnemonicPasswordGenerator {
         var addedLowercase = 0
         for (letter in lowercaseLetters.shuffled()) {
             if (addedLowercase >= neededLowercase) break
-            if (letter !in usedChars) {
+            if (!isUsed(letter, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, letter)
-                usedChars.add(letter)
+                markUsed(letter, usedChars)
                 addedLowercase++
             }
         }
@@ -194,10 +205,10 @@ object MnemonicPasswordGenerator {
         var addedDigits = 0
         for (digit in digits.shuffled()) {
             if (addedDigits >= neededDigits) break
-            if (digit !in usedChars) {
+            if (!isUsed(digit, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, digit)
-                usedChars.add(digit)
+                markUsed(digit, usedChars)
                 addedDigits++
             }
         }
@@ -207,15 +218,15 @@ object MnemonicPasswordGenerator {
         var addedSpecials = 0
         for (special in specialChars.shuffled()) {
             if (addedSpecials >= neededSpecials) break
-            if (special !in usedChars) {
+            if (!isUsed(special, usedChars)) {
                 val insertPos = Random.nextInt(1, chars.size)
                 chars.add(insertPos, special)
-                usedChars.add(special)
+                markUsed(special, usedChars)
                 addedSpecials++
             }
         }
 
-        // : Код сервиса и ротации
+        // Код сервиса
         if (options.includeServiceCode && options.serviceName.isNotBlank() && isFirstPart) {
             val serviceLetters = transliterate(options.serviceName.lowercase())
                 .replace(Regex("[^a-z]"), "")
@@ -223,13 +234,14 @@ object MnemonicPasswordGenerator {
 
             for (letter in serviceLetters) {
                 val upper = letter.uppercaseChar()
-                if (upper !in usedChars) {
+                if (!isUsed(upper, usedChars)) {
                     chars.add(upper)
-                    usedChars.add(upper)
+                    markUsed(upper, usedChars)
                 }
             }
         }
 
+        // Код ротации
         if (options.includeRotationCode && !isFirstPart) {
             val now = LocalDate.now()
             val month = options.rotationMonth ?: now.monthValue
@@ -239,9 +251,9 @@ object MnemonicPasswordGenerator {
             val rotationCode = mm + yy
 
             for (digit in rotationCode) {
-                if (digit !in usedChars) {
+                if (!isUsed(digit, usedChars)) {
                     chars.add(digit)
-                    usedChars.add(digit)
+                    markUsed(digit, usedChars)
                 }
             }
         }
