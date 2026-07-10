@@ -180,4 +180,13 @@ object PasswordValidator {
 
         return ValidationResult(true)
     }
+    //  Проверка уникальности символов в каждой части отдельно
+    fun validatePartsUniqueChars(part1: String, part2: String): ValidationResult {
+        val combined = part1 + part2
+        return if (hasDuplicateCharacters(combined)) {
+            ValidationResult(false, "Пароль содержит повторяющиеся символы")
+        } else {
+            ValidationResult(true)
+        }
+    }
 }
