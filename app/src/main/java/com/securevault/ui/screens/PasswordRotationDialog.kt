@@ -61,7 +61,7 @@ fun PasswordRotationDialog(
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
 
-    // Режим генерации
+    //  Режим генерации
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
@@ -243,20 +243,28 @@ fun PasswordRotationDialog(
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
-                                // Переключатель режимов
+                                //  Переключатель режимов
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
                                         onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER }
                                     )
-                                    Text("Обычный", fontSize = 12.sp, Modifier.padding(start = 4.dp))
+                                    Text(
+                                        text = "Обычный",
+                                        modifier = Modifier.padding(start = 4.dp),
+                                        fontSize = 12.sp
+                                    )
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS,
                                         onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS }
                                     )
-                                    Text("Для двух пользователей", fontSize = 12.sp, Modifier.padding(start = 4.dp))
+                                    Text(
+                                        text = "Для двух пользователей",
+                                        modifier = Modifier.padding(start = 4.dp),
+                                        fontSize = 12.sp
+                                    )
                                 }
 
                                 OutlinedTextField(
@@ -266,7 +274,7 @@ fun PasswordRotationDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                //  Длина пароля
+                                // Длина пароля
                                 if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp)
@@ -307,7 +315,7 @@ fun PasswordRotationDialog(
                                     Text("Код ротации", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
 
-                                //  Номер набора вынесен над кнопкой
+                                // Номер набора вынесен над кнопкой
                                 if (variants.isNotEmpty()) {
                                     Text(
                                         "Набор №${(variantOffset / 5) + 1}",
