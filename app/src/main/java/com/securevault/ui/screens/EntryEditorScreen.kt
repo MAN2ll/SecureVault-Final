@@ -118,7 +118,7 @@ fun EntryEditorScreen(
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Star else Icons.Outlined.Star,
-                            contentDescription = null,
+                            contentDescription = if (isFavorite) "Убрать из избранного" else "В избранное",
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -243,7 +243,6 @@ fun EntryEditorScreen(
                         }
 
                         isSaving = true
-                        //  updateEntry для существующих, insertEntry для новых
                         if (isNewEntry) {
                             viewModel.insertEntry(finalEntry) { result ->
                                 isSaving = false
@@ -718,6 +717,7 @@ private fun SimplePasswordGeneratorDialog(
                                         PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
                                         PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
                                         PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                                     }
                                 )
                             }
@@ -753,6 +753,7 @@ private fun SimplePasswordGeneratorDialog(
                     }
                 }
 
+                //  Кнопки на всю ширину, не в Row
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -842,7 +843,9 @@ private fun MnemonicGeneratorDialog(
             includeLeet = includeLeet,
             includeServiceCode = includeServiceCode,
             includeRotationCode = includeRotationCode,
-            variantOffset = variantOffset
+            variantOffset = variantOffset,
+            separator = "",
+            enforceUniqueChars = true
         )
 
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
@@ -918,22 +921,22 @@ private fun MnemonicGeneratorDialog(
 
                 if (variants.isNotEmpty()) {
                     Text(
-                        "Текущий набор: №${variantOffset + 1}",
+                        "Текущий набор: №${(variantOffset / 5) + 1}",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
                     )
                 }
 
-               OutlinedButton(
-                    // variantOffset += 5 вместо ++
+                // : Кнопка "Ещё варианты" на всю ширину, variantOffset += 5
+                OutlinedButton(
                     onClick = { variantOffset += 5 },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     enabled = variants.isNotEmpty() || (phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank()))
                 ) {
                     Icon(Icons.Default.Refresh, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
+                    Text("Ещё варианты")
                 }
 
                 if (variants.isNotEmpty()) {
@@ -973,7 +976,11 @@ private fun MnemonicGeneratorDialog(
                                             clipboardManager.setText(AnnotatedString(result.password))
                                             android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
                                         }) {
-                                            Icon(Icons.Default.ContentCopy, null, Modifier.size(20.dp))
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Копировать пароль",
+                                                Modifier.size(20.dp)
+                                            )
                                         }
                                         RadioButton(selected = isSelected, onClick = { selectedVariantIndex = index })
                                     }
