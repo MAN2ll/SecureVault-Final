@@ -11,7 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,15 +29,16 @@ fun PasswordShuffleDialog(
     onShuffleApplied: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // редактируемая схема с выбором донора
-    // Map: targetId -> sourceId
+    val context = LocalContext.current //  Вынесено наружу
+
+    // Редактируемая схема с выбором донора
     var assignments by remember {
         mutableStateOf<Map<String, String?>>(
             entries.associate { it.id to null }
         )
     }
 
-    //  Автоматическая инициализация схемой по кругу
+    // Автоматическая инициализация схемой по кругу
     LaunchedEffect(entries) {
         if (entries.size >= 2 && assignments.values.all { it == null }) {
             val initialAssignments = mutableMapOf<String, String?>()
@@ -55,14 +56,12 @@ fun PasswordShuffleDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var expandedFor by remember { mutableStateOf<String?>(null) }
 
-    //  Валидация в реальном времени
+    // Валидация в реальном времени
     val validationErrors = remember(assignments) {
         val errors = mutableMapOf<String, String>()
         val usedSources = mutableSetOf<String>()
 
         for ((targetId, sourceId) in assignments) {
-            val target = entries.find { it.id == targetId } ?: continue
-
             if (sourceId == null) {
                 errors[targetId] = "Донор не выбран"
                 continue
@@ -81,7 +80,6 @@ fun PasswordShuffleDialog(
             usedSources.add(sourceId)
         }
 
-        //  Проверка: все получатели должны иметь донора
         if (assignments.values.any { it == null }) {
             errors["__general__"] = "Не все получатели имеют донора"
         }
@@ -91,12 +89,11 @@ fun PasswordShuffleDialog(
 
     val canApply = validationErrors.isEmpty() && assignments.size == entries.size
 
-    //  Проверка истории и 60% отличия перед применением
-    val deepValidationErrors = remember(assignments) {
+    // Глубокая валидация (история, 60% отличие)
+    val deepValidationErrors = remember(assignments, context) {
         if (!canApply) return@remember emptyList()
 
         val errors = mutableListOf<String>()
-        val context = androidx.compose.ui.platform.LocalContext.current
 
         for ((targetId, sourceId) in assignments) {
             val target = entries.find { it.id == targetId } ?: continue
@@ -142,7 +139,7 @@ fun PasswordShuffleDialog(
                     fontSize = 12.sp
                 )
 
-                //  Список записей с выбором донора
+                // Список записей с выбором донора
                 entries.forEach { target ->
                     val selectedSourceId = assignments[target.id]
                     val isExpanded = expandedFor == target.id
@@ -164,7 +161,7 @@ fun PasswordShuffleDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                //  Получатель
+                                // Получатель
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         target.service,
@@ -178,7 +175,7 @@ fun PasswordShuffleDialog(
                                     )
                                 }
 
-                                //  Стрелка
+                                // Стрелка
                                 Icon(
                                     Icons.Default.ArrowForward,
                                     contentDescription = "получает пароль от",
@@ -188,7 +185,7 @@ fun PasswordShuffleDialog(
 
                                 Spacer(Modifier.width(8.dp))
 
-                                //  Донор
+                                // Донор
                                 Column(modifier = Modifier.weight(1f)) {
                                     val source = entries.find { it.id == selectedSourceId }
                                     Text(
@@ -207,7 +204,7 @@ fun PasswordShuffleDialog(
                                     }
                                 }
 
-                                //  Кнопка изменения донора
+                                // Кнопка изменения донора
                                 IconButton(
                                     onClick = { expandedFor = if (isExpanded) null else target.id }
                                 ) {
@@ -219,7 +216,7 @@ fun PasswordShuffleDialog(
                                 }
                             }
 
-                            //  Выпадающий список доноров
+                            // Выпадающий список доноров
                             if (isExpanded) {
                                 Spacer(Modifier.height(8.dp))
                                 HorizontalDivider()
@@ -288,7 +285,7 @@ fun PasswordShuffleDialog(
                                 }
                             }
 
-                            //  Ошибка строки
+                            // Ошибка строки
                             if (rowError != null) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
@@ -302,7 +299,7 @@ fun PasswordShuffleDialog(
                     }
                 }
 
-                //  Общая ошибка
+                // Общая ошибка
                 val generalError = validationErrors["__general__"]
                 if (generalError != null) {
                     Card(
@@ -320,7 +317,7 @@ fun PasswordShuffleDialog(
                     }
                 }
 
-                //  Ошибки глубокой валидации
+                // Ошибки глубокой валидации
                 if (deepValidationErrors.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -396,7 +393,6 @@ fun PasswordShuffleDialog(
                 showMasterPasswordDialog = false
                 isShuffling = true
 
-                // Используем существующий метод ViewModel
                 viewModel.applyManagedShuffle(assignments) { result ->
                     isShuffling = false
                     when (result) {
@@ -413,7 +409,7 @@ fun PasswordShuffleDialog(
         )
     }
 
-    //  Ошибки
+    // Ошибки
     if (errorMessage != null) {
         AlertDialog(
             onDismissRequest = { errorMessage = null },
