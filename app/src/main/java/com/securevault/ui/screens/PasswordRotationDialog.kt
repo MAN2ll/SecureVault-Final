@@ -187,20 +187,34 @@ fun PasswordRotationDialog(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
-                                Row {
-                                    OutlinedButton(onClick = { generateRandom() }) {
-                                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Ещё раз")
+                                
+                                //  Иконки вместо текста
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { generateRandom() },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Сгенерировать ещё раз",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
                                     }
-                                    Spacer(Modifier.width(8.dp))
-                                    OutlinedButton(onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedRandomPwd))
-                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Копировать")
+                                    IconButton(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(generatedRandomPwd))
+                                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ContentCopy,
+                                            contentDescription = "Копировать пароль",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
