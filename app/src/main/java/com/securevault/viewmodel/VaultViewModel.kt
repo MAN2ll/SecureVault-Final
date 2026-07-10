@@ -48,6 +48,10 @@ class VaultViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    //  Все записи из всех профилей (для общего экспорта)
+    val allEntries: StateFlow<List<Entry>> = repository.allEntries
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _rotationEntries = MutableStateFlow<List<Entry>>(emptyList())
     val rotationEntries: StateFlow<List<Entry>> = _rotationEntries.asStateFlow()
     val favoritesOnly = MutableStateFlow(false)
@@ -109,7 +113,6 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteEntriesByProfileId(pid) }
     }
 
-    // Очистка mnemonic при random/manual
     fun replacePassword(
         entryId: String, newPassword: String, newHint: String?,
         newGenerationType: String, newMnemonicPhraseHint: String?,
@@ -149,7 +152,6 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult?.invoke(PasswordOperationResult.Error("Ошибка: ${e.message}")) }
     }
 
-    // Валидация всех replacements перед применением
     fun bulkReplacePasswords(replacements: List<BulkPasswordReplacement>, onResult: ((PasswordOperationResult) -> Unit)? = null) = viewModelScope.launch {
         try {
             val validationErrors = mutableListOf<String>()
@@ -303,27 +305,23 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-    //  Управляемая перекрёстная ротация с полной валидацией
     fun applyManagedShuffle(
         assignments: Map<String, String?>,
         onResult: (PasswordOperationResult) -> Unit
     ) = viewModelScope.launch {
         try {
-            // 1. Проверяем, что все назначения заполнены
             val incomplete = assignments.filter { it.value == null }
             if (incomplete.isNotEmpty()) {
                 onResult(PasswordOperationResult.Error("Не для всех записей выбран донор"))
                 return@launch
             }
 
-            // 2. Проверяем, что нет дубликатов доноров
             val sources = assignments.values.mapNotNull { it }
             if (sources.size != sources.toSet().size) {
                 onResult(PasswordOperationResult.Error("Один донор не может быть назначен двум получателям"))
                 return@launch
             }
 
-            // 3. Проверяем, что target != source
             for ((targetId, sourceId) in assignments) {
                 if (targetId == sourceId) {
                     onResult(PasswordOperationResult.Error("Запись не может получить свой же пароль"))
@@ -331,14 +329,12 @@ class VaultViewModel @Inject constructor(
                 }
             }
 
-            // 4. Получаем все записи
             val allEntries = assignments.keys.mapNotNull { repository.getById(it) }
             if (allEntries.size != assignments.size) {
                 onResult(PasswordOperationResult.Error("Не все записи найдены"))
                 return@launch
             }
 
-            // 5. ПРЕДВАРИТЕЛЬНАЯ ВАЛИДАЦИЯ всех пар
             val validationErrors = mutableListOf<String>()
             val validatedPairs = mutableListOf<Triple<Entry, Entry, String>>()
 
@@ -362,7 +358,6 @@ class VaultViewModel @Inject constructor(
                 validatedPairs.add(Triple(target, source, newPassword))
             }
 
-            // 6. Если есть ошибки — отменяем всю операцию
             if (validationErrors.isNotEmpty()) {
                 val errorMessage = buildString {
                     append("Не удалось выполнить перекрёстную ротацию:\n")
@@ -374,7 +369,6 @@ class VaultViewModel @Inject constructor(
                 return@launch
             }
 
-            // 7. Применяем все изменения
             val now = System.currentTimeMillis()
             for ((target, source, newPassword) in validatedPairs) {
                 val encryptedPwd = CryptoUtils.encrypt(newPassword)
@@ -402,12 +396,10 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  Передаём appContext для вычисления fingerprint истории
     suspend fun exportAllProfiles(): BackupData {
         return BackupManager.exportAllProfiles(repository, appContext)
     }
 
-    // Импорт backup с новым PIN (передаём appContext)
     suspend fun importBackup(
         backupData: BackupData,
         mode: ImportMode,
@@ -416,7 +408,6 @@ class VaultViewModel @Inject constructor(
         return BackupManager.importBackup(repository, backupData, mode, newPin, appContext)
     }
 
-    // Планирование фоновой проверки ротации
     fun scheduleRotationCheck(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
@@ -447,7 +438,6 @@ data class PasswordShufflePlanResult(
     val errorMessage: String?
 )
 
-// data class для bulk replacement
 data class BulkPasswordReplacement(
     val entryId: String,
     val newPassword: String,
