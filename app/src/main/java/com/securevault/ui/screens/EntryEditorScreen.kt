@@ -71,6 +71,8 @@ fun EntryEditorScreen(
     var rotationMonths by remember { mutableIntStateOf(6) }
     var isFavorite by remember { mutableStateOf(false) }
     var generationType by remember { mutableStateOf("random") }
+    var mnemonicPhraseHint by remember { mutableStateOf<String?>(null) }
+    var mnemonicOptionsJson by remember { mutableStateOf<String?>(null) }
 
     var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
@@ -84,11 +86,12 @@ fun EntryEditorScreen(
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
 
+    // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Загружаем ВСЕ поля существующей записи
     LaunchedEffect(existingEntry) {
         existingEntry?.let { entry ->
             service = entry.service
             username = entry.username
-            password = ""
+            password = "" // Пароль не загружаем для безопасности
             url = entry.url ?: ""
             notes = entry.notes ?: ""
             textHint = entry.textHint ?: ""
@@ -96,6 +99,8 @@ fun EntryEditorScreen(
             rotationMonths = entry.rotationPeriodMonths
             isFavorite = entry.isFavorite
             generationType = entry.generationType
+            mnemonicPhraseHint = entry.mnemonicPhraseHint
+            mnemonicOptionsJson = entry.mnemonicOptionsJson
             passwordChanged = false
         }
     }
@@ -105,7 +110,7 @@ fun EntryEditorScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (isNewEntry) "Новая запись" else "Редактировать",
+                        if (isNewEntry) "Новая запись" else "Изменить",
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -143,8 +148,10 @@ fun EntryEditorScreen(
 
                         val now = System.currentTimeMillis()
 
+                        // ✅ ИСПРАВЛЕНИЕ ПУНКТА 1: Для существующей записи используем .copy()
                         val finalEntry = if (existingEntry != null) {
                             if (passwordChanged) {
+                                // Пароль изменился — валидируем и шифруем
                                 val finalPassword = if (password.isBlank()) existingEntry.password else password
 
                                 val validation = PasswordValidator.validateNewPasswordForEntry(
@@ -161,22 +168,26 @@ fun EntryEditorScreen(
                                 val encryptedPwd = CryptoUtils.encrypt(finalPassword)
                                 val newFingerprint = PasswordValidator.buildPasswordFingerprint(finalPassword, context)
                                 val oldFingerprint = PasswordValidator.buildPasswordFingerprint(existingEntry.password, context)
+
+                                // ✅ Рассчитываем nextRotationDate
                                 val newNextRotationDate = if (rotationEnabled) {
-                                    val existingNextDate = existingEntry.nextRotationDate
-                                    if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
+                                    if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
                                     } else {
-                                        existingNextDate
+                                        existingEntry.nextRotationDate
                                     }
                                 } else {
                                     null
                                 }
 
+                                // ✅ Добавляем в историю только если пароль изменился
                                 existingEntry.addToPasswordHistory(
                                     oldPassword = existingEntry.password,
                                     generationType = existingEntry.generationType,
                                     oldPasswordFingerprint = oldFingerprint
                                 ).copy(
+                                    id = existingEntry.id, // ✅ Сохраняем ID
+                                    profileId = existingEntry.profileId, // ✅ Сохраняем profileId
                                     service = service,
                                     username = username,
                                     encryptedPassword = encryptedPwd,
@@ -189,15 +200,18 @@ fun EntryEditorScreen(
                                     isFavorite = isFavorite,
                                     lastChanged = now,
                                     generationType = generationType,
-                                    passwordFingerprint = newFingerprint
+                                    passwordFingerprint = newFingerprint,
+                                    mnemonicPhraseHint = mnemonicPhraseHint,
+                                    mnemonicOptionsJson = mnemonicOptionsJson,
+                                    createdAt = existingEntry.createdAt // ✅ Сохраняем createdAt
                                 )
                             } else {
+                                // ✅ Пароль НЕ менялся — не добавляем в историю
                                 val newNextRotationDate = if (rotationEnabled) {
-                                    val existingNextDate = existingEntry.nextRotationDate
-                                    if (existingNextDate == null || existingEntry.rotationPeriodMonths != rotationMonths) {
+                                    if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
                                     } else {
-                                        existingNextDate
+                                        existingEntry.nextRotationDate
                                     }
                                 } else {
                                     null
@@ -213,10 +227,14 @@ fun EntryEditorScreen(
                                     rotationPeriodMonths = rotationMonths,
                                     nextRotationDate = newNextRotationDate,
                                     isFavorite = isFavorite,
-                                    generationType = generationType
+                                    generationType = generationType,
+                                    mnemonicPhraseHint = mnemonicPhraseHint,
+                                    mnemonicOptionsJson = mnemonicOptionsJson,
+                                    lastChanged = now
                                 )
                             }
                         } else {
+                            // ✅ Новая запись
                             val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
                             if (!uniqueCheck.isValid) {
                                 saveErrorMessage = uniqueCheck.errorMessage
@@ -225,6 +243,11 @@ fun EntryEditorScreen(
                             }
 
                             val fingerprint = PasswordValidator.buildPasswordFingerprint(password, context)
+                            val nextRotationDate = if (rotationEnabled) {
+                                now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
+                            } else {
+                                null
+                            }
 
                             Entry.create(
                                 service = service,
@@ -237,8 +260,11 @@ fun EntryEditorScreen(
                                 textHint = textHint.ifBlank { null },
                                 rotationEnabled = rotationEnabled,
                                 rotationPeriodMonths = rotationMonths,
+                                nextRotationDate = nextRotationDate,
                                 isFavorite = isFavorite,
-                                generationType = generationType
+                                generationType = generationType,
+                                mnemonicPhraseHint = mnemonicPhraseHint,
+                                mnemonicOptionsJson = mnemonicOptionsJson
                             )
                         }
 
@@ -258,6 +284,7 @@ fun EntryEditorScreen(
                                 }
                             }
                         } else {
+                            // ✅ ИСПРАВЛЕНИЕ: Используем updateEntry для существующих
                             viewModel.updateEntry(finalEntry) { result ->
                                 isSaving = false
                                 when (result) {
@@ -815,7 +842,6 @@ private fun MnemonicGeneratorDialog(
     var includeServiceCode by remember { mutableStateOf(true) }
     var includeRotationCode by remember { mutableStateOf(true) }
 
-    //  Режим генерации
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
@@ -839,7 +865,6 @@ private fun MnemonicGeneratorDialog(
             return
         }
 
-        // Для TWO_USERS длина только чётная
         val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
             when {
                 targetLength <= 16 -> 16
@@ -899,7 +924,6 @@ private fun MnemonicGeneratorDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Переключатель режимов
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text("Режим", fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -936,7 +960,7 @@ private fun MnemonicGeneratorDialog(
                     value = phrase,
                     onValueChange = { phrase = it },
                     label = { Text("Мнемоническая фраза") },
-                    placeholder = { Text("например: метроном жёлтый камень") },
+                    placeholder = { Text("например: мой кот любит молоко") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -950,7 +974,6 @@ private fun MnemonicGeneratorDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Длина пароля
                 if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp)
@@ -1001,7 +1024,6 @@ private fun MnemonicGeneratorDialog(
                 }
 
                 if (variants.isNotEmpty()) {
-                    // Номер набора вынесен над кнопкой
                     Text(
                         "Набор №${(variantOffset / 5) + 1}",
                         fontSize = 11.sp,
@@ -1058,7 +1080,6 @@ private fun MnemonicGeneratorDialog(
                     }
                 }
 
-                // Короткая кнопка "Ещё варианты"
                 OutlinedButton(
                     onClick = { variantOffset += 5 },
                     modifier = Modifier.fillMaxWidth().height(44.dp),
