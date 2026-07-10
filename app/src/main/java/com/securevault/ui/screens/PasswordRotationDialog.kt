@@ -27,7 +27,6 @@ import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
 
-//  enum вынесен на верхний уровень файла
 enum class RotationMode { RANDOM, MNEMONIC, MANUAL, FROM_EXISTING }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,7 +95,9 @@ fun PasswordRotationDialog(
             includeRotationCode = includeRotationCode,
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
-            variantOffset = variantOffset
+            variantOffset = variantOffset,
+            separator = "",
+            enforceUniqueChars = true
         )
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
@@ -156,19 +157,51 @@ fun PasswordRotationDialog(
                                 Text("Параметры", fontWeight = FontWeight.Bold)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Длина: $randomLength", modifier = Modifier.weight(1f))
-                                    Slider(value = randomLength.toFloat(), onValueChange = { randomLength = it.toInt() }, valueRange = 8f..32f, steps = 24, modifier = Modifier.weight(2f))
+                                    Slider(
+                                        value = randomLength.toFloat(),
+                                        onValueChange = { randomLength = it.toInt() },
+                                        valueRange = 8f..32f,
+                                        steps = 24,
+                                        modifier = Modifier.weight(2f)
+                                    )
                                 }
-                                Row { Checkbox(checked = useUpper, onCheckedChange = { useUpper = it }); Text("A-Z", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = useDigits, onCheckedChange = { useDigits = it }); Text("0-9", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it }); Text("!@#", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
+                                    Text("A-Z", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
+                                    Text("0-9", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
+                                    Text("!@#", Modifier.padding(start = 8.dp))
+                                }
 
                                 if (generatedRandomPwd.isNotEmpty()) {
-                                    Text(generatedRandomPwd, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text(
+                                        generatedRandomPwd,
+                                        fontSize = 16.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                                 Row {
-                                    OutlinedButton(onClick = { generateRandom() }) { Icon(Icons.Default.Refresh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Ещё раз") }
+                                    OutlinedButton(onClick = { generateRandom() }) {
+                                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Ещё раз")
+                                    }
                                     Spacer(Modifier.width(8.dp))
-                                    OutlinedButton(onClick = { clipboardManager.setText(AnnotatedString(generatedRandomPwd)); android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Копировать") }
+                                    OutlinedButton(onClick = {
+                                        clipboardManager.setText(AnnotatedString(generatedRandomPwd))
+                                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }) {
+                                        Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Копировать")
+                                    }
                                 }
                             }
                         }
@@ -178,12 +211,29 @@ fun PasswordRotationDialog(
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2 — Два слова без разделителя", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                OutlinedTextField(value = phrase, onValueChange = { phrase = it }, label = { Text("Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
-                                Row { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp)) }
-                                Row { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации", Modifier.padding(start = 8.dp)) }
+                                OutlinedTextField(
+                                    value = phrase,
+                                    onValueChange = { phrase = it },
+                                    label = { Text("Мнемоническая фраза") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
+                                    Text("Leet-замены", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
+                                    Text("Код сервиса", Modifier.padding(start = 8.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
+                                    Text("Код ротации", Modifier.padding(start = 8.dp))
+                                }
 
-                                OutlinedButton(onClick = { variantOffset += variants.size }, modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { variantOffset += 5 },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text("Ещё варианты (набор №${(variantOffset / 5) + 2})")
@@ -193,12 +243,35 @@ fun PasswordRotationDialog(
                                     Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                     variants.forEachIndexed { index, result ->
                                         val isSelected = selectedVariantIndex == index
-                                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selectedVariantIndex = index },
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (isSelected)
+                                                    MaterialTheme.colorScheme.primaryContainer
+                                                else
+                                                    MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        ) {
                                             Column(modifier = Modifier.padding(8.dp)) {
                                                 Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                                Text(result.password, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                                                Text("Формат: два слова без разделителя", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                Text("Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(
+                                                    result.password,
+                                                    fontSize = 12.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    "Формат: два слова без разделителя",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    "Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}",
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
                                         }
                                         Spacer(Modifier.height(4.dp))
@@ -207,7 +280,6 @@ fun PasswordRotationDialog(
                             }
                         }
                     }
-                }
 
                     RotationMode.MANUAL -> {
                         OutlinedTextField(
@@ -221,7 +293,11 @@ fun PasswordRotationDialog(
                     RotationMode.FROM_EXISTING -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Выберите запись, пароль которой будет использован:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Выберите запись, пароль которой будет использован:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
                                 Spacer(Modifier.height(8.dp))
                                 if (availableEntries.isEmpty()) {
                                     Text("В этом профиле нет других записей.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
@@ -230,10 +306,20 @@ fun PasswordRotationDialog(
                                         items(availableEntries) { entry ->
                                             val isSelected = selectedExistingEntry?.id == entry.id
                                             Card(
-                                                modifier = Modifier.fillMaxWidth().clickable { selectedExistingEntry = entry },
-                                                colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { selectedExistingEntry = entry },
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = if (isSelected)
+                                                        MaterialTheme.colorScheme.primaryContainer
+                                                    else
+                                                        MaterialTheme.colorScheme.surfaceVariant
+                                                )
                                             ) {
-                                                Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                Row(
+                                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
                                                     Column(modifier = Modifier.weight(1f)) {
                                                         Text(entry.service, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                                         Text(entry.username, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -258,24 +344,37 @@ fun PasswordRotationDialog(
             Button(onClick = {
                 when (selectedMode) {
                     RotationMode.RANDOM -> {
-                        if (generatedRandomPwd.isBlank()) { showError = "Сгенерируйте пароль"; return@Button }
+                        if (generatedRandomPwd.isBlank()) {
+                            showError = "Сгенерируйте пароль"
+                            return@Button
+                        }
                         onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
                     }
                     RotationMode.MNEMONIC -> {
-                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) { showError = "Выберите вариант"; return@Button }
+                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) {
+                            showError = "Выберите вариант"
+                            return@Button
+                        }
                         val selected = variants[selectedVariantIndex]
                         onPasswordReplaced(selected.password, selected.mnemonicHint, "mnemonic", phrase, null)
                     }
                     RotationMode.MANUAL -> {
-                        if (manualPassword.isBlank()) { showError = "Введите пароль"; return@Button }
+                        if (manualPassword.isBlank()) {
+                            showError = "Введите пароль"
+                            return@Button
+                        }
                         onPasswordReplaced(manualPassword, null, "manual", null, null)
                     }
                     RotationMode.FROM_EXISTING -> {
-                        if (selectedExistingEntry == null) { showError = "Выберите запись"; return@Button }
+                        if (selectedExistingEntry == null) {
+                            showError = "Выберите запись"
+                            return@Button
+                        }
                         val passwordToUse = try {
                             selectedExistingEntry!!.password
                         } catch (e: Exception) {
-                            showError = "Не удалось расшифровать пароль выбранной записи"; return@Button
+                            showError = "Не удалось расшифровать пароль выбранной записи"
+                            return@Button
                         }
                         onPasswordReplaced(passwordToUse, null, "shuffled", null, null)
                     }
@@ -285,7 +384,9 @@ fun PasswordRotationDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Отмена") }
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
         }
     )
 }
