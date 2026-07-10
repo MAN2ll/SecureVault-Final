@@ -49,6 +49,10 @@ fun MnemonicGeneratorScreen(
     var separator by remember { mutableStateOf("") }
     var enforceUniqueChars by remember { mutableStateOf(true) }
 
+    // : Режим генерации
+    var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
+    var targetLength by remember { mutableIntStateOf(16) }
+
     var globalOffset by remember { mutableIntStateOf(0) }
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedVariantIndex by remember { mutableIntStateOf(-1) }
@@ -60,22 +64,34 @@ fun MnemonicGeneratorScreen(
             return
         }
 
+        //  Для режима двух пользователей длина должна быть чётной
+        val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+            when {
+                targetLength < 16 -> 16
+                targetLength % 2 != 0 -> targetLength + 1
+                else -> targetLength
+            }.coerceAtMost(20)
+        } else {
+            targetLength
+        }
+
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
-            targetLength = 16,
+            targetLength = effectiveLength,
             includeLeet = includeLeet,
             includeServiceCode = includeServiceCode,
             includeRotationCode = includeRotationCode,
             variantOffset = globalOffset,
             separator = separator,
-            enforceUniqueChars = enforceUniqueChars
+            enforceUniqueChars = enforceUniqueChars,
+            splitMode = splitMode
         )
 
         val results = MnemonicPasswordGenerator.generateVariants(options, count = 5)
 
         if (results.isEmpty()) {
-            errorMessage = "Не удалось создать все варианты по выбранным правилам. Увеличьте фразу или измените параметры."
+            errorMessage = "Не удалось создать варианты по выбранным правилам. Увеличьте фразу или измените параметры."
         } else {
             variants = results
             selectedVariantIndex = -1
@@ -103,6 +119,35 @@ fun MnemonicGeneratorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            //  Переключатель режимов
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
+                            onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER }
+                        )
+                        Text("Обычный пароль для одного пользователя", Modifier.padding(start = 8.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS,
+                            onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS }
+                        )
+                        Column(Modifier.padding(start = 8.dp)) {
+                            Text("Режим для двух пользователей")
+                            Text(
+                                "Один пароль на две равные части",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = phrase,
                 onValueChange = { phrase = it },
@@ -118,6 +163,40 @@ fun MnemonicGeneratorScreen(
                 placeholder = { Text("например: Gmail") },
                 modifier = Modifier.fillMaxWidth()
             )
+
+            //  Длина пароля
+            if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Длина: $targetLength", modifier = Modifier.weight(1f))
+                    Slider(
+                        value = targetLength.toFloat(),
+                        onValueChange = { targetLength = it.toInt() },
+                        valueRange = 12f..24f,
+                        steps = 12,
+                        modifier = Modifier.weight(2f)
+                    )
+                }
+            } else {
+                //  Для режима двух пользователей только чётные длины
+                Text("Длина пароля:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(16, 18, 20).forEach { length ->
+                        FilterChip(
+                            selected = targetLength == length,
+                            onClick = { targetLength = length },
+                            label = { Text("$length") }
+                        )
+                    }
+                }
+                Text(
+                    "Пароль будет разделён на две равные части по ${targetLength / 2} символов",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Text("Разделитель между частями:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
             Row(
@@ -197,7 +276,6 @@ fun MnemonicGeneratorScreen(
                             ) {
                                 Text(result.variantName, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                                 
-                                //  Иконка копирования вместо текста
                                 IconButton(
                                     onClick = {
                                         clipboardManager.setText(AnnotatedString(result.password))
@@ -221,26 +299,43 @@ fun MnemonicGeneratorScreen(
                             )
                             Spacer(Modifier.height(4.dp))
 
-                            Text(
-                                "Формат: два слова ${if (separator.isEmpty()) "без разделителя" else "с разделителем '$separator'"}",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                "Каждая часть усилена цифрами и спецсимволами",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            //  Информация о режиме
+                            if (result.splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+                                Text(
+                                    "Режим: один пароль на две равные части",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "Часть 1: ${result.part1?.take(10) ?: ""}... (${result.part1?.length ?: 0} символов)",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "Часть 2: ${result.part2?.take(10) ?: ""}... (${result.part2?.length ?: 0} символов)",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    "Режим: обычный пароль",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
                             Text(
                                 "Без повторов: ${if (result.hasUniqueChars) "Да" else "Нет"}",
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(
-                                "Подсказка: ${result.mnemonicHint}",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (result.mnemonicHint.isNotBlank()) {
+                                Text(
+                                    "Подсказка: ${result.mnemonicHint}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             Spacer(Modifier.height(8.dp))
 
@@ -260,7 +355,6 @@ fun MnemonicGeneratorScreen(
                     }
                 }
 
-                //  Кнопка с иконкой и коротким текстом
                 Button(
                     onClick = {
                         globalOffset += variants.size
