@@ -8,21 +8,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.securevault.security.MasterPasswordHasher
 
+//  sealed class позволяет использовать оператор 'is', как в оригинальном коде
+sealed class AuthState {
+    object SetupRequired : AuthState()
+    object Locked : AuthState()
+    object Unlocked : AuthState()
+    data class BruteForceLocked(val remainingMillis: Long) : AuthState()
+}
+
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
-    //  Вложенный enum, как ожидает оригинальный код
-    enum class AuthState {
-        SetupRequired,
-        Locked,
-        Unlocked,
-        BruteForceLocked
-    }
-
-    private val _authState = MutableStateFlow(checkInitialState())
+    private val _authState = MutableStateFlow<AuthState>(checkInitialState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    // оставлено для совместимости с вызовами типа authViewModel.remainingMillis
     private val _remainingMillis = MutableStateFlow(0L)
     val remainingMillis: StateFlow<Long> = _remainingMillis.asStateFlow()
 
@@ -30,23 +31,26 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateBruteForceState()
     }
 
-    //  Метод init() для совместимости с вызовами из SetupScreen/LockScreen
-    fun init() {
+    //  принимает vararg, чтобы избежать ошибки "Too many arguments", 
+    // если оригинальный код вызывал init с параметрами
+    @Suppress("UNUSED_PARAMETER")
+    fun init(vararg args: Any?) {
         updateBruteForceState()
     }
 
     private fun checkInitialState(): AuthState {
         val hasMasterPassword = prefs.contains("master_hash")
-        val isUnlocked = prefs.getBoolean("is_unlocked", false)
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
         
         if (bruteForceUntil > System.currentTimeMillis()) {
-            return AuthState.BruteForceLocked
+            val remaining = bruteForceUntil - System.currentTimeMillis()
+            _remainingMillis.value = remaining
+            return AuthState.BruteForceLocked(remaining)
         }
         
         return when {
             !hasMasterPassword -> AuthState.SetupRequired
-            isUnlocked -> AuthState.Unlocked
+            prefs.getBoolean("is_unlocked", false) -> AuthState.Unlocked
             else -> AuthState.Locked
         }
     }
@@ -55,18 +59,19 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
         val now = System.currentTimeMillis()
         if (bruteForceUntil > now) {
-            _authState.value = AuthState.BruteForceLocked
-            _remainingMillis.value = bruteForceUntil - now
+            val remaining = bruteForceUntil - now
+            _remainingMillis.value = remaining
+            _authState.value = AuthState.BruteForceLocked(remaining)
         } else if (bruteForceUntil > 0) {
             prefs.edit().remove("brute_force_until").apply()
-            _authState.value = AuthState.Locked
             _remainingMillis.value = 0L
+            _authState.value = AuthState.Locked
         }
     }
 
     fun attemptUnlock(password: String): Boolean {
         updateBruteForceState()
-        if (_authState.value == AuthState.BruteForceLocked) return false
+        if (_authState.value is AuthState.BruteForceLocked) return false
 
         val storedHash = prefs.getString("master_hash", null)
         val storedSalt = prefs.getString("master_salt", null)
@@ -98,14 +103,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             }
             val until = System.currentTimeMillis() + lockDuration
             editor.putLong("brute_force_until", until)
-            _remainingMillis.value = lockDuration
-            _authState.value = AuthState.BruteForceLocked
         }
         editor.apply()
+        updateBruteForceState()
     }
 
     fun setupMasterPassword(password: String) {
-        //  hash() принимает только password и возвращает HashResult
         val hashResult = MasterPasswordHasher.hash(password)
         prefs.edit()
             .putString("master_hash", hashResult.hash)
@@ -129,7 +132,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        //  hash() принимает только newPassword
         val hashResult = MasterPasswordHasher.hash(newPassword)
         prefs.edit()
             .putString("master_hash", hashResult.hash)
