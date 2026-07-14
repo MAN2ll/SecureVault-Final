@@ -99,7 +99,7 @@ fun PasswordViewDialog(
                         Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            //  visualTransformation удалён из Text, так как это недопустимый параметр
+                            //  visualTransformation удалён, так как это недопустимый параметр для Text
                             Text(
                                 text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
                                 fontSize = 14.sp,
@@ -152,7 +152,6 @@ fun PasswordViewDialog(
             title = { Text("Введите PIN профиля") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    androidx.compose.foundation.text.KeyboardOptions
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { pinInput = it; pinError = null },
