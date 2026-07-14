@@ -2,6 +2,9 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,107 +14,156 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToExport: () -> Unit,
-    onNavigateToChangePassword: () -> Unit
+    viewModel: AuthViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    
+    var showMasterPasswordDialog by remember { mutableStateOf(false) }
+    var pendingBiometricAction by remember { mutableStateOf<Boolean?>(null) } // true = включить, false = выключить
+    var masterPassword by remember { mutableStateOf("") }
+    var masterPasswordError by remember { mutableStateOf<String?>(null) }
+
+    val isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Общие настройки", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
-                    }
-                }
+                title = { Text("Настройки", fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-
-            SettingsCard(
-                icon = Icons.Default.Lock,
-                title = "Сменить мастер-пароль",
-                subtitle = "Обновить главный ключ шифрования",
-                onClick = onNavigateToChangePassword
-            )
-
-            HorizontalDivider()
-
-            Text("Данные", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-
-            SettingsCard(
-                icon = Icons.Default.Upload,
-                title = "Экспорт / импорт",
-                subtitle = "Полный backup профилей и паролей",
-                onClick = onNavigateToExport
-            )
-
-            HorizontalDivider()
-
-            Text("О приложении", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("SecureVault", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Версия 1.0.0", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    // : AMPG v2
-                    Text(
-                        "Безопасный менеджер паролей с многоуровневой защитой:\n" +
-                        "• AES-256-GCM шифрование\n" +
-                        "• Профили с PIN-кодами\n" +
-                        "• AMPG v2 — адаптивная мнемоническая генерация\n" +
-                        "• QR-коды с привязкой к устройству\n" +
-                        "• Умная ротация паролей\n" +
-                        "• Аудит безопасности\n" +
-                        "• Защищённый backup v3",
-                        fontSize = 12.sp
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Вход по отпечатку пальца", fontWeight = FontWeight.Medium, fontSize = 16.sp)
+                        Text(
+                            "Используйте биометрию для быстрого входа",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isBiometricEnabled,
+                        onCheckedChange = { newValue ->
+                            pendingBiometricAction = newValue
+                            showMasterPasswordDialog = true
+                        }
                     )
                 }
             }
         }
     }
+
+    // Диалог мастер-пароля перед изменением настройки биометрии
+    if (showMasterPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showMasterPasswordDialog = false },
+            title = { Text("Подтверждение") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Введите мастер-пароль для изменения настрое безопасности", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = masterPassword,
+                        onValueChange = { masterPassword = it; masterPasswordError = null },
+                        label = { Text("Мастер-пароль") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = masterPasswordError != null
+                    )
+                    if (masterPasswordError != null) {
+                        Text(masterPasswordError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (viewModel.attemptUnlock(masterPassword)) {
+                        showMasterPasswordDialog = false
+                        masterPassword = ""
+                        // Запускаем биометрическую проверку
+                        if (activity != null) {
+                            triggerBiometricSetup(activity, context, pendingBiometricAction == true, viewModel)
+                        }
+                    } else {
+                        masterPasswordError = "Неверный мастер-пароль"
+                    }
+                }) { Text("Подтвердить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMasterPasswordDialog = false; masterPassword = "" }) { Text("Отмена") }
+            }
+        )
+    }
 }
 
-@Composable
-private fun SettingsCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
+//  Логика включения/выключения биометрии
+private fun triggerBiometricSetup(
+    activity: FragmentActivity,
+    context: Context,
+    enable: Boolean,
+    viewModel: AuthViewModel
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+    if (!enable) {
+        // Выключение не требует биометрии, только мастер-пароль (который уже введен)
+        viewModel.setBiometricLoginEnabled(false)
+        return
     }
+
+    val biometricManager = BiometricManager.from(context)
+    val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+
+    if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+        // Показать Toast или Snackbar: "Биометрия недоступна на этом устройстве"
+        android.widget.Toast.makeText(context, "Биометрия недоступна на этом устройстве", android.widget.Toast.LENGTH_LONG).show()
+        return
+    }
+
+    val executor = ContextCompat.getMainExecutor(context)
+    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(result)
+            viewModel.setBiometricLoginEnabled(true)
+        }
+        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            // Отмена пользователем
+        }
+        override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            android.widget.Toast.makeText(context, "Ошибка биометрии", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    })
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Подтвердите включение биометрии")
+        .setSubtitle("Используйте отпечаток пальца или лицо")
+        .setNegativeButtonText("Отмена")
+        .build()
+
+    biometricPrompt.authenticate(promptInfo)
 }
