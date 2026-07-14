@@ -27,7 +27,8 @@ import com.securevault.viewmodel.AuthViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockScreen(
-    onUnlock: () -> Unit,
+    onUnlocked: () -> Unit,
+    onSetupRequired: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -38,27 +39,31 @@ fun LockScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var showBiometricPrompt by remember { mutableStateOf(false) }
 
-    //  Автоматический запуск биометрии при входе, если включена и не нужна недельная проверка
     LaunchedEffect(authState) {
-        if (authState is AuthViewModel.AuthState.Locked) {
-            if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
-                showBiometricPrompt = true
+        when (authState) {
+            is AuthViewModel.AuthState.SetupRequired -> onSetupRequired()
+            is AuthViewModel.AuthState.Unlocked -> onUnlocked()
+            is AuthViewModel.AuthState.Locked -> {
+                if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
+                    showBiometricPrompt = true
+                }
             }
+            else -> {}
         }
     }
 
-    // Обработчик биометрии
     if (showBiometricPrompt && activity != null) {
         val executor = ContextCompat.getMainExecutor(context)
         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
                 showBiometricPrompt = false
-                onUnlock() // Биометрия успешна, разблокируем
+                viewModel.unlockWithBiometric()
+                onUnlocked()
             }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
-                showBiometricPrompt = false // При ошибке/отмене просто показываем ввод пароля
+                showBiometricPrompt = false
             }
             override fun onAuthenticationFailed() {
                 super.onAuthenticationFailed()
@@ -76,26 +81,17 @@ fun LockScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
+        modifier = Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(24.dp))
-        
         Text("SecureVault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         
-        // Текст для недельной проверки
         if (viewModel.isMasterPasswordRequired()) {
-            Text(
-                "Для безопасности введите мастер-пароль",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Medium
-            )
+            Text("Для безопасности введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(16.dp))
         } else {
             Text("Введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -122,7 +118,7 @@ fun LockScreen(
         Button(
             onClick = {
                 if (viewModel.attemptUnlock(password)) {
-                    onUnlock()
+                    onUnlocked()
                 } else {
                     error = "Неверный мастер-пароль"
                     password = ""
@@ -133,7 +129,6 @@ fun LockScreen(
             Text("Разблокировать", fontSize = 16.sp)
         }
         
-        //  Кнопка ручного вызова биометрии, если она включена
         if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = { showBiometricPrompt = true }) {
