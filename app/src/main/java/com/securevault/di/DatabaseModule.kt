@@ -1,11 +1,9 @@
 package com.securevault.di
 
 import android.content.Context
-import androidx.room.Room
 import com.securevault.data.EntryDao
 import com.securevault.data.ProfileDao
 import com.securevault.data.VaultDatabase
-import com.securevault.data.VaultRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -35,13 +33,8 @@ object DatabaseModule {
         return database.profileDao()
     }
 
-    @Provides
-    @Singleton
-    fun provideVaultRepository(
-        entryDao: EntryDao,
-        profileDao: ProfileDao,
-        @ApplicationContext context: Context
-    ): VaultRepository {
-        return VaultRepository(entryDao, profileDao, context) // Адаптируй под конструктор твоего Repository
-    }
+    // provideVaultRepository
+    // Поскольку VaultRepository имеет @Inject constructor(entryDao, profileDao),
+    // Hilt автоматически создаст его экземпляр, используя предоставленные выше DAO.
+    // Это устраняет ошибку "Too many arguments" и "Duplicate binding".
 }
