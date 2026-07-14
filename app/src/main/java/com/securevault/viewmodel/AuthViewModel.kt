@@ -8,22 +8,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.securevault.security.MasterPasswordHasher
 
-//  sealed class позволяет использовать оператор 'is', как в оригинальном коде
-sealed class AuthState {
-    object SetupRequired : AuthState()
-    object Locked : AuthState()
-    object Unlocked : AuthState()
-    data class BruteForceLocked(val remainingMillis: Long) : AuthState()
-}
-
 class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
+    //  Вложенный sealed class для совместимости с AuthViewModel.AuthState.XXX
+    sealed class AuthState {
+        object SetupRequired : AuthState()
+        object Locked : AuthState()
+        object Unlocked : AuthState()
+        data class BruteForceLocked(val remainingMillis: Long) : AuthState()
+    }
+
     private val _authState = MutableStateFlow<AuthState>(checkInitialState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    //  оставлено для совместимости с вызовами типа authViewModel.remainingMillis
     private val _remainingMillis = MutableStateFlow(0L)
     val remainingMillis: StateFlow<Long> = _remainingMillis.asStateFlow()
 
@@ -31,8 +30,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateBruteForceState()
     }
 
-    //  принимает vararg, чтобы избежать ошибки "Too many arguments", 
-    // если оригинальный код вызывал init с параметрами
+    // ✅ ИСПРАВЛЕНИЕ: vararg для совместимости с вызовами init(...)
     @Suppress("UNUSED_PARAMETER")
     fun init(vararg args: Any?) {
         updateBruteForceState()
@@ -118,7 +116,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             .putInt("failed_attempts", 0)
             .putLong("last_master_password_confirmed_at", System.currentTimeMillis())
             .apply()
-
         _authState.value = AuthState.Unlocked
     }
 
@@ -138,7 +135,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             .putString("master_salt", hashResult.salt)
             .putLong("last_master_password_confirmed_at", System.currentTimeMillis())
             .apply()
-
         return true
     }
 
@@ -147,10 +143,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("is_unlocked", false).apply()
     }
 
-    fun isBiometricLoginEnabled(): Boolean {
-        return prefs.getBoolean("biometric_login_enabled", false)
-    }
-
+    // Методы для биометрии и недельной проверки
+    fun isBiometricLoginEnabled(): Boolean = prefs.getBoolean("biometric_login_enabled", false)
+    
     fun setBiometricLoginEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("biometric_login_enabled", enabled).apply()
     }
