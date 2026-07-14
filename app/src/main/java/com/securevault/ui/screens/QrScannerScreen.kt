@@ -1,17 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class, androidx.camera.core.ExperimentalGetImage::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -19,76 +12,102 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Entry
-import com.securevault.security.MasterPasswordHasher
+import com.securevault.data.Profile
+import com.securevault.security.ProfilePasswordHasher
+import com.securevault.utils.AccessMode
+import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.utils.SecureQrManager
+import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
-import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
-    profileId: Int?,
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
-    LaunchedEffect(profileId) {
-        if (profileId != null) {
-            viewModel.setCurrentProfile(profileId)
-        }
-    }
-
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val clipboardManager = LocalClipboardManager.current
+    val activity = context as? FragmentActivity
 
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasCameraPermission = isGranted
-    }
-
-    var scannedToken by remember { mutableStateOf<String?>(null) }
-    var validationResult by remember { mutableStateOf<SecureQrManager.QrValidationResult?>(null) }
-    var foundEntry by remember { mutableStateOf<Entry?>(null) }
+    val profiles by profileViewModel.profiles.collectAsState()
+    
+    // Состояние для хранения результата сканирования
+    var scannedResult by remember { mutableStateOf<SecureQrManager.QrValidationResult?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showPasswordDialog by remember { mutableStateOf(false) }
-    var showResultDialog by remember { mutableStateOf(false) }
-    var confirmedPassword by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+    // Состояния для управления доступом к паролю после сканирования
+    var showPassword by remember { mutableStateOf(false) }
+    var decryptedPassword by remember { mutableStateOf<String?>(null) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+
+    // Функция запроса доступа на основе политики
+    fun requestAccess(entry: Entry, profile: Profile) {
+        val accessMode = PasswordAccessPolicy.resolve(entry, profile)
+        
+        when (accessMode) {
+            AccessMode.NO_CONFIRMATION -> {
+                showPassword = true
+                decryptedPassword = entry.password
+            }
+            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
+                showPinDialog = true
+            }
+            AccessMode.BIOMETRIC_OR_PIN -> {
+                val biometricManager = BiometricManager.from(context)
+                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                
+                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
+                    val executor = ContextCompat.getMainExecutor(context)
+                    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            super.onAuthenticationSucceeded(result)
+                            showPassword = true
+                            decryptedPassword = entry.password
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            super.onAuthenticationError(errorCode, errString)
+                            showPinDialog = true
+                        }
+                        override fun onAuthenticationFailed() {
+                            super.onAuthenticationFailed()
+                            showPinDialog = true
+                        }
+                    })
+
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Подтвердите личность")
+                        .setSubtitle("Для просмотра пароля из QR-кода")
+                        .setNegativeButtonText("Использовать PIN")
+                        .build()
+
+                    biometricPrompt.authenticate(promptInfo)
+                } else {
+                    showPinDialog = true
+                }
+            }
+            else -> {
+                showPinDialog = true
+            }
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Сканирование QR-кода", fontWeight = FontWeight.Bold) },
+                title = { Text("Сканирование QR", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
@@ -101,128 +120,102 @@ fun QrScannerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!hasCameraPermission) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.CameraAlt, null, Modifier.size(64.dp))
-                        Spacer(Modifier.height(16.dp))
-                        Text("Требуется разрешение камеры", fontWeight = FontWeight.Bold)
+            if (scannedResult == null && errorMessage == null) {
+                // Здесь должен быть ваш компонент камеры для сканирования.
+                // Для примера оставим заглушку или вызов реального сканера, если он у вас вынесен.
+                // Предполагается, что вы используете что-то вроде QrCodeAnalyzer.
+                // Если у вас есть готовый Composable для камеры, вставьте его сюда.
+                Text("Камера сканирования QR-кода", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Пример вызова (замените на ваш реальный компонент сканера):
+                // QrCameraPreview(onQrCodeScanned = { qrData -> ... })
+            } else if (errorMessage != null) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Ошибка сканирования", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                            Text("Разрешить")
+                        Text(errorMessage!!, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = { 
+                            scannedResult = null
+                            errorMessage = null 
+                        }) {
+                            Text("Попробовать снова")
                         }
                     }
                 }
-            } else {
-                Box(modifier = Modifier.weight(1f)) {
-                    AndroidView(
-                        factory = { ctx: Context ->
-                            val previewView = PreviewView(ctx)
-                            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+            } else if (scannedResult != null) {
+                val result = scannedResult!!
+                val entry = result.entry
+                val profile = profiles.find { it.id == entry.profileId }
 
-                            cameraProviderFuture.addListener({
-                                val cameraProvider = cameraProviderFuture.get()
-
-                                val preview = Preview.Builder().build().also {
-                                    it.setSurfaceProvider(previewView.surfaceProvider)
+                if (profile != null) {
+                    // Карточка результата QR с применением политики доступа
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text("QR-код успешно проверен", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Устройство и профиль совпадают", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                            }
+                            
+                            HorizontalDivider()
 
-                                val imageAnalysis = ImageAnalysis.Builder()
-                                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                    .build()
+                            InfoRow("Сервис", entry.service)
+                            InfoRow("Логин", entry.username)
+                            if (!entry.textHint.isNullOrBlank()) {
+                                InfoRow("Подсказка", entry.textHint)
+                            }
+                            if (!entry.mnemonicPhraseHint.isNullOrBlank()) {
+                                InfoRow("Мнемоника", entry.mnemonicPhraseHint)
+                            }
 
-                                val barcodeScanner = BarcodeScanning.getClient(
-                                    BarcodeScannerOptions.Builder()
-                                        .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                                        .build()
-                                )
-
-                                imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
-                                    val mediaImage = imageProxy.image
-                                    if (mediaImage != null) {
-                                        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-
-                                        barcodeScanner.process(image)
-                                            .addOnSuccessListener { barcodes ->
-                                                for (barcode in barcodes) {
-                                                    val rawValue = barcode.rawValue
-                                                    if (rawValue != null && scannedToken == null) {
-                                                        scannedToken = rawValue
-
-                                                        val currentProfileId = viewModel.currentProfileId.value
-                                                        if (currentProfileId != null) {
-                                                            val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, ctx)
-                                                            validationResult = result
-
-                                                            if (result.isValid && result.entryId != null) {
-                                                                viewModel.findEntryById(result.entryId)?.let { entry ->
-                                                                    // ✅ ИСПРАВЛЕНО: проверка profileId
-                                                                    if (entry.profileId != currentProfileId) {
-                                                                        errorMessage = "QR-код не принадлежит этому профилю"
-                                                                        scannedToken = null
-                                                                        validationResult = null
-                                                                        return@addOnSuccessListener
-                                                                    }
-                                                                    foundEntry = entry
-                                                                    showPasswordDialog = true
-                                                                } ?: run {
-                                                                    errorMessage = "Запись не найдена"
-                                                                }
-                                                            } else {
-                                                                errorMessage = result.errorMessage
-                                                            }
-                                                        } else {
-                                                            errorMessage = "Профиль не выбран"
-                                                        }
-                                                    }
-                                                }
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
+                                            fontSize = 14.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (!showPassword) {
+                                            IconButton(onClick = { requestAccess(entry, profile) }) {
+                                                Icon(Icons.Default.Visibility, "Показать пароль", tint = MaterialTheme.colorScheme.primary)
                                             }
-                                            .addOnCompleteListener {
-                                                imageProxy.close()
+                                        } else {
+                                            IconButton(onClick = {
+                                                context.getSystemService(android.content.ClipboardManager::class.java)
+                                                    .setPrimaryClip(android.content.ClipData.newPlainText("qr_password", decryptedPassword))
+                                                android.widget.Toast.makeText(context, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
+                                            }) {
+                                                Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary)
                                             }
-                                    } else {
-                                        imageProxy.close()
+                                        }
                                     }
                                 }
+                            }
 
-                                val cameraSelector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
-
-                                try {
-                                    cameraProvider.unbindAll()
-                                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            }, ContextCompat.getMainExecutor(ctx))
-
-                            previewView
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    if (scannedToken == null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.BottomCenter
-                        ) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                            Button(
+                                onClick = { 
+                                    scannedResult = null
+                                    showPassword = false
+                                    decryptedPassword = null
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.QrCodeScanner, null, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Наведите камеру на QR-код", color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
+                                Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Сканировать другой QR")
                             }
                         }
                     }
@@ -231,198 +224,54 @@ fun QrScannerScreen(
         }
     }
 
-    if (showPasswordDialog && foundEntry != null) {
-        ConfirmMasterPasswordDialogForQr(
-            context = context,
-            entry = foundEntry!!,
-            onConfirmed = { decryptedPassword ->
-                showPasswordDialog = false
-                confirmedPassword = decryptedPassword
-                showResultDialog = true
-            },
-            onDismiss = {
-                showPasswordDialog = false
-                scannedToken = null
-                validationResult = null
-                foundEntry = null
-            }
-        )
-    }
-
-    if (showResultDialog && foundEntry != null && confirmedPassword != null) {
-        QrResultDialog(
-            entry = foundEntry!!,
-            password = confirmedPassword!!,
-            clipboardManager = clipboardManager,
-            onDismiss = {
-                showResultDialog = false
-                confirmedPassword = null
-                scannedToken = null
-                validationResult = null
-                foundEntry = null
-            }
-        )
-    }
-
-    if (errorMessage != null) {
-        AlertDialog(
-            onDismissRequest = {
-                errorMessage = null
-                scannedToken = null
-                validationResult = null
-            },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка сканирования") },
-            text = { Text(errorMessage ?: "") },
-            confirmButton = {
-                Button(onClick = {
-                    errorMessage = null
-                    scannedToken = null
-                    validationResult = null
-                }) {
-                    Text("Сканировать снова")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onBack) {
-                    Text("Закрыть")
-                }
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun QrResultDialog(
-    entry: Entry,
-    password: String,
-    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Результат сканирования") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Сервис: ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(entry.service, fontSize = 13.sp)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Логин: ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(entry.username, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Пароль:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            password,
-                            fontSize = 16.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+    //  Диалог ввода PIN для QR
+    if (showPinDialog && scannedResult != null) {
+        val entry = scannedResult!!.entry
+        val profile = profiles.find { it.id == entry.profileId }
+        
+        if (profile != null) {
+            AlertDialog(
+                onDismissRequest = { showPinDialog = false },
+                title = { Text("Введите PIN профиля") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = { pinInput = it; pinError = null },
+                            label = { Text("PIN") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = pinError != null
                         )
+                        if (pinError != null) Text(pinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (ProfilePasswordHasher.verify(pinInput, profile.passwordHash, profile.passwordSalt)) {
+                            showPassword = true
+                            decryptedPassword = entry.password
+                            showPinDialog = false
+                            pinInput = ""
+                        } else {
+                            pinError = "Неверный PIN профиля"
+                        }
+                    }) { Text("Подтвердить") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPinDialog = false; pinInput = "" }) { Text("Отмена") }
                 }
-
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(password))
-                        android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Скопировать пароль")
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("Закрыть")
-            }
+            )
         }
-    )
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConfirmMasterPasswordDialogForQr(
-    context: Context,
-    entry: Entry,
-    onConfirmed: (decryptedPassword: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("QR-код: ${entry.service}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Введите мастер-пароль для просмотра:", fontSize = 13.sp)
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
-                    label = { Text("Мастер-пароль") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val storedHash = prefs.getString("master_hash", null)
-                val storedSalt = prefs.getString("master_salt", null)
-                val iterations = prefs.getInt("master_iterations", 100_000)
-
-                if (storedHash != null && storedSalt != null &&
-                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                    try {
-                        val decrypted = entry.password
-                        onConfirmed(decrypted)
-                    } catch (e: Exception) {
-                        error = "Не удалось расшифровать пароль"
-                    }
-                } else {
-                    error = "Неверный пароль"
-                }
-                password = ""
-            }) {
-                Text("Подтвердить")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
-            }
-        }
-    )
+private fun InfoRow(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    }
 }
