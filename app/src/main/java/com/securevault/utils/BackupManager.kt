@@ -77,12 +77,10 @@ object BackupManager {
                     throw Exception("Не удалось расшифровать пароль '${entry.service}': ${e.message}")
                 }
 
-                // Расшифровываем историю паролей
                 val portableHistory = entry.getPasswordHistory().mapNotNull { item ->
                     item.encryptedOldPassword?.let { encrypted ->
                         try {
                             val plainOldPassword = CryptoUtils.decrypt(encrypted)
-                            // fingerprint всегда пересчитывается на текущем устройстве
                             val fingerprint = if (context != null) {
                                 PasswordValidator.buildPasswordFingerprint(plainOldPassword, context)
                             } else {
@@ -121,10 +119,11 @@ object BackupManager {
                     lastChanged = entry.lastChanged,
                     passwordHistoryJson = entry.passwordHistoryJson,
                     passwordFingerprint = entry.passwordFingerprint,
-                    portableHistory = portableHistory
+                    portableHistory = portableHistory,
+                    passwordAccessMode = entry.passwordAccessMode
                 )
             }
-            BackupProfile(profile.id, profile.name, backupEntries)
+            BackupProfile(profile.id, profile.name, backupEntries, profile.passwordAccessMode)
         }
         return BackupData(profiles = backupProfiles)
     }
@@ -155,7 +154,8 @@ object BackupManager {
                         val newProfile = Profile(
                             name = uniqueName,
                             passwordHash = pinHash,
-                            passwordSalt = pinSalt
+                            passwordSalt = pinSalt,
+                            passwordAccessMode = backupProfile.passwordAccessMode ?: AccessMode.PIN_REQUIRED.value
                         )
                         repository.insertProfile(newProfile).toInt()
                     }
@@ -166,7 +166,8 @@ object BackupManager {
                             val newProfile = Profile(
                                 name = backupProfile.name,
                                 passwordHash = pinHash,
-                                passwordSalt = pinSalt
+                                passwordSalt = pinSalt,
+                                passwordAccessMode = backupProfile.passwordAccessMode ?: AccessMode.PIN_REQUIRED.value
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
@@ -178,7 +179,8 @@ object BackupManager {
                             val newProfile = Profile(
                                 name = backupProfile.name,
                                 passwordHash = pinHash,
-                                passwordSalt = pinSalt
+                                passwordSalt = pinSalt,
+                                passwordAccessMode = backupProfile.passwordAccessMode ?: AccessMode.PIN_REQUIRED.value
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
@@ -188,7 +190,6 @@ object BackupManager {
                 profileMapping[backupProfile.oldProfileId] = newProfileId
                 importedProfiles++
 
-                //  Для MERGE получаем существующие записи для проверки дубликатов
                 val existingEntriesInProfile = if (mode == ImportMode.MERGE_IF_EXISTS) {
                     repository.getByProfileId(newProfileId).associateBy { "${it.service}||${it.username}" }
                 } else {
@@ -197,7 +198,6 @@ object BackupManager {
 
                 for (backupEntry in backupProfile.entries) {
                     try {
-                        //  Проверка дубликатов для MERGE
                         val key = "${backupEntry.service}||${backupEntry.username}"
                         if (mode == ImportMode.MERGE_IF_EXISTS && key in existingEntriesInProfile) {
                             errors.add("Пропущено: ${backupEntry.service} / ${backupEntry.username} — запись уже есть в профиле")
@@ -205,7 +205,6 @@ object BackupManager {
                             continue
                         }
 
-                        //  fingerprint всегда пересчитывается на текущем устройстве
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
@@ -223,7 +222,8 @@ object BackupManager {
                             rotationPeriodMonths = backupEntry.rotationPeriodMonths,
                             generationType = backupEntry.generationType,
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
-                            mnemonicOptionsJson = backupEntry.mnemonicOptionsJson
+                            mnemonicOptionsJson = backupEntry.mnemonicOptionsJson,
+                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value
                         ).copy(
                             nextRotationDate = backupEntry.nextRotationDate,
                             createdAt = backupEntry.createdAt,
@@ -251,7 +251,6 @@ object BackupManager {
         )
     }
 
-    //  fingerprint всегда пересчитывается на текущем устройстве
     private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?, context: Context): String? {
         if (portableHistory.isNullOrEmpty()) return null
 
@@ -259,7 +258,6 @@ object BackupManager {
             val jsonArray = JSONArray()
             for (item in portableHistory) {
                 val encrypted = CryptoUtils.encrypt(item.plainOldPassword)
-                //  Всегда пересчитываем fingerprint на текущем устройстве
                 val fingerprint = PasswordValidator.buildPasswordFingerprint(item.plainOldPassword, context)
 
                 val obj = JSONObject().apply {
