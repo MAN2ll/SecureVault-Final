@@ -9,17 +9,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Profile::class, Entry::class],
-    version = 9, //  Поднята версия до 9
+    version = 9,
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
-    abstract fun vaultDao(): VaultDao
+    //  VaultDao заменён на конкретные DAO
+    abstract fun entryDao(): EntryDao
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         @Volatile
         private var INSTANCE: VaultDatabase? = null
 
-        //  Миграция для новых полей
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE entries ADD COLUMN password_access_mode TEXT NOT NULL DEFAULT 'INHERIT'")
@@ -34,7 +35,6 @@ abstract class VaultDatabase : RoomDatabase() {
                     VaultDatabase::class.java,
                     "securevault_database"
                 )
-                // Добавьте сюда ваши старые миграции, если они есть (MIGRATION_6_7, MIGRATION_7_8)
                 .addMigrations(MIGRATION_8_9)
                 .build()
                 INSTANCE = instance
