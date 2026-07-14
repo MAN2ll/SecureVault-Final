@@ -30,7 +30,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateBruteForceState()
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: vararg для совместимости с вызовами init(...)
+    // vararg для совместимости с вызовами init(...)
     @Suppress("UNUSED_PARAMETER")
     fun init(vararg args: Any?) {
         updateBruteForceState()
@@ -141,6 +141,17 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun lock() {
         _authState.value = AuthState.Locked
         prefs.edit().putBoolean("is_unlocked", false).apply()
+    }
+
+        // Метод для разблокировки через биометрию
+    fun unlockWithBiometric() {
+        _authState.value = AuthState.Unlocked
+        prefs.edit()
+            .putBoolean("is_unlocked", true)
+            // При успешной биометрии также обновляем время, чтобы сбросить недельный таймер, 
+            // так как биометрия считается легитимным подтверждением личности.
+            .putLong("last_master_password_confirmed_at", System.currentTimeMillis())
+            .apply()
     }
 
     // Методы для биометрии и недельной проверки
