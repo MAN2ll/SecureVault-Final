@@ -2,11 +2,13 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,174 +19,127 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.security.BruteForceGuard
 import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockScreen(
-    onUnlocked: () -> Unit,
-    onSetupRequired: () -> Unit,
+    onUnlock: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
-    //  ИНИЦИАЛИЗАЦИЯ AuthViewModel
     val context = LocalContext.current
-    LaunchedEffect(Unit) {
-        viewModel.init(context)
-    }
-    
+    val activity = context as? FragmentActivity
     val authState by viewModel.authState.collectAsState()
+
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var showBiometricPrompt by remember { mutableStateOf(false) }
 
+    //  Автоматический запуск биометрии при входе, если включена и не нужна недельная проверка
     LaunchedEffect(authState) {
-        when (authState) {
-            is AuthViewModel.AuthState.Unlocked -> onUnlocked()
-            is AuthViewModel.AuthState.SetupRequired -> onSetupRequired()
-            else -> {}
+        if (authState is AuthViewModel.AuthState.Locked) {
+            if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
+                showBiometricPrompt = true
+            }
         }
     }
 
-    Scaffold { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
+    // Обработчик биометрии
+    if (showBiometricPrompt && activity != null) {
+        val executor = ContextCompat.getMainExecutor(context)
+        val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                showBiometricPrompt = false
+                onUnlock() // Биометрия успешна, разблокируем
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                showBiometricPrompt = false // При ошибке/отмене просто показываем ввод пароля
+            }
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                showBiometricPrompt = false
+            }
+        })
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Разблокировать SecureVault")
+            .setSubtitle("Используйте отпечаток пальца или лицо")
+            .setNegativeButtonText("Использовать мастер-пароль")
+            .build()
+
+        biometricPrompt.authenticate(promptInfo)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(24.dp))
+        
+        Text("SecureVault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        
+        // Текст для недельной проверки
+        if (viewModel.isMasterPasswordRequired()) {
+            Text(
+                "Для безопасности введите мастер-пароль",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(16.dp))
+        } else {
+            Text("Введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(16.dp))
+        }
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it; error = null },
+            label = { Text("Мастер-пароль") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            isError = error != null
+        )
+        
+        if (error != null) {
+            Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                if (viewModel.attemptUnlock(password)) {
+                    onUnlock()
+                } else {
+                    error = "Неверный мастер-пароль"
+                    password = ""
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxWidth(0.9f)
-            ) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-
-                Text(
-                    "SecureVault",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    "Введите мастер-пароль",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Предупреждение о блокировке
-                when (val state = authState) {
-                    is AuthViewModel.AuthState.BruteForceLocked -> {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Warning,
-                                    null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        "Слишком много попыток",
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                    val seconds = (state.remainingMillis / 1000) + 1
-                                    Text(
-                                        "Подождите $seconds сек.",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    else -> {
-                        val warning = BruteForceGuard.getAttemptsWarning()
-                        if (warning != null) {
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Warning,
-                                        null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        warning,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
-                    label = { Text("Мастер-пароль") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = error != null
-                )
-
-                if (error != null) {
-                    Text(
-                        error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
-                    )
-                }
-
-                Button(
-                    onClick = {
-                        if (password.isNotBlank()) {
-                            val success = viewModel.attemptUnlock(password)
-                            if (!success && authState !is AuthViewModel.AuthState.BruteForceLocked) {
-                                error = "Неверный пароль"
-                            }
-                            password = ""
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = password.isNotBlank() && authState !is AuthViewModel.AuthState.BruteForceLocked
-                ) {
-                    Text("Разблокировать")
-                }
-
-                // Счётчик попыток
-                val attempts = BruteForceGuard.getFailedAttempts()
-                if (attempts > 0) {
-                    Text(
-                        "Неудачных попыток: $attempts",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
+            Text("Разблокировать", fontSize = 16.sp)
+        }
+        
+        //  Кнопка ручного вызова биометрии, если она включена
+        if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = { showBiometricPrompt = true }) {
+                Icon(Icons.Default.Fingerprint, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Войти по отпечатку")
             }
         }
     }
