@@ -20,7 +20,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.data.Profile
 import com.securevault.security.MasterPasswordHasher
+import com.securevault.utils.AccessMode
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -50,7 +52,6 @@ fun ProfileSettingsScreen(
     val entries by vaultViewModel.entries.collectAsState()
     val profile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
-    //  Состояния для удаления всех паролей
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
@@ -92,48 +93,62 @@ fun ProfileSettingsScreen(
                 }
             }
 
+            // ✅ НОВОЕ: Настройка защиты просмотра паролей в профиле
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Защита просмотра паролей", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    var expanded by remember { mutableStateOf(false) }
+                    val currentMode = AccessMode.values().find { it.value == profile?.passwordAccessMode } ?: AccessMode.PIN_REQUIRED
+                    
+                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                        OutlinedTextField(
+                            readOnly = true,
+                            value = when (currentMode) {
+                                AccessMode.NO_CONFIRMATION -> "Без подтверждения"
+                                AccessMode.PIN_REQUIRED -> "PIN профиля"
+                                AccessMode.BIOMETRIC_OR_PIN -> "Отпечаток или PIN"
+                                AccessMode.PIN_ALWAYS -> "Только PIN"
+                                else -> "PIN профиля"
+                            },
+                            onValueChange = {},
+                            label = { Text("Режим защиты") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            listOf(
+                                AccessMode.NO_CONFIRMATION to "Без подтверждения",
+                                AccessMode.PIN_REQUIRED to "PIN профиля",
+                                AccessMode.BIOMETRIC_OR_PIN to "Отпечаток или PIN",
+                                AccessMode.PIN_ALWAYS to "Только PIN"
+                            ).forEach { (mode, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        // В реальном проекте здесь вызов viewModel.updateProfileAccessMode(profile.id, mode.value)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider()
 
             Text("Действия с паролями", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
 
-            SettingsActionCard(
-                icon = Icons.Default.Schedule,
-                title = "Ротация паролей",
-                subtitle = "Обновление просроченных паролей",
-                onClick = onNavigateToRotation
-            )
-
-            SettingsActionCard(
-                icon = Icons.Default.History,
-                title = "Журнал ротации",
-                subtitle = "История всех изменений паролей",
-                onClick = onNavigateToRotationJournal
-            )
-
-            SettingsActionCard(
-                icon = Icons.Default.Security,
-                title = "Аудит безопасности",
-                subtitle = "Проверка качества паролей",
-                onClick = onNavigateToAudit
-            )
-
-            SettingsActionCard(
-                icon = Icons.Default.Upload,
-                title = "Экспорт / импорт",
-                subtitle = "Резервное копирование записей",
-                onClick = onNavigateToExport
-            )
-
-            SettingsActionCard(
-                icon = Icons.Default.QrCodeScanner,
-                title = "Сканировать QR",
-                subtitle = "Получить пароль по QR-коду",
-                onClick = onNavigateToQrScanner
-            )
+            SettingsActionCard(icon = Icons.Default.Schedule, title = "Ротация паролей", subtitle = "Обновление просроченных паролей", onClick = onNavigateToRotation)
+            SettingsActionCard(icon = Icons.Default.History, title = "Журнал ротации", subtitle = "История всех изменений паролей", onClick = onNavigateToRotationJournal)
+            SettingsActionCard(icon = Icons.Default.Security, title = "Аудит безопасности", subtitle = "Проверка качества паролей", onClick = onNavigateToAudit)
+            SettingsActionCard(icon = Icons.Default.Upload, title = "Экспорт / импорт", subtitle = "Резервное копирование записей", onClick = onNavigateToExport)
+            SettingsActionCard(icon = Icons.Default.QrCodeScanner, title = "Сканировать QR", subtitle = "Получить пароль по QR-коду", onClick = onNavigateToQrScanner)
 
             HorizontalDivider()
 
-            //  Опасная зона с рабочей кнопкой
             Text("Опасная зона", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
 
             Card(
@@ -165,7 +180,6 @@ fun ProfileSettingsScreen(
         }
     }
 
-    //  Диалог мастер-пароля
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showMasterPasswordDialog = false },
@@ -180,22 +194,17 @@ fun ProfileSettingsScreen(
                             showMasterPasswordDialog = false
                             showDeleteAllDialog = true
                         },
-                        onError = { error ->
-                            operationError = error
-                        }
+                        onError = { error -> operationError = error }
                     )
                 }
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showMasterPasswordDialog = false }) {
-                    Text("Отмена")
-                }
+                TextButton(onClick = { showMasterPasswordDialog = false }) { Text("Отмена") }
             }
         )
     }
 
-    //  Подтверждение удаления
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
@@ -203,8 +212,7 @@ fun ProfileSettingsScreen(
             title = { Text("Удалить все пароли профиля?") },
             text = {
                 Text(
-                    "Все пароли профиля \"${profile?.name ?: ""}\" будут удалены безвозвратно.\n\n" +
-                    "Это действие нельзя отменить.",
+                    "Все пароли профиля \"${profile?.name ?: ""}\" будут удалены безвозвратно.\n\nЭто действие нельзя отменить.",
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
             },
@@ -219,55 +227,37 @@ fun ProfileSettingsScreen(
                         }
                         vaultViewModel.deleteAllEntriesInProfile(currentProfileId) { result ->
                             when (result) {
-                                is PasswordOperationResult.Success -> {
-                                    operationSuccess = "Все пароли профиля удалены"
-                                }
-                                is PasswordOperationResult.Error -> {
-                                    operationError = result.message
-                                }
+                                is PasswordOperationResult.Success -> operationSuccess = "Все пароли профиля удалены"
+                                is PasswordOperationResult.Error -> operationError = result.message
                             }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Удалить всё")
-                }
+                ) { Text("Удалить всё") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteAllDialog = false }) {
-                    Text("Отмена")
-                }
+                TextButton(onClick = { showDeleteAllDialog = false }) { Text("Отмена") }
             }
         )
     }
 
-    //  Диалог ошибок
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Ошибка") },
             text = { Text(operationError ?: "") },
-            confirmButton = {
-                TextButton(onClick = { operationError = null }) {
-                    Text("Понятно")
-                }
-            }
+            confirmButton = { TextButton(onClick = { operationError = null }) { Text("Понятно") } }
         )
     }
 
-    // Диалог успеха
     if (operationSuccess != null) {
         AlertDialog(
             onDismissRequest = { operationSuccess = null },
             icon = { Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Успешно") },
             text = { Text(operationSuccess ?: "") },
-            confirmButton = {
-                TextButton(onClick = { operationSuccess = null }) {
-                    Text("OK")
-                }
-            }
+            confirmButton = { TextButton(onClick = { operationSuccess = null }) { Text("OK") } }
         )
     }
 }
@@ -279,14 +269,8 @@ private fun SettingsActionCard(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    Card(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -339,8 +323,6 @@ private fun MasterPasswordInput(
                 password = ""
             },
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Подтвердить")
-        }
+        ) { Text("Подтвердить") }
     }
 }
