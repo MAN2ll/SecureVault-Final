@@ -12,7 +12,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
-    //  Вложенный sealed class для совместимости с AuthViewModel.AuthState.XXX
     sealed class AuthState {
         object SetupRequired : AuthState()
         object Locked : AuthState()
@@ -30,7 +29,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateBruteForceState()
     }
 
-    // vararg для совместимости с вызовами init(...)
     @Suppress("UNUSED_PARAMETER")
     fun init(vararg args: Any?) {
         updateBruteForceState()
@@ -80,12 +78,21 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             prefs.edit().putInt("failed_attempts", 0).apply()
             _authState.value = AuthState.Unlocked
             prefs.edit().putBoolean("is_unlocked", true).apply()
+            //  Обновляем таймер ТОЛЬКО при вводе мастер-пароля
             prefs.edit().putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
             true
         } else {
             incrementFailedAttempts()
             false
         }
+    }
+
+    //  Биометрия НЕ сбрасывает недельный таймер мастер-пароля
+    fun unlockWithBiometric() {
+        _authState.value = AuthState.Unlocked
+        prefs.edit()
+            .putBoolean("is_unlocked", true)
+            .apply()
     }
 
     private fun incrementFailedAttempts() {
@@ -143,18 +150,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("is_unlocked", false).apply()
     }
 
-        // Метод для разблокировки через биометрию
-    fun unlockWithBiometric() {
-        _authState.value = AuthState.Unlocked
-        prefs.edit()
-            .putBoolean("is_unlocked", true)
-            // При успешной биометрии также обновляем время, чтобы сбросить недельный таймер, 
-            // так как биометрия считается легитимным подтверждением личности.
-            .putLong("last_master_password_confirmed_at", System.currentTimeMillis())
-            .apply()
-    }
-
-    // Методы для биометрии и недельной проверки
     fun isBiometricLoginEnabled(): Boolean = prefs.getBoolean("biometric_login_enabled", false)
     
     fun setBiometricLoginEnabled(enabled: Boolean) {
