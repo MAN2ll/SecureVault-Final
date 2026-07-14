@@ -26,11 +26,17 @@ class ProfileViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    fun insertProfile(name: String, password: String, onResult: (PasswordOperationResult) -> Unit) {
+    //  ПОДДЕРЖКА ПРОФИЛЯ БЕЗ PIN: pin может быть null или пустым
+    fun insertProfile(name: String, pin: String?, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
-                val salt = ProfilePasswordHasher.generateSalt()
-                val hash = ProfilePasswordHasher.hash(password, salt)
+                val (hash, salt) = if (!pin.isNullOrBlank()) {
+                    val s = ProfilePasswordHasher.generateSalt()
+                    val h = ProfilePasswordHasher.hash(pin, s)
+                    h to s
+                } else {
+                    "" to ""
+                }
                 val profile = Profile(name = name, passwordHash = hash, passwordSalt = salt)
                 repository.insertProfile(profile)
                 onResult(PasswordOperationResult.Success)
@@ -40,17 +46,15 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    //  Для совместимости с ProfileListScreen
+    // Совместимость со старыми вызовами
     fun insert(name: String, pin: String) {
-        insertProfile(name, pin) { /* результат игнорируется в этом контексте */ }
+        insertProfile(name, pin) { }
     }
 
-    //  Для совместимости с ProfileListScreen
     fun verifyPassword(profile: Profile, pin: String): Boolean {
         return ProfilePasswordHasher.verify(pin, profile.passwordHash, profile.passwordSalt)
     }
 
-    //  Для совместимости с ProfileListScreen (используем getByProfileId)
     fun hasEntriesInProfile(profileId: Int, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val entries = repository.getByProfileId(profileId)
@@ -61,6 +65,32 @@ class ProfileViewModel @Inject constructor(
     fun updateProfile(profile: Profile) {
         viewModelScope.launch {
             repository.updateProfile(profile)
+        }
+    }
+
+    //  Установка или изменение PIN профиля
+    fun setProfilePin(profile: Profile, newPin: String, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val salt = ProfilePasswordHasher.generateSalt()
+                val hash = ProfilePasswordHasher.hash(newPin, salt)
+                repository.updateProfile(profile.copy(passwordHash = hash, passwordSalt = salt))
+                onResult(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    //  Удаление PIN профиля (требует подтверждения мастер-паролем на уровне UI)
+    fun removeProfilePin(profile: Profile, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.updateProfile(profile.copy(passwordHash = "", passwordSalt = ""))
+                onResult(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
