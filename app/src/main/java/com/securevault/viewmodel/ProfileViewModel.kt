@@ -40,6 +40,24 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    //  Для совместимости с ProfileListScreen
+    fun insert(name: String, pin: String) {
+        insertProfile(name, pin) { /* результат игнорируется в этом контексте */ }
+    }
+
+    //  Для совместимости с ProfileListScreen
+    fun verifyPassword(profile: Profile, pin: String): Boolean {
+        return ProfilePasswordHasher.verify(pin, profile.passwordHash, profile.passwordSalt)
+    }
+
+    //  Для совместимости с ProfileListScreen (используем getByProfileId)
+    fun hasEntriesInProfile(profileId: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val entries = repository.getByProfileId(profileId)
+            onResult(entries.isNotEmpty())
+        }
+    }
+
     fun updateProfile(profile: Profile) {
         viewModelScope.launch {
             repository.updateProfile(profile)
@@ -49,9 +67,11 @@ class ProfileViewModel @Inject constructor(
     fun deleteProfile(profileId: Int, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
-                val entries = repository.getEntriesByProfileId(profileId)
+                val entries = repository.getByProfileId(profileId)
                 if (entries.isNotEmpty()) {
-                    onResult(PasswordOperationResult.Error("Нельзя удалить профиль, пока в нём есть пароли."))
+                    onResult(PasswordOperationResult.Error(
+                        "Нельзя удалить профиль, пока в нём есть пароли. Сначала удалите все пароли профиля."
+                    ))
                     return@launch
                 }
                 repository.deleteProfile(profileId)
