@@ -6,68 +6,40 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import dagger.Module
-import dagger.Provides
-import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
-
-val MIGRATION_6_7 = object : Migration(6, 7) {
-    override fun migrate(database: SupportSQLiteDatabase) {
-        database.execSQL("ALTER TABLE entries ADD COLUMN generation_type TEXT NOT NULL DEFAULT 'random'")
-    }
-}
-
-val MIGRATION_7_8 = object : Migration(7, 8) {
-    override fun migrate(database: SupportSQLiteDatabase) {
-        database.execSQL("ALTER TABLE entries ADD COLUMN password_fingerprint TEXT")
-        database.execSQL("ALTER TABLE entries ADD COLUMN mnemonic_phrase_hint TEXT")
-        database.execSQL("ALTER TABLE entries ADD COLUMN mnemonic_options_json TEXT")
-    }
-}
 
 @Database(
-    entities = [Entry::class, Profile::class],
-    version = 8,
+    entities = [Profile::class, Entry::class],
+    version = 9, //  Поднята версия до 9
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
-    abstract fun entryDao(): EntryDao
-    abstract fun profileDao(): ProfileDao
+    abstract fun vaultDao(): VaultDao
 
     companion object {
         @Volatile
         private var INSTANCE: VaultDatabase? = null
+
+        //  Миграция для новых полей
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE entries ADD COLUMN password_access_mode TEXT NOT NULL DEFAULT 'INHERIT'")
+                database.execSQL("ALTER TABLE profiles ADD COLUMN password_access_mode TEXT NOT NULL DEFAULT 'PIN_REQUIRED'")
+            }
+        }
 
         fun getDatabase(context: Context): VaultDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     VaultDatabase::class.java,
-                    "vault_db"
+                    "securevault_database"
                 )
-                .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+                // Добавьте сюда ваши старые миграции, если они есть (MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_8_9)
                 .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
-}
-
-@Module
-@InstallIn(SingletonComponent::class)
-object DatabaseModule {
-    @Provides
-    @Singleton
-    fun provideDatabase(@ApplicationContext context: Context) = VaultDatabase.getDatabase(context)
-
-    @Provides
-    @Singleton
-    fun provideEntryDao(db: VaultDatabase) = db.entryDao()
-
-    @Provides
-    @Singleton
-    fun provideProfileDao(db: VaultDatabase) = db.profileDao()
 }
