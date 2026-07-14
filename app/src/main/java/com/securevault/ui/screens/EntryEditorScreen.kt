@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.security.MasterPasswordHasher
+import com.securevault.utils.AccessMode
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
@@ -47,17 +48,16 @@ fun EntryEditorScreen(
     val isNewEntry = id == null || id == "new"
     val context = LocalContext.current
 
-    //  Устанавливаем профиль при открытии
+    //  Используем allEntries для надёжного поиска записи
+    val allEntries by viewModel.allEntries.collectAsState()
+    val existingEntry = remember(id, allEntries) {
+        if (isNewEntry) null else allEntries.find { e -> e.id == id }
+    }
+
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
         }
-    }
-
-    //  Используем allEntries вместо entries
-    val allEntries by viewModel.allEntries.collectAsState()
-    val existingEntry = remember(id, allEntries) {
-        if (isNewEntry) null else allEntries.find { e -> e.id == id }
     }
 
     val currentProfileId by viewModel.currentProfileId.collectAsState()
@@ -81,6 +81,9 @@ fun EntryEditorScreen(
     var generationType by remember { mutableStateOf("random") }
     var mnemonicPhraseHint by remember { mutableStateOf<String?>(null) }
     var mnemonicOptionsJson by remember { mutableStateOf<String?>(null) }
+    
+    // Состояние для режима защиты записи
+    var passwordAccessMode by remember { mutableStateOf(AccessMode.INHERIT.value) }
 
     var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
@@ -108,6 +111,7 @@ fun EntryEditorScreen(
             generationType = entry.generationType
             mnemonicPhraseHint = entry.mnemonicPhraseHint
             mnemonicOptionsJson = entry.mnemonicOptionsJson
+            passwordAccessMode = entry.passwordAccessMode ?: AccessMode.INHERIT.value // Загружаем режим защиты
             passwordChanged = false
         }
     }
@@ -206,10 +210,10 @@ fun EntryEditorScreen(
                                     passwordFingerprint = newFingerprint,
                                     mnemonicPhraseHint = mnemonicPhraseHint,
                                     mnemonicOptionsJson = mnemonicOptionsJson,
-                                    createdAt = existingEntry.createdAt
+                                    createdAt = existingEntry.createdAt,
+                                    passwordAccessMode = passwordAccessMode // Сохраняем режим защиты
                                 )
                             } else {
-                                // ✅ ИСПРАВЛЕНИЕ: nextRotationDate = null при выключении ротации
                                 val newNextRotationDate = if (rotationEnabled) {
                                     if (!existingEntry.rotationEnabled || existingEntry.rotationPeriodMonths != rotationMonths) {
                                         now + (rotationMonths * 30L * 24 * 60 * 60 * 1000)
@@ -233,7 +237,8 @@ fun EntryEditorScreen(
                                     generationType = generationType,
                                     mnemonicPhraseHint = mnemonicPhraseHint,
                                     mnemonicOptionsJson = mnemonicOptionsJson,
-                                    lastChanged = now
+                                    lastChanged = now,
+                                    passwordAccessMode = passwordAccessMode //  Сохраняем режим защиты
                                 )
                             }
                         } else {
@@ -265,7 +270,8 @@ fun EntryEditorScreen(
                                 isFavorite = isFavorite,
                                 generationType = generationType,
                                 mnemonicPhraseHint = mnemonicPhraseHint,
-                                mnemonicOptionsJson = mnemonicOptionsJson
+                                mnemonicOptionsJson = mnemonicOptionsJson,
+                                passwordAccessMode = passwordAccessMode //  Передаём режим защиты при создании
                             ).copy(
                                 nextRotationDate = nextRotationDate
                             )
@@ -540,6 +546,58 @@ fun EntryEditorScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // Настройка защиты просмотра для конкретной записи
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Защита этой записи", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    var expanded by remember { mutableStateOf(false) }
+                    val currentMode = AccessMode.values().find { it.value == passwordAccessMode } ?: AccessMode.INHERIT
+                    
+                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                        OutlinedTextField(
+                            readOnly = true,
+                            value = when (currentMode) {
+                                AccessMode.INHERIT -> "Как в профиле"
+                                AccessMode.NO_CONFIRMATION -> "Без подтверждения"
+                                AccessMode.PIN_REQUIRED -> "PIN профиля"
+                                AccessMode.BIOMETRIC_OR_PIN -> "Отпечаток или PIN"
+                                AccessMode.PIN_ALWAYS -> "Только PIN"
+                                else -> "Как в профиле"
+                            },
+                            onValueChange = {},
+                            label = { Text("Режим защиты") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            listOf(
+                                AccessMode.INHERIT to "Как в профиле",
+                                AccessMode.NO_CONFIRMATION to "Без подтверждения",
+                                AccessMode.PIN_REQUIRED to "PIN профиля",
+                                AccessMode.BIOMETRIC_OR_PIN to "Отпечаток или PIN",
+                                AccessMode.PIN_ALWAYS to "Только PIN"
+                            ).forEach { (mode, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        passwordAccessMode = mode.value
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "Опасные действия (удаление, экспорт) всегда требуют мастер-пароль.",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
 
