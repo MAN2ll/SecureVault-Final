@@ -1,158 +1,63 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+package com.securevault.viewmodel
 
-package com.securevault.ui.screens
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.securevault.data.Profile
+import com.securevault.data.VaultRepository
+import com.securevault.security.ProfilePasswordHasher
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.viewmodel.AuthViewModel
+@HiltViewModel
+class ProfileViewModel @Inject constructor(
+    private val repository: VaultRepository,
+    application: Application
+) : AndroidViewModel(application) {
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LockScreen(
-    onUnlocked: () -> Unit,
-    onSetupRequired: () -> Unit,
-    viewModel: AuthViewModel = hiltViewModel()
-) {
-    val context = LocalContext.current
-    val activity = context as? FragmentActivity
-    val authState by viewModel.authState.collectAsState()
-
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var showBiometricPrompt by remember { mutableStateOf(false) }
-
-    // Проверка состояния и автозапуск биометрии
-    LaunchedEffect(authState) {
-        when (authState) {
-            is AuthViewModel.AuthState.SetupRequired -> {
-                onSetupRequired()
-            }
-            is AuthViewModel.AuthState.Unlocked -> {
-                onUnlocked()
-            }
-            is AuthViewModel.AuthState.Locked -> {
-                //  Биометрия предлагается только если не прошла неделя
-                if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
-                    showBiometricPrompt = true
-                }
-            }
-            else -> {}
-        }
-    }
-
-    // Обработчик биометрии
-    if (showBiometricPrompt && activity != null) {
-        val executor = ContextCompat.getMainExecutor(context)
-        val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                showBiometricPrompt = false
-                //  Обновляем состояние и вызываем переход
-                viewModel.unlockWithBiometric()
-                onUnlocked()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                showBiometricPrompt = false // При отмене просто показываем ввод пароля
-            }
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                showBiometricPrompt = false
-            }
-        })
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Разблокировать SecureVault")
-            .setSubtitle("Используйте отпечаток пальца или лицо")
-            .setNegativeButtonText("Использовать мастер-пароль")
-            .build()
-
-        biometricPrompt.authenticate(promptInfo)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(24.dp))
-        
-        Text("SecureVault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        
-        //  Текст для недельной проверки
-        if (viewModel.isMasterPasswordRequired()) {
-            Text(
-                "Для безопасности введите мастер-пароль",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(16.dp))
-        } else {
-            Text("Введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(16.dp))
-        }
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it; error = null },
-            label = { Text("Мастер-пароль") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            isError = error != null
+    val profiles: StateFlow<List<Profile>> = repository.allProfiles
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
-        
-        if (error != null) {
-            Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+
+    fun insertProfile(name: String, password: String, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val salt = ProfilePasswordHasher.generateSalt()
+                val hash = ProfilePasswordHasher.hash(password, salt)
+                val profile = Profile(name = name, passwordHash = hash, passwordSalt = salt)
+                repository.insertProfile(profile)
+                onResult(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
+    }
 
-        Spacer(Modifier.height(24.dp))
+    fun updateProfile(profile: Profile) {
+        viewModelScope.launch {
+            repository.updateProfile(profile)
+        }
+    }
 
-        Button(
-            onClick = {
-                if (viewModel.attemptUnlock(password)) {
-                    onUnlocked()
-                } else {
-                    error = "Неверный мастер-пароль"
-                    password = ""
+    fun deleteProfile(profileId: Int, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val entries = repository.getEntriesByProfileId(profileId)
+                if (entries.isNotEmpty()) {
+                    onResult(PasswordOperationResult.Error("Нельзя удалить профиль, пока в нём есть пароли."))
+                    return@launch
                 }
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp)
-        ) {
-            Text("Разблокировать", fontSize = 16.sp)
-        }
-        
-        //  Кнопка ручного вызова биометрии (если разрешено)
-        if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { showBiometricPrompt = true }) {
-                Icon(Icons.Default.Fingerprint, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Войти по отпечатку")
+                repository.deleteProfile(profileId)
+                onResult(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
         }
     }
