@@ -23,7 +23,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _authState = MutableStateFlow<AuthState>(checkInitialState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    // оставлено для совместимости с вызовами типа authViewModel.remainingMillis
+    //  оставлено для совместимости с вызовами типа authViewModel.remainingMillis
     private val _remainingMillis = MutableStateFlow(0L)
     val remainingMillis: StateFlow<Long> = _remainingMillis.asStateFlow()
 
