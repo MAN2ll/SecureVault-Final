@@ -9,7 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-//  ТОП-УРОВНЕВАЯ ФУНКЦИЯ для совместимости с вызовами из ReminderScreen и RotationScreen
+//  функция на верхнем уровне для вызовов вида `extractShortPhrase(textHint)`
 fun extractShortPhrase(textHint: String?): String? {
     if (textHint.isNullOrBlank()) return null
     val parts = textHint.split("+")
@@ -130,6 +130,12 @@ data class Entry(
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
 
     companion object {
+        //  дублируем в companion object для вызовов вида `Entry.extractShortPhrase(textHint)`
+        @JvmStatic
+        fun extractShortPhrase(textHint: String?): String? {
+            return com.securevault.data.extractShortPhrase(textHint)
+        }
+
         fun create(
             service: String, username: String, password: String, profileId: Int,
             passwordFingerprint: String, url: String? = null, notes: String? = null,
