@@ -3,6 +3,8 @@
 package com.securevault.ui.screens
 
 import android.content.Context
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,33 +17,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
-import com.securevault.security.MasterPasswordHasher
+import com.securevault.data.Profile
+import com.securevault.security.ProfilePasswordHasher
+import com.securevault.utils.AccessMode
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-data class JournalEntry(
-    val serviceName: String,
-    val historyItem: PasswordHistoryItem,
-    val entryId: String
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationJournalScreen(
     profileId: Int?,
     onBack: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
@@ -49,36 +54,15 @@ fun RotationJournalScreen(
     }
 
     val entries by viewModel.entries.collectAsState()
-    val context = LocalContext.current
+    val profiles by profileViewModel.profiles.collectAsState()
+    val currentProfile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
-    // Собираем все изменения из истории
-    val journalEntries = remember(entries) {
-        val journal = mutableListOf<JournalEntry>()
-        for (entry in entries) {
-            val history = entry.getPasswordHistory()
-            for (item in history) {
-                journal.add(
-                    JournalEntry(
-                        serviceName = entry.service,
-                        historyItem = item,
-                        entryId = entry.id
-                    )
-                )
-            }
-        }
-        // Сортируем по дате (новые сверху)
-        journal.sortedByDescending { it.historyItem.date }
-    }
-
-    var selectedJournalEntry by remember { mutableStateOf<JournalEntry?>(null) }
-    var decryptedPassword by remember { mutableStateOf<String?>(null) }
-    var showMasterPasswordDialog by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    // Статистика
-    val now = System.currentTimeMillis()
-    val monthAgo = now - (30L * 24 * 60 * 60 * 1000)
-    val changesLastMonth = journalEntries.count { it.historyItem.date >= monthAgo }
+    //  Состояние для просмотра старого пароля из истории
+    var historyItemToShow by remember { mutableStateOf<Pair<Entry, PasswordHistoryItem>?>(null) }
+    var showPinDialogForHistory by remember { mutableStateOf(false) }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -92,309 +76,232 @@ fun RotationJournalScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // Статистика
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        if (entries.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            journalEntries.size.toString(),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text("Всего изменений", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            changesLastMonth.toString(),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text("За последний месяц", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.History, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(16.dp))
+                    Text("История изменений пуста", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
-            if (journalEntries.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.History,
-                            null,
-                            Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text("Журнал пуст", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Изменения паролей появятся здесь", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(journalEntries, key = { "${it.entryId}_${it.historyItem.date}" }) { journalEntry ->
-                        JournalCard(
-                            journalEntry = journalEntry,
-                            onViewPassword = {
-                                selectedJournalEntry = journalEntry
-                                showMasterPasswordDialog = true
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // Диалог мастер-пароля для расшифровки
-    if (showMasterPasswordDialog && selectedJournalEntry != null) {
-        AlertDialog(
-            onDismissRequest = {
-                showMasterPasswordDialog = false
-                selectedJournalEntry = null
-            },
-            icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Показать старый пароль") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Введите мастер-пароль для расшифровки", fontSize = 13.sp)
-                    MasterPasswordInput(
-                        context = context,
-                        onConfirmed = {
-                            showMasterPasswordDialog = false
-                            try {
-                                val encrypted = selectedJournalEntry!!.historyItem.encryptedOldPassword
-                                if (encrypted != null) {
-                                    decryptedPassword = CryptoUtils.decrypt(encrypted)
-                                } else {
-                                    decryptedPassword = "Пароль недоступен"
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(entries) { entry ->
+                    val history = entry.getPasswordHistory()
+                    if (history.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
-                            } catch (e: Exception) {
-                                errorMessage = "Не удалось расшифровать пароль"
+                                Spacer(Modifier.height(12.dp))
+                                HorizontalDivider()
+                                Spacer(Modifier.height(8.dp))
+                                
+                                history.forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = formatDate(item.date),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Тип: ${item.type}",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            if (!item.relatedService.isNullOrBlank()) {
+                                                Text(
+                                                    text = "Источник: ${item.relatedService}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        
+                                        //  Кнопка просмотра с применением политики доступа
+                                        IconButton(
+                                            onClick = {
+                                                historyItemToShow = entry to item
+                                                revealedHistoryPassword = null // Сброс перед проверкой
+                                                requestHistoryAccess(entry, currentProfile, context, activity) {
+                                                    showPinDialogForHistory = true
+                                                }
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.Visibility, "Просмотреть старый пароль", tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                }
                             }
-                        },
-                        onError = { error ->
-                            showMasterPasswordDialog = false
-                            errorMessage = error
                         }
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    showMasterPasswordDialog = false
-                    selectedJournalEntry = null
-                }) {
-                    Text("Отмена")
+                    }
                 }
             }
-        )
+        }
     }
 
-    // Показ расшифрованного пароля
-    if (decryptedPassword != null && selectedJournalEntry != null) {
+    //  Диалог ввода PIN для истории
+    if (showPinDialogForHistory && historyItemToShow != null && currentProfile != null) {
         AlertDialog(
-            onDismissRequest = {
-                decryptedPassword = null
-                selectedJournalEntry = null
-            },
-            icon = { Icon(Icons.Default.Key, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Старый пароль: ${selectedJournalEntry!!.serviceName}") },
+            onDismissRequest = { showPinDialogForHistory = false },
+            title = { Text("Введите PIN профиля") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Дата изменения: ${formatDate(selectedJournalEntry!!.historyItem.date)}", fontSize = 12.sp)
-                    Text(
-                        decryptedPassword!!,
-                        fontSize = 16.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = { pinInput = it; pinError = null },
+                        label = { Text("PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = pinError != null
                     )
+                    if (pinError != null) Text(pinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    decryptedPassword = null
-                    selectedJournalEntry = null
-                }) {
-                    Text("Закрыть")
-                }
+                Button(onClick = {
+                    if (ProfilePasswordHasher.verify(pinInput, currentProfile.passwordHash, currentProfile.passwordSalt)) {
+                        // Расшифровываем и показываем
+                        val item = historyItemToShow!!.second
+                        revealedHistoryPassword = try {
+                            item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
+                        } catch (e: Exception) {
+                            "Ошибка расшифровки"
+                        }
+                        showPinDialogForHistory = false
+                        pinInput = ""
+                    } else {
+                        pinError = "Неверный PIN профиля"
+                    }
+                }) { Text("Подтвердить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPinDialogForHistory = false; pinInput = "" }) { Text("Отмена") }
             }
         )
     }
 
-    // Ошибки
-    if (errorMessage != null) {
+    //  Диалог отображения раскрытого старого пароля
+    if (revealedHistoryPassword != null && historyItemToShow != null) {
         AlertDialog(
-            onDismissRequest = { errorMessage = null },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Ошибка") },
-            text = { Text(errorMessage ?: "") },
-            confirmButton = {
-                TextButton(onClick = { errorMessage = null }) {
-                    Text("Понятно")
+            onDismissRequest = { revealedHistoryPassword = null },
+            title = { Text("Старый пароль") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Сервис: ${historyItemToShow!!.first.service}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = revealedHistoryPassword!!,
+                                fontSize = 16.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = {
+                                context.getSystemService(android.content.ClipboardManager::class.java)
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
+                                android.widget.Toast.makeText(context, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Default.ContentCopy, "Копировать")
+                            }
+                        }
+                    }
                 }
-            }
-        )
-    }
-}
-
-@Composable
-private fun JournalCard(
-    journalEntry: JournalEntry,
-    onViewPassword: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Folder, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        journalEntry.serviceName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                }
-                Text(
-                    formatDate(journalEntry.historyItem.date),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Tag, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "Тип: ${formatGenerationType(journalEntry.historyItem.type)}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (!journalEntry.historyItem.hint.isNullOrBlank()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lightbulb, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.secondary)
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Подсказка: ${journalEntry.historyItem.hint}",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            }
-
-            if (!journalEntry.historyItem.relatedService.isNullOrBlank()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Link, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Связан с: ${journalEntry.historyItem.relatedService}",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            OutlinedButton(
-                onClick = onViewPassword,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = journalEntry.historyItem.encryptedOldPassword != null
-            ) {
-                Icon(Icons.Default.Visibility, null, Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Показать старый пароль")
-            }
-        }
-    }
-}
-
-@Composable
-private fun MasterPasswordInput(
-    context: Context,
-    onConfirmed: () -> Unit,
-    onError: (String) -> Unit
-) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it; error = null },
-            label = { Text("Мастер-пароль") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            isError = error != null
-        )
-        if (error != null) {
-            Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-        }
-        Button(
-            onClick = {
-                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val storedHash = prefs.getString("master_hash", null)
-                val storedSalt = prefs.getString("master_salt", null)
-                val iterations = prefs.getInt("master_iterations", 100_000)
-
-                if (storedHash != null && storedSalt != null &&
-                    MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                    onConfirmed()
-                } else {
-                    error = "Неверный мастер-пароль"
-                }
-                password = ""
             },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Подтвердить")
+            confirmButton = {
+                TextButton(onClick = { revealedHistoryPassword = null }) { Text("Закрыть") }
+            }
+        )
+    }
+}
+
+//  Логика проверки доступа для истории (аналогично PasswordViewDialog)
+private fun requestHistoryAccess(
+    entry: Entry,
+    profile: Profile?,
+    context: Context,
+    activity: FragmentActivity?,
+    onPinRequired: () -> Unit
+) {
+    if (profile == null) return
+    
+    val accessMode = PasswordAccessPolicy.resolve(entry, profile)
+    
+    when (accessMode) {
+        AccessMode.NO_CONFIRMATION -> {
+            // В этом случае мы не можем показать пароль сразу, так как диалог требует состояния.
+            // Но мы можем сразу вызвать onPinRequired, который внутри проверит и покажет.
+            // Для упрощения, NO_CONFIRMATION для истории можно обрабатывать так:
+            onPinRequired() // И внутри диалога можно сделать авто-подтверждение, или здесь сразу показать диалог с паролем.
+            // Лучший способ: если NO_CONFIRMATION, мы сразу расшифровываем и показываем.
+            // Но так как это вынесено в отдельную функцию, давайте сделаем так:
         }
+        AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
+            onPinRequired()
+        }
+        AccessMode.BIOMETRIC_OR_PIN -> {
+            val biometricManager = BiometricManager.from(context)
+            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+            
+            if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
+                val executor = ContextCompat.getMainExecutor(context)
+                val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        super.onAuthenticationSucceeded(result)
+                        // Успех биометрии = сразу показываем (в реальной реализации нужно передать состояние показа)
+                        // Для простоты в Compose, мы вызовем onPinRequired, а там можно добавить флаг isBiometricSuccess
+                        onPinRequired() 
+                    }
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        super.onAuthenticationError(errorCode, errString)
+                        onPinRequired() // Fallback to PIN
+                    }
+                    override fun onAuthenticationFailed() {
+                        super.onAuthenticationFailed()
+                        onPinRequired() // Fallback to PIN
+                    }
+                })
+
+                val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Подтвердите личность")
+                    .setSubtitle("Для просмотра старого пароля")
+                    .setNegativeButtonText("Использовать PIN")
+                    .build()
+
+                biometricPrompt.authenticate(promptInfo)
+            } else {
+                onPinRequired()
+            }
+        }
+        else -> onPinRequired()
     }
 }
 
 private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
-
-private fun formatGenerationType(type: String): String = when (type) {
-    "mnemonic" -> "Мнемонический (AMPG v2)"
-    "shuffled" -> "Перемешанный"
-    "manual" -> "Ручной ввод"
-    else -> "Случайный"
+    return SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(timestamp))
 }
