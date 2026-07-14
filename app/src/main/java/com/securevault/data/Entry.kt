@@ -3,6 +3,7 @@ package com.securevault.data
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.securevault.utils.AccessMode
 import com.securevault.utils.CryptoUtils
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,13 +29,13 @@ data class Entry(
     @ColumnInfo(name = "generation_type") val generationType: String = "random",
     @ColumnInfo(name = "password_fingerprint") val passwordFingerprint: String? = null,
     @ColumnInfo(name = "mnemonic_phrase_hint") val mnemonicPhraseHint: String? = null,
-    @ColumnInfo(name = "mnemonic_options_json") val mnemonicOptionsJson: String? = null
+    @ColumnInfo(name = "mnemonic_options_json") val mnemonicOptionsJson: String? = null,
+    @ColumnInfo(name = "password_access_mode") val passwordAccessMode: String = AccessMode.INHERIT.value
 ) {
     val password: String get() = CryptoUtils.decrypt(encryptedPassword)
 
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         if (passwordHistoryJson.isNullOrBlank()) return emptyList()
-
         return try {
             val jsonArray = JSONArray(passwordHistoryJson)
             val result = mutableListOf<PasswordHistoryItem>()
@@ -71,23 +72,13 @@ data class Entry(
                     val hash = parts[0]
                     val date = parts[1].toLongOrNull() ?: 0L
                     val type = if (parts.size >= 3) parts[2] else "unknown"
-                    result.add(
-                        PasswordHistoryItem(
-                            passwordHash = hash,
-                            passwordFingerprint = "",
-                            date = date,
-                            type = type
-                        )
-                    )
+                    result.add(PasswordHistoryItem(passwordHash = hash, passwordFingerprint = "", date = date, type = type))
                 }
             }
-        } catch (e: Exception) {
-            // ignore
-        }
+        } catch (e: Exception) { /* ignore */ }
         return result
     }
 
-    //  fingerprint передаётся извне (из ViewModel, где есть Context)
     fun addToPasswordHistory(
         oldPassword: String,
         generationType: String,
@@ -96,15 +87,10 @@ data class Entry(
         relatedEntryId: String? = null,
         hint: String? = null
     ): Entry {
-        val encryptedOld = try {
-            CryptoUtils.encrypt(oldPassword)
-        } catch (e: Exception) {
-            null
-        }
-
+        val encryptedOld = try { CryptoUtils.encrypt(oldPassword) } catch (e: Exception) { null }
         val newItem = PasswordHistoryItem(
             encryptedOldPassword = encryptedOld,
-            passwordHash = oldPasswordFingerprint,  // используем fingerprint как hash
+            passwordHash = oldPasswordFingerprint,
             passwordFingerprint = oldPasswordFingerprint,
             date = System.currentTimeMillis(),
             type = generationType,
@@ -112,127 +98,50 @@ data class Entry(
             relatedEntryId = relatedEntryId,
             hint = hint
         )
-
         val currentHistory = getPasswordHistory().toMutableList()
         currentHistory.add(0, newItem)
         val trimmed = currentHistory.take(10)
-
         val jsonArray = JSONArray()
         for (item in trimmed) {
-            val obj = JSONObject()
-            obj.put("encryptedOldPassword", item.encryptedOldPassword ?: JSONObject.NULL)
-            obj.put("passwordHash", item.passwordHash)
-            obj.put("passwordFingerprint", item.passwordFingerprint)
-            obj.put("date", item.date)
-            obj.put("type", item.type)
-            obj.put("relatedService", item.relatedService ?: JSONObject.NULL)
-            obj.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
-            obj.put("hint", item.hint ?: JSONObject.NULL)
+            val obj = JSONObject().apply {
+                put("encryptedOldPassword", item.encryptedOldPassword ?: JSONObject.NULL)
+                put("passwordHash", item.passwordHash)
+                put("passwordFingerprint", item.passwordFingerprint)
+                put("date", item.date)
+                put("type", item.type)
+                put("relatedService", item.relatedService ?: JSONObject.NULL)
+                put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
+                put("hint", item.hint ?: JSONObject.NULL)
+            }
             jsonArray.put(obj)
         }
-
         return this.copy(passwordHistoryJson = jsonArray.toString())
     }
 
-    fun getDaysUntilRotation(): Int? {
-        return nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
-    }
-
+    fun getDaysUntilRotation(): Int? = nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
     fun isPasswordExpired(): Boolean = nextRotationDate?.let { System.currentTimeMillis() > it } ?: false
 
     companion object {
-        // fingerprint передаётся как параметр (строится во ViewModel)
         fun create(
-            service: String,
-            username: String,
-            password: String,
-            profileId: Int,
-            passwordFingerprint: String,  // обязательный параметр
-            url: String? = null,
-            notes: String? = null,
-            textHint: String? = null,
-            rotationEnabled: Boolean = false,
-            rotationPeriodMonths: Int = 6,
-            isFavorite: Boolean = false,
-            generationType: String = "random",
-            mnemonicPhraseHint: String? = null,
-            mnemonicOptionsJson: String? = null
+            service: String, username: String, password: String, profileId: Int,
+            passwordFingerprint: String, url: String? = null, notes: String? = null,
+            textHint: String? = null, rotationEnabled: Boolean = false, rotationPeriodMonths: Int = 6,
+            isFavorite: Boolean = false, generationType: String = "random",
+            mnemonicPhraseHint: String? = null, mnemonicOptionsJson: String? = null,
+            passwordAccessMode: String = AccessMode.INHERIT.value
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
-            val nextRotationDate = if (rotationEnabled) {
-                now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-            } else null
-
+            val nextRotationDate = if (rotationEnabled) now + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000) else null
             return Entry(
-                service = service,
-                username = username,
-                encryptedPassword = encryptedPassword,
-                profileId = profileId,
-                url = url,
-                notes = notes,
-                textHint = textHint,
-                rotationEnabled = rotationEnabled,
-                rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate,
-                createdAt = now,
-                lastChanged = now,
-                isFavorite = isFavorite,
-                generationType = generationType,
-                passwordFingerprint = passwordFingerprint,
-                mnemonicPhraseHint = mnemonicPhraseHint,
-                mnemonicOptionsJson = mnemonicOptionsJson
+                service = service, username = username, encryptedPassword = encryptedPassword,
+                profileId = profileId, url = url, notes = notes, textHint = textHint,
+                rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
+                nextRotationDate = nextRotationDate, createdAt = now, lastChanged = now,
+                isFavorite = isFavorite, generationType = generationType,
+                passwordFingerprint = passwordFingerprint, mnemonicPhraseHint = mnemonicPhraseHint,
+                mnemonicOptionsJson = mnemonicOptionsJson, passwordAccessMode = passwordAccessMode
             )
-        }
-
-        fun createWithNewId(
-            service: String,
-            username: String,
-            encryptedPassword: String,
-            profileId: Int,
-            url: String? = null,
-            notes: String? = null,
-            textHint: String? = null,
-            isFavorite: Boolean = false,
-            rotationEnabled: Boolean = false,
-            rotationPeriodMonths: Int = 6,
-            nextRotationDate: Long? = null,
-            createdAt: Long = System.currentTimeMillis(),
-            lastChanged: Long = System.currentTimeMillis(),
-            passwordHistoryJson: String? = null,
-            generationType: String = "random",
-            passwordFingerprint: String? = null,
-            mnemonicPhraseHint: String? = null,
-            mnemonicOptionsJson: String? = null
-        ): Entry {
-            return Entry(
-                id = UUID.randomUUID().toString(),
-                service = service,
-                username = username,
-                encryptedPassword = encryptedPassword,
-                profileId = profileId,
-                url = url,
-                notes = notes,
-                textHint = textHint,
-                rotationEnabled = rotationEnabled,
-                rotationPeriodMonths = rotationPeriodMonths,
-                nextRotationDate = nextRotationDate,
-                createdAt = createdAt,
-                lastChanged = lastChanged,
-                isFavorite = isFavorite,
-                passwordHistoryJson = passwordHistoryJson,
-                generationType = generationType,
-                passwordFingerprint = passwordFingerprint,
-                mnemonicPhraseHint = mnemonicPhraseHint,
-                mnemonicOptionsJson = mnemonicOptionsJson
-            )
-        }
-
-        fun extractShortPhrase(textHint: String?): String? {
-            if (textHint.isNullOrBlank()) return null
-            val parts = textHint.split("+")
-            val first = parts.firstOrNull()?.trim() ?: return null
-            return first.replace(Regex("\\s*\\(.*?\\)\\s*"), "").trim().takeIf { it.isNotBlank() }
         }
     }
 }
