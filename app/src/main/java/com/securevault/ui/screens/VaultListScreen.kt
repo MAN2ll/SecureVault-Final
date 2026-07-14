@@ -25,6 +25,7 @@ import com.securevault.data.Entry
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
+import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,7 +43,8 @@ fun VaultListScreen(
     onNavigateToQrScanner: () -> Unit,
     onNavigateToProfiles: () -> Unit,
     authViewModel: AuthViewModel = hiltViewModel(),
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel() //  ДОБАВЛЕНО
 ) {
     val context = LocalContext.current
 
@@ -54,6 +56,7 @@ fun VaultListScreen(
 
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
+    val profiles by profileViewModel.profiles.collectAsState() //  ДОБАВЛЕНО
 
     var selectionMode by remember { mutableStateOf(false) }
     var selectedEntries by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -351,25 +354,34 @@ fun VaultListScreen(
     }
 
     if (showViewDialog != null) {
-        PasswordViewDialog(
-            entry = showViewDialog!!,
-            onDismiss = { showViewDialog = null },
-            onEdit = {
-                val entry = showViewDialog!!
-                showViewDialog = null
-                onNavigateToEntry(entry.id)
-            },
-            onQr = {
-                val entry = showViewDialog!!
-                showViewDialog = null
-                showQrDialog = entry
-            },
-            onDelete = {
-                val entry = showViewDialog!!
-                showViewDialog = null
-                entryToDelete = entry
-            }
-        )
+        //  Передаём текущий профиль в диалог
+        val currentProfileId = viewModel.currentProfileId.value
+        val currentProfile = profiles.find { it.id == currentProfileId }
+        
+        if (currentProfile != null) {
+            PasswordViewDialog(
+                entry = showViewDialog!!,
+                profile = currentProfile,
+                onDismiss = { showViewDialog = null },
+                onEdit = {
+                    val entry = showViewDialog!!
+                    showViewDialog = null
+                    onNavigateToEntry(entry.id)
+                },
+                onQr = {
+                    val entry = showViewDialog!!
+                    showViewDialog = null
+                    showQrDialog = entry
+                },
+                onDelete = {
+                    val entry = showViewDialog!!
+                    showViewDialog = null
+                    entryToDelete = entry
+                }
+            )
+        } else {
+            showViewDialog = null
+        }
     }
 
     if (showQrDialog != null) {
@@ -687,7 +699,6 @@ private fun EntryCard(
                             },
                             leadingIcon = { Icon(Icons.Default.Visibility, null) }
                         )
-                        // "Изменить" вместо "Редактировать"
                         DropdownMenuItem(
                             text = { Text("Изменить") },
                             onClick = {
