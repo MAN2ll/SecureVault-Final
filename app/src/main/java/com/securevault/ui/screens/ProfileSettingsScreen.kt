@@ -20,7 +20,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.data.Profile
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.AccessMode
 import com.securevault.viewmodel.PasswordOperationResult
@@ -52,7 +51,7 @@ fun ProfileSettingsScreen(
     val entries by vaultViewModel.entries.collectAsState()
     val profile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
-    var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showDeleteProfileDialog by remember { mutableStateOf(false) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
     var operationSuccess by remember { mutableStateOf<String?>(null) }
@@ -93,7 +92,7 @@ fun ProfileSettingsScreen(
                 }
             }
 
-            // ✅ НОВОЕ: Настройка защиты просмотра паролей в профиле
+            //  Реальная настройка защиты просмотра паролей
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Защита просмотра паролей", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -127,13 +126,22 @@ fun ProfileSettingsScreen(
                                 DropdownMenuItem(
                                     text = { Text(label) },
                                     onClick = {
-                                        // В реальном проекте здесь вызов viewModel.updateProfileAccessMode(profile.id, mode.value)
+                                        // Реальное сохранение настройки
+                                        profile?.let {
+                                            profileViewModel.updateProfile(it.copy(passwordAccessMode = mode.value))
+                                        }
                                         expanded = false
                                     }
                                 )
                             }
                         }
                     }
+                    Text(
+                        "Определяет, как запрашивать подтверждение при просмотре паролей в этом профиле.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
 
@@ -160,8 +168,8 @@ fun ProfileSettingsScreen(
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Удалить все пароли", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                            Text("Все записи профиля будут удалены безвозвратно. Профиль останется.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Удалить профиль", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Профиль и все его пароли будут удалены безвозвратно.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
 
@@ -169,11 +177,10 @@ fun ProfileSettingsScreen(
                         onClick = { showMasterPasswordDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        enabled = entries.isNotEmpty()
                     ) {
                         Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Удалить все пароли профиля (${entries.size})")
+                        Text("Удалить профиль")
                     }
                 }
             }
@@ -187,12 +194,12 @@ fun ProfileSettingsScreen(
             title = { Text("Подтверждение удаления") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Для удаления всех паролей введите мастер-пароль", fontSize = 13.sp)
+                    Text("Для удаления профиля введите мастер-пароль", fontSize = 13.sp)
                     MasterPasswordInput(
                         context = context,
                         onConfirmed = {
                             showMasterPasswordDialog = false
-                            showDeleteAllDialog = true
+                            showDeleteProfileDialog = true
                         },
                         onError = { error -> operationError = error }
                     )
@@ -205,38 +212,38 @@ fun ProfileSettingsScreen(
         )
     }
 
-    if (showDeleteAllDialog) {
+    if (showDeleteProfileDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteAllDialog = false },
+            onDismissRequest = { showDeleteProfileDialog = false },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Удалить все пароли профиля?") },
+            title = { Text("Удалить профиль?") },
             text = {
                 Text(
-                    "Все пароли профиля \"${profile?.name ?: ""}\" будут удалены безвозвратно.\n\nЭто действие нельзя отменить.",
+                    "Профиль \"${profile?.name ?: ""}\" и все его пароли будут удалены безвозвратно.\n\nЭто действие нельзя отменить.",
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        showDeleteAllDialog = false
-                        val currentProfileId = vaultViewModel.currentProfileId.value
-                        if (currentProfileId == null) {
-                            operationError = "Профиль не выбран"
-                            return@Button
-                        }
-                        vaultViewModel.deleteAllEntriesInProfile(currentProfileId) { result ->
-                            when (result) {
-                                is PasswordOperationResult.Success -> operationSuccess = "Все пароли профиля удалены"
-                                is PasswordOperationResult.Error -> operationError = result.message
+                        showDeleteProfileDialog = false
+                        if (profileId != null) {
+                            profileViewModel.deleteProfile(profileId) { result ->
+                                when (result) {
+                                    is PasswordOperationResult.Success -> {
+                                        operationSuccess = "Профиль удалён"
+                                        onBack()
+                                    }
+                                    is PasswordOperationResult.Error -> operationError = result.message
+                                }
                             }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Удалить всё") }
+                ) { Text("Удалить") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteAllDialog = false }) { Text("Отмена") }
+                TextButton(onClick = { showDeleteProfileDialog = false }) { Text("Отмена") }
             }
         )
     }
