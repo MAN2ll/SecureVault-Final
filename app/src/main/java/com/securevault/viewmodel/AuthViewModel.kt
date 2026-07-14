@@ -3,12 +3,17 @@ package com.securevault.viewmodel
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.securevault.security.MasterPasswordHasher
+import javax.inject.Inject
 
-class AuthViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class AuthViewModel @Inject constructor(
+    application: Application
+) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
@@ -78,7 +83,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             prefs.edit().putInt("failed_attempts", 0).apply()
             _authState.value = AuthState.Unlocked
             prefs.edit().putBoolean("is_unlocked", true).apply()
-            //  Обновляем таймер ТОЛЬКО при вводе мастер-пароля
             prefs.edit().putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
             true
         } else {
@@ -87,7 +91,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    //  Биометрия НЕ сбрасывает недельный таймер мастер-пароля
     fun unlockWithBiometric() {
         _authState.value = AuthState.Unlocked
         prefs.edit()
