@@ -16,8 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -101,13 +99,13 @@ fun PasswordViewDialog(
                         Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            //  visualTransformation удалён из Text, так как это недопустимый параметр
                             Text(
                                 text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
                                 fontSize = 14.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
+                                modifier = Modifier.weight(1f)
                             )
                             if (!showPassword) {
                                 IconButton(onClick = { requestAccess() }) {
@@ -154,11 +152,13 @@ fun PasswordViewDialog(
             title = { Text("Введите PIN профиля") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.foundation.text.KeyboardOptions
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { pinInput = it; pinError = null },
                         label = { Text("PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         isError = pinError != null
