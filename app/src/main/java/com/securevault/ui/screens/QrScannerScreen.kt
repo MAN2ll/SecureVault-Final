@@ -33,7 +33,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
 import com.securevault.utils.AccessMode
@@ -48,7 +47,7 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
-    profileId: Int?,
+    profileId: Int?, // ✅ ИСПРАВЛЕНО 3: Принимаем Int?
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
@@ -63,17 +62,15 @@ fun QrScannerScreen(
     var hasCameraPermission by remember { mutableStateOf(false) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    var scannedResult by remember { mutableStateOf<SecureQrManager.QrValidationResult?>(null) }
+    var scannedEntryId by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Состояния для управления доступом к паролю после сканирования
     var showPassword by remember { mutableStateOf(false) }
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
 
-    // Запрос разрешения на камеру
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -91,8 +88,7 @@ fun QrScannerScreen(
         }
     }
 
-    // Функция запроса доступа на основе политики
-    fun requestAccess(entry: Entry, profile: Profile) {
+    fun requestAccess(entry: com.securevault.data.Entry, profile: Profile) {
         val accessMode = PasswordAccessPolicy.resolve(entry, profile)
         
         when (accessMode) {
@@ -136,9 +132,7 @@ fun QrScannerScreen(
                     showPinDialog = true
                 }
             }
-            else -> {
-                showPinDialog = true
-            }
+            else -> showPinDialog = true
         }
     }
 
@@ -173,20 +167,25 @@ fun QrScannerScreen(
                         Text("Предоставить разрешение")
                     }
                 }
-            } else if (scannedResult == null && errorMessage == null) {
-                // Настоящий CameraX сканер
+            } else if (scannedEntryId == null && errorMessage == null) {
+                // Реальный CameraX сканер
                 CameraPreview(
                     onQrCodeScanned = { rawValue ->
+                        //  Безопасная обработка Int?
+                        val currentProfileId = profileId
+                        if (currentProfileId == null) {
+                            errorMessage = "Профиль не выбран"
+                            return@CameraPreview
+                        }
+                        
                         try {
-                            val result = SecureQrManager.validateQrToken(rawValue, profileId, context)
+                            val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, context)
                             if (result.isValid && result.entryId != null) {
                                 val entry = viewModel.findEntryById(result.entryId)
                                 val profile = profiles.find { it.id == entry?.profileId }
                                 
-                                if (entry != null && profile != null && entry.profileId == profileId) {
-                                    scannedResult = SecureQrManager.QrValidationResult(true, entry.id, profile.id)
-                                    // Сохраняем ссылки для отображения
-                                    // (В реальном проекте лучше вернуть entry/profile из validateQrToken или найти их здесь)
+                                if (entry != null && profile != null && entry.profileId == currentProfileId) {
+                                    scannedEntryId = entry.id
                                 } else {
                                     errorMessage = "Запись не найдена или принадлежит другому профилю"
                                 }
@@ -226,15 +225,14 @@ fun QrScannerScreen(
                     Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(24.dp))
                     Button(onClick = { 
-                        scannedResult = null
+                        scannedEntryId = null
                         errorMessage = null 
                     }) {
                         Text("Попробовать снова")
                     }
                 }
-            } else if (scannedResult != null && currentProfile != null) {
-                //  Карточка результата с применением политики доступа
-                val entry = viewModel.findEntryById(scannedResult!!.entryId)
+            } else if (scannedEntryId != null && currentProfile != null) {
+                val entry = viewModel.findEntryById(scannedEntryId!!)
                 
                 if (entry != null) {
                     Column(
@@ -256,12 +254,8 @@ fun QrScannerScreen(
 
                                 InfoRow("Сервис", entry.service)
                                 InfoRow("Логин", entry.username)
-                                if (!entry.textHint.isNullOrBlank()) {
-                                    InfoRow("Подсказка", entry.textHint)
-                                }
-                                if (!entry.mnemonicPhraseHint.isNullOrBlank()) {
-                                    InfoRow("Мнемоника", entry.mnemonicPhraseHint)
-                                }
+                                if (!entry.textHint.isNullOrBlank()) InfoRow("Подсказка", entry.textHint)
+                                if (!entry.mnemonicPhraseHint.isNullOrBlank()) InfoRow("Мнемоника", entry.mnemonicPhraseHint)
 
                                 Card(modifier = Modifier.fillMaxWidth()) {
                                     Column(modifier = Modifier.padding(12.dp)) {
@@ -294,7 +288,7 @@ fun QrScannerScreen(
 
                                 Button(
                                     onClick = { 
-                                        scannedResult = null
+                                        scannedEntryId = null
                                         showPassword = false
                                         decryptedPassword = null
                                     },
@@ -312,9 +306,8 @@ fun QrScannerScreen(
         }
     }
 
-    //  Диалог ввода PIN для QR
-    if (showPinDialog && scannedResult != null && currentProfile != null) {
-        val entry = viewModel.findEntryById(scannedResult!!.entryId)
+    if (showPinDialog && scannedEntryId != null && currentProfile != null) {
+        val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
             AlertDialog(
                 onDismissRequest = { showPinDialog = false },
@@ -362,7 +355,6 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-// ✅ ИСПРАВЛЕНИЕ 2: Реальная реализация CameraX + MLKit
 @androidx.camera.core.ExperimentalGetImage
 @Composable
 private fun CameraPreview(
@@ -400,7 +392,7 @@ private fun CameraPreview(
                                             val rawValue = barcode.rawValue
                                             if (!rawValue.isNullOrBlank()) {
                                                 onQrCodeScanned(rawValue)
-                                                break // Обрабатываем только первый найденный QR
+                                                break
                                             }
                                         }
                                     }
