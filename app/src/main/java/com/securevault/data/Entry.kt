@@ -9,6 +9,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+//  ТОП-УРОВНЕВАЯ ФУНКЦИЯ для совместимости с вызовами из ReminderScreen и RotationScreen
+fun extractShortPhrase(textHint: String?): String? {
+    if (textHint.isNullOrBlank()) return null
+    val parts = textHint.split("+")
+    val first = parts.firstOrNull()?.trim() ?: return null
+    return first.replace(Regex("\\s*\\(.*?\\)\\s*"), "").trim().takeIf { it.isNotBlank() }
+}
+
 @Entity(tableName = "entries")
 data class Entry(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
