@@ -28,17 +28,20 @@ import com.securevault.viewmodel.AuthViewModel
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToExport: () -> Unit,
+    onNavigateToChangePassword: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
-    var pendingBiometricAction by remember { mutableStateOf<Boolean?>(null) } // true = включить, false = выключить
+    var pendingBiometricAction by remember { mutableStateOf<Boolean?>(null) }
     var masterPassword by remember { mutableStateOf("") }
     var masterPasswordError by remember { mutableStateOf<String?>(null) }
 
-    val isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
+    //  Используем var, чтобы состояние обновлялось реактивно
+    var isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
 
     Scaffold(
         topBar = {
@@ -49,9 +52,15 @@ fun SettingsScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Новая карточка биометрии + старые карточки настроек
+            
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -75,17 +84,35 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            HorizontalDivider()
+
+            Text("Безопасность и данные", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+
+            SettingsActionCard(
+                icon = Icons.Default.Lock,
+                title = "Сменить мастер-пароль",
+                subtitle = "Обновите пароль для входа в приложение",
+                onClick = onNavigateToChangePassword
+            )
+            
+            SettingsActionCard(
+                icon = Icons.Default.Upload,
+                title = "Экспорт / Импорт",
+                subtitle = "Резервное копирование и перенос данных",
+                onClick = onNavigateToExport
+            )
         }
     }
 
-    // Диалог мастер-пароля перед изменением настройки биометрии
+    //  Диалог мастер-пароля перед изменением биометрии
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showMasterPasswordDialog = false },
             title = { Text("Подтверждение") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Введите мастер-пароль для изменения настрое безопасности", fontSize = 13.sp)
+                    Text("Введите мастер-пароль для изменения настроек безопасности", fontSize = 13.sp)
                     OutlinedTextField(
                         value = masterPassword,
                         onValueChange = { masterPassword = it; masterPasswordError = null },
@@ -105,10 +132,23 @@ fun SettingsScreen(
                     if (viewModel.attemptUnlock(masterPassword)) {
                         showMasterPasswordDialog = false
                         masterPassword = ""
-                        // Запускаем биометрическую проверку
-                        if (activity != null) {
-                            triggerBiometricSetup(activity, context, pendingBiometricAction == true, viewModel)
+                        
+                        if (pendingBiometricAction == true) {
+                            // Запускаем биометрическую проверку для включения
+                            if (activity != null) {
+                                triggerBiometricSetup(activity, context, true, viewModel) { success ->
+                                    if (success) {
+                                        viewModel.setBiometricLoginEnabled(true)
+                                        isBiometricEnabled = true //  Обновляем UI
+                                    }
+                                }
+                            }
+                        } else {
+                            // Выключение не требует биометрии, только мастер-пароль
+                            viewModel.setBiometricLoginEnabled(false)
+                            isBiometricEnabled = false //  Обновляем UI
                         }
+                        pendingBiometricAction = null
                     } else {
                         masterPasswordError = "Неверный мастер-пароль"
                     }
@@ -121,16 +161,36 @@ fun SettingsScreen(
     }
 }
 
-//  Логика включения/выключения биометрии
+@Composable
+private fun SettingsActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+//  Callback для обновления состояния UI
 private fun triggerBiometricSetup(
     activity: FragmentActivity,
     context: Context,
     enable: Boolean,
-    viewModel: AuthViewModel
+    viewModel: AuthViewModel,
+    onChanged: (Boolean) -> Unit
 ) {
     if (!enable) {
-        // Выключение не требует биометрии, только мастер-пароль (который уже введен)
-        viewModel.setBiometricLoginEnabled(false)
+        onChanged(false)
         return
     }
 
@@ -138,8 +198,8 @@ private fun triggerBiometricSetup(
     val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
 
     if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-        // Показать Toast или Snackbar: "Биометрия недоступна на этом устройстве"
         android.widget.Toast.makeText(context, "Биометрия недоступна на этом устройстве", android.widget.Toast.LENGTH_LONG).show()
+        onChanged(false)
         return
     }
 
@@ -147,15 +207,16 @@ private fun triggerBiometricSetup(
     val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
             super.onAuthenticationSucceeded(result)
-            viewModel.setBiometricLoginEnabled(true)
+            onChanged(true)
         }
         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
             super.onAuthenticationError(errorCode, errString)
-            // Отмена пользователем
+            onChanged(false)
         }
         override fun onAuthenticationFailed() {
             super.onAuthenticationFailed()
             android.widget.Toast.makeText(context, "Ошибка биометрии", android.widget.Toast.LENGTH_SHORT).show()
+            onChanged(false)
         }
     })
 
