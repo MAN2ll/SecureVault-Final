@@ -7,8 +7,7 @@ enum class AccessMode(val value: String) {
     INHERIT("INHERIT"),
     NO_CONFIRMATION("NO_CONFIRMATION"),
     PIN_REQUIRED("PIN_REQUIRED"),
-    BIOMETRIC_OR_PIN("BIOMETRIC_OR_PIN"),
-    PIN_ALWAYS("PIN_ALWAYS")
+    BIOMETRIC_OR_PIN("BIOMETRIC_OR_PIN")
 }
 
 sealed class AccessResult {
@@ -23,7 +22,7 @@ object PasswordAccessPolicy {
         val entryMode = AccessMode.values().find { it.value == entry.passwordAccessMode } ?: AccessMode.INHERIT
         val hasProfilePin = !profile.passwordHash.isNullOrBlank()
 
-        //  Если режим "Как в профиле" и у профиля нет PIN, доступ разрешён сразу
+        //  Если "Как в профиле" и у профиля нет PIN, доступ разрешён сразу
         if (entryMode == AccessMode.INHERIT && !hasProfilePin) {
             return AccessResult.Granted
         }
@@ -34,18 +33,18 @@ object PasswordAccessPolicy {
             entryMode
         }
 
-        //  Если режим явно требует PIN, но у профиля его нет -> показываем PinNotSet
+        // Если режим явно требует PIN/биометрию, но у профиля его нет -> PinNotSet
         if (!hasProfilePin) {
             return when (mode) {
                 AccessMode.NO_CONFIRMATION -> AccessResult.Granted
-                AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS, AccessMode.BIOMETRIC_OR_PIN -> AccessResult.PinNotSet
+                AccessMode.PIN_REQUIRED, AccessMode.BIOMETRIC_OR_PIN -> AccessResult.PinNotSet
                 else -> AccessResult.Granted
             }
         }
 
         return when (mode) {
             AccessMode.NO_CONFIRMATION -> AccessResult.Granted
-            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> AccessResult.PinRequired
+            AccessMode.PIN_REQUIRED -> AccessResult.PinRequired
             AccessMode.BIOMETRIC_OR_PIN -> AccessResult.BiometricOrPin
             else -> AccessResult.PinRequired
         }
