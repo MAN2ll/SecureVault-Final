@@ -45,9 +45,8 @@ fun BulkRotationDialog(
     var useSpecial by remember { mutableStateOf(true) }
 
     var mnemonicPhrase by remember { mutableStateOf("") }
-    var includeLeet by remember { mutableStateOf(true) }
 
-    val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet) {
+    val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase) {
         if (selectedMode == BulkMode.RANDOM) {
             entries.mapIndexed { index, entry ->
                 val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
@@ -55,7 +54,6 @@ fun BulkRotationDialog(
             }
         } else {
             if (mnemonicPhrase.isNotBlank()) {
-                //  mapNotNull отфильтрует записи, для которых не удалось найти валидный вариант
                 entries.mapNotNull { entry ->
                     try {
                         val options = MnemonicPasswordGenerator.GenerationOptions(
@@ -64,16 +62,16 @@ fun BulkRotationDialog(
                             username = entry.username,
                             profileId = entry.profileId,
                             targetLength = 16,
-                            includeLeet = includeLeet,
-                            variantOffset = 0, // Генератор сам найдёт валидный вариант внутри (до 150 попыток)
-                            enforceUniqueChars = true,
+                            rotationMonth = null,
+                            rotationYear = null,
+                            variantOffset = 0,
                             splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER
                         )
                         val variants = MnemonicPasswordGenerator.generateVariants(options, count = 1)
                         if (variants.isNotEmpty()) {
                             Triple(entry, variants.first().password, "mnemonic")
                         } else {
-                            null // Не удалось создать валидный пароль для этой записи
+                            null
                         }
                     } catch (e: Exception) {
                         null
@@ -89,7 +87,7 @@ fun BulkRotationDialog(
     val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
 
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
-        """{"includeLeet":$includeLeet,"targetLength":16,"algorithmName":"AMPG v2"}"""
+        """{"targetLength":16,"algorithmName":"AMPG v2"}"""
     } else null
 
     AlertDialog(
@@ -141,10 +139,6 @@ fun BulkRotationDialog(
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(value = mnemonicPhrase, onValueChange = { mnemonicPhrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: метроном жёлтый камень") }, modifier = Modifier.fillMaxWidth())
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp))
-                                }
                                 Text("Каждый сервис получит уникальный пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -169,7 +163,6 @@ fun BulkRotationDialog(
                     }
                 }
 
-                //  Предупреждение, если не для всех записей удалось создать валидный пароль
                 if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -200,7 +193,6 @@ fun BulkRotationDialog(
             }
         },
         confirmButton = {
-            //  Кнопка неактивна, если не для всех записей найден валидный пароль
             Button(onClick = { showMasterPasswordDialog = true }, enabled = !isProcessing && canReplaceAll && hasUniquePasswords) {
                 if (isProcessing) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
