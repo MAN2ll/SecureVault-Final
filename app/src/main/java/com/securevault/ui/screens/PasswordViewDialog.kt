@@ -23,7 +23,7 @@ import androidx.fragment.app.FragmentActivity
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
-import com.securevault.utils.AccessMode
+import com.securevault.utils.AccessResult
 import com.securevault.utils.PasswordAccessPolicy
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,39 +45,54 @@ fun PasswordViewDialog(
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
-
-    val accessMode = remember(entry, profile) {
-        PasswordAccessPolicy.resolve(entry, profile)
-    }
+    
+    // ✅ НОВОЕ: Диалог для случая, когда PIN не задан
+    var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     fun requestAccess() {
-        when (accessMode) {
-            AccessMode.NO_CONFIRMATION -> {
+        when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
+            is AccessResult.Granted -> {
                 showPassword = true
                 decryptedPassword = entry.password
             }
-            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
+            is AccessResult.PinRequired -> {
                 showPinDialog = true
             }
-            AccessMode.BIOMETRIC_OR_PIN -> {
+            is AccessResult.BiometricOrPin -> {
                 val biometricManager = BiometricManager.from(context)
                 val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                 
                 if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                    showBiometricPrompt(activity, context) { success ->
-                        if (success) {
+                    val executor = ContextCompat.getMainExecutor(context)
+                    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            super.onAuthenticationSucceeded(result)
                             showPassword = true
                             decryptedPassword = entry.password
-                        } else {
-                            showPinDialog = true
                         }
-                    }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            super.onAuthenticationError(errorCode, errString)
+                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
+                        }
+                        override fun onAuthenticationFailed() {
+                            super.onAuthenticationFailed()
+                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
+                        }
+                    })
+
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Подтвердите личность")
+                        .setSubtitle("Для просмотра пароля")
+                        .setNegativeButtonText("Использовать PIN")
+                        .build()
+
+                    biometricPrompt.authenticate(promptInfo)
                 } else {
-                    showPinDialog = true
+                    if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
                 }
             }
-            else -> {
-                showPinDialog = true
+            is AccessResult.PinNotSet -> {
+                showPinNotSetDialog = true
             }
         }
     }
@@ -99,7 +114,6 @@ fun PasswordViewDialog(
                         Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            //  visualTransformation удалён, так как это недопустимый параметр для Text
                             Text(
                                 text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
                                 fontSize = 14.sp,
@@ -155,7 +169,7 @@ fun PasswordViewDialog(
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { pinInput = it; pinError = null },
-                        label = { Text("PIN") },
+                        label = { Text("PIN профиля") },
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                         singleLine = true,
@@ -182,6 +196,18 @@ fun PasswordViewDialog(
             }
         )
     }
+
+    //  Диалог предупреждения об отсутствии PIN
+    if (showPinNotSetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinNotSetDialog = false },
+            title = { Text("PIN профиля не задан") },
+            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
+            confirmButton = {
+                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -190,30 +216,4 @@ private fun InfoRow(label: String, value: String) {
         Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
-}
-
-private fun showBiometricPrompt(activity: FragmentActivity, context: Context, onResult: (Boolean) -> Unit) {
-    val executor = ContextCompat.getMainExecutor(context)
-    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-            super.onAuthenticationSucceeded(result)
-            onResult(true)
-        }
-        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-            super.onAuthenticationError(errorCode, errString)
-            onResult(false)
-        }
-        override fun onAuthenticationFailed() {
-            super.onAuthenticationFailed()
-            onResult(false)
-        }
-    })
-
-    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Подтвердите личность")
-        .setSubtitle("Для просмотра пароля")
-        .setNegativeButtonText("Использовать PIN")
-        .build()
-
-    biometricPrompt.authenticate(promptInfo)
 }
