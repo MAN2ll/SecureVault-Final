@@ -43,7 +43,6 @@ fun MnemonicGeneratorScreen(
 
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf("") }
-    var includeLeet by remember { mutableStateOf(true) }
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     
@@ -67,9 +66,7 @@ fun MnemonicGeneratorScreen(
             targetLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
                 when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
             } else { targetLength },
-            includeLeet = includeLeet,
             variantOffset = nextOffset,
-            enforceUniqueChars = true,
             splitMode = splitMode
         )
         
@@ -78,7 +75,7 @@ fun MnemonicGeneratorScreen(
         if (newVariants.isNotEmpty()) {
             variantPages = variantPages + listOf(newVariants)
             currentPageIndex = variantPages.size - 1
-            nextOffset = options.variantOffset + 150
+            nextOffset = options.variantOffset + 300
             noMoreVariants = newVariants.size < 3
         } else {
             noMoreVariants = true
@@ -94,7 +91,7 @@ fun MnemonicGeneratorScreen(
         }
     }
 
-    LaunchedEffect(phrase, serviceName, includeLeet, splitMode, targetLength) {
+    LaunchedEffect(phrase, serviceName, splitMode, targetLength) {
         variantPages = emptyList()
         currentPageIndex = 0
         nextOffset = 0
@@ -150,9 +147,16 @@ fun MnemonicGeneratorScreen(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp))
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Позиционные замены (leet) включены автоматически для обеспечения сложности пароля.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
 
             if (variantPages.isNotEmpty()) {
