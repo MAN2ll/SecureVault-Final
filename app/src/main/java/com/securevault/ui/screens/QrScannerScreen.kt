@@ -35,7 +35,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
-import com.securevault.utils.AccessMode
+import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.utils.SecureQrManager
@@ -47,7 +47,7 @@ import java.util.concurrent.Executors
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
-    profileId: Int?, // ✅ ИСПРАВЛЕНО 3: Принимаем Int?
+    profileId: Int?,
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
@@ -70,6 +70,9 @@ fun QrScannerScreen(
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
+    
+    // ✅ НОВОЕ: Диалог для случая, когда PIN не задан
+    var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -89,17 +92,15 @@ fun QrScannerScreen(
     }
 
     fun requestAccess(entry: com.securevault.data.Entry, profile: Profile) {
-        val accessMode = PasswordAccessPolicy.resolve(entry, profile)
-        
-        when (accessMode) {
-            AccessMode.NO_CONFIRMATION -> {
+        when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
+            is AccessResult.Granted -> {
                 showPassword = true
                 decryptedPassword = entry.password
             }
-            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
+            is AccessResult.PinRequired -> {
                 showPinDialog = true
             }
-            AccessMode.BIOMETRIC_OR_PIN -> {
+            is AccessResult.BiometricOrPin -> {
                 val biometricManager = BiometricManager.from(context)
                 val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                 
@@ -113,11 +114,11 @@ fun QrScannerScreen(
                         }
                         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                             super.onAuthenticationError(errorCode, errString)
-                            showPinDialog = true
+                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
                         }
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            showPinDialog = true
+                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
                         }
                     })
 
@@ -129,10 +130,12 @@ fun QrScannerScreen(
 
                     biometricPrompt.authenticate(promptInfo)
                 } else {
-                    showPinDialog = true
+                    if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
                 }
             }
-            else -> showPinDialog = true
+            is AccessResult.PinNotSet -> {
+                showPinNotSetDialog = true
+            }
         }
     }
 
@@ -148,17 +151,9 @@ fun QrScannerScreen(
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!hasCameraPermission) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+                Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Icon(Icons.Default.NoPhotography, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(16.dp))
                     Text("Требуется разрешение на использование камеры", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -168,10 +163,9 @@ fun QrScannerScreen(
                     }
                 }
             } else if (scannedEntryId == null && errorMessage == null) {
-                // Реальный CameraX сканер
                 CameraPreview(
                     onQrCodeScanned = { rawValue ->
-                        //  Безопасная обработка Int?
+                        // БЕЗОПАСНАЯ ПРОВЕРКА Int?
                         val currentProfileId = profileId
                         if (currentProfileId == null) {
                             errorMessage = "Профиль не выбран"
@@ -201,33 +195,19 @@ fun QrScannerScreen(
                 )
                 
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                    ) {
-                        Text(
-                            "Наведите камеру на QR-код",
-                            modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally),
-                            fontWeight = FontWeight.Medium
-                        )
+                    Card(modifier = Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))) {
+                        Text("Наведите камеру на QR-код", modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally), fontWeight = FontWeight.Medium)
                     }
                 }
             } else if (errorMessage != null) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+                Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Icon(Icons.Default.Error, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(16.dp))
                     Text("Ошибка сканирования", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(24.dp))
-                    Button(onClick = { 
-                        scannedEntryId = null
-                        errorMessage = null 
-                    }) {
+                    Button(onClick = { scannedEntryId = null; errorMessage = null }) {
                         Text("Попробовать снова")
                     }
                 }
@@ -235,10 +215,7 @@ fun QrScannerScreen(
                 val entry = viewModel.findEntryById(scannedEntryId!!)
                 
                 if (entry != null) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(16.dp),
-                        verticalArrangement = Arrangement.Center
-                    ) {
+                    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -286,14 +263,7 @@ fun QrScannerScreen(
                                     }
                                 }
 
-                                Button(
-                                    onClick = { 
-                                        scannedEntryId = null
-                                        showPassword = false
-                                        decryptedPassword = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                                Button(onClick = { scannedEntryId = null; showPassword = false; decryptedPassword = null }, modifier = Modifier.fillMaxWidth()) {
                                     Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text("Сканировать другой QR")
@@ -317,7 +287,7 @@ fun QrScannerScreen(
                         OutlinedTextField(
                             value = pinInput,
                             onValueChange = { pinInput = it; pinError = null },
-                            label = { Text("PIN") },
+                            label = { Text("PIN профиля") },
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                             singleLine = true,
@@ -344,6 +314,18 @@ fun QrScannerScreen(
                 }
             )
         }
+    }
+    
+    //  Диалог предупреждения об отсутствии PIN
+    if (showPinNotSetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinNotSetDialog = false },
+            title = { Text("PIN профиля не задан") },
+            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
+            confirmButton = {
+                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
+            }
+        )
     }
 }
 
