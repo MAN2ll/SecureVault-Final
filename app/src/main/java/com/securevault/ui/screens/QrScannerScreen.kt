@@ -70,8 +70,6 @@ fun QrScannerScreen(
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
-    
-    // ✅ НОВОЕ: Диалог для случая, когда PIN не задан
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -165,10 +163,9 @@ fun QrScannerScreen(
             } else if (scannedEntryId == null && errorMessage == null) {
                 CameraPreview(
                     onQrCodeScanned = { rawValue ->
-                        // БЕЗОПАСНАЯ ПРОВЕРКА Int?
                         val currentProfileId = profileId
                         if (currentProfileId == null) {
-                            errorMessage = "Профиль не выбран"
+                            errorMessage = "Недействительный QR-код"
                             return@CameraPreview
                         }
                         
@@ -181,13 +178,13 @@ fun QrScannerScreen(
                                 if (entry != null && profile != null && entry.profileId == currentProfileId) {
                                     scannedEntryId = entry.id
                                 } else {
-                                    errorMessage = "Запись не найдена или принадлежит другому профилю"
+                                    errorMessage = "Недействительный QR-код"
                                 }
                             } else {
-                                errorMessage = "Недействительный или просроченный QR-код"
+                                errorMessage = "Недействительный QR-код"
                             }
                         } catch (e: Exception) {
-                            errorMessage = "Ошибка проверки QR: ${e.message}"
+                            errorMessage = "Недействительный QR-код"
                         }
                     },
                     lifecycleOwner = lifecycleOwner,
@@ -316,7 +313,6 @@ fun QrScannerScreen(
         }
     }
     
-    //  Диалог предупреждения об отсутствии PIN
     if (showPinNotSetDialog) {
         AlertDialog(
             onDismissRequest = { showPinNotSetDialog = false },
