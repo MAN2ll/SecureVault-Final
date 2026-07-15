@@ -10,6 +10,8 @@ object MnemonicPasswordGenerator {
     data class GenerationOptions(
         val phrase: String,
         val serviceName: String = "",
+        val username: String = "",
+        val profileId: Int? = null,
         val targetLength: Int = 16,
         val includeLeet: Boolean = true,
         val rotationMonth: Int? = null,
@@ -71,18 +73,31 @@ object MnemonicPasswordGenerator {
 
         if (words.isEmpty()) return null
 
-        val seedStr = "${options.phrase}${options.serviceName}${options.rotationMonth}${options.rotationYear}${options.variantOffset}"
+        //  Seed учитывает username и profileId
+        val seedStr = "${options.phrase}${options.serviceName}${options.username}${options.profileId}${options.rotationMonth}${options.rotationYear}${options.variantOffset}"
         val seedHash = seedStr.hashCode()
 
         if (options.splitMode == SplitMode.TWO_USERS && words.size >= 2) {
             val halfLength = targetLength / 2
-            val part1 = buildRhythmicBlock(words[0], seedHash, halfLength, options.includeLeet)
-            val part2 = buildRhythmicBlock(words[1 % words.size], seedHash + 1, halfLength, options.includeLeet)
+            val part1 = buildRhythmicBlock(words[0], seedHash, halfLength, options.includeLeet, options.enforceUniqueChars)
+            val part2 = buildRhythmicBlock(words[1 % words.size], seedHash + 1, halfLength, options.includeLeet, options.enforceUniqueChars)
             
             val password = part1 + part2
             val hasUnique = !options.enforceUniqueChars || !PasswordValidator.hasDuplicateCharacters(password)
             
-            if (!hasUnique && options.enforceUniqueChars) return null
+            if (!hasUnique && options.enforceUniqueChars) {
+                //  Fallback — возвращаем вариант с предупреждением
+                return GenerationResult(
+                    password = password,
+                    mnemonicHint = options.phrase.take(30),
+                    variantName = "Вариант ${options.variantOffset + 1}",
+                    strength = calculateStrength(password),
+                    part1 = part1,
+                    part2 = part2,
+                    hasUniqueChars = hasUnique,
+                    splitMode = SplitMode.TWO_USERS
+                )
+            }
 
             return GenerationResult(
                 password = password,
@@ -96,20 +111,33 @@ object MnemonicPasswordGenerator {
             )
         } else {
             val blocks = words.take(4).mapIndexed { index, word ->
-                buildRhythmicBlock(word, seedHash + index, 4, options.includeLeet)
+                buildRhythmicBlock(word, seedHash + index, 4, options.includeLeet, options.enforceUniqueChars)
             }
             
             var password = blocks.joinToString("")
             var currentSeed = seedHash + blocks.size
             while (password.length < targetLength) {
-                val extraBlock = buildRhythmicBlock(words[0], currentSeed, 4, options.includeLeet)
+                val extraBlock = buildRhythmicBlock(words[0], currentSeed, 4, options.includeLeet, options.enforceUniqueChars)
                 password += extraBlock
                 currentSeed++
             }
             password = password.take(targetLength)
 
             val hasUnique = !options.enforceUniqueChars || !PasswordValidator.hasDuplicateCharacters(password)
-            if (!hasUnique && options.enforceUniqueChars) return null
+            
+            if (!hasUnique && options.enforceUniqueChars) {
+                //  Fallback — возвращаем вариант с предупреждением
+                return GenerationResult(
+                    password = password,
+                    mnemonicHint = options.phrase.take(30),
+                    variantName = "Вариант ${options.variantOffset + 1}",
+                    strength = calculateStrength(password),
+                    part1 = null,
+                    part2 = null,
+                    hasUniqueChars = hasUnique,
+                    splitMode = SplitMode.SINGLE_USER
+                )
+            }
 
             return GenerationResult(
                 password = password,
@@ -124,20 +152,60 @@ object MnemonicPasswordGenerator {
         }
     }
 
-    //Убран лишний .append(char)
-    private fun buildRhythmicBlock(word: String, seed: Int, maxLength: Int, useLeet: Boolean): String {
+    //  Добавлен параметр enforceUniqueChars для fallback логики
+    private fun buildRhythmicBlock(word: String, seed: Int, maxLength: Int, useLeet: Boolean, enforceUnique: Boolean): String {
         val transliterated = transliterate(word)
         val base = transliterated.take(maxLength)
         
         val result = StringBuilder()
+        val usedChars = mutableSetOf<Char>()
+        
         for ((index, char) in base.withIndex()) {
             if (useLeet && char in leetMap) {
                 val replacements = leetMap[char]!!
-                val replacementIndex = Math.abs((seed + index) % replacements.size)
-                result.append(replacements[replacementIndex])
+                
+                //  Пробуем разные варианты замены
+                var replacementAdded = false
+                for (attempt in 0 until replacements.size) {
+                    val replacementIndex = Math.abs((seed + index + attempt) % replacements.size)
+                    val replacement = replacements[replacementIndex]
+                    
+                    if (!enforceUnique || !usedChars.contains(replacement.lowercaseChar())) {
+                        result.append(replacement)
+                        usedChars.add(replacement.lowercaseChar())
+                        replacementAdded = true
+                        break
+                    }
+                }
+                
+                // Fallback: если все замены заняты, используем оригинальный символ
+                if (!replacementAdded) {
+                    if (index == 0) {
+                        result.append(char.uppercaseChar())
+                        usedChars.add(char.lowercaseChar())
+                    } else {
+                        result.append(char)
+                        usedChars.add(char.lowercaseChar())
+                    }
+                }
             } else {
-                if (index == 0) result.append(char.uppercaseChar())
-                else result.append(char)
+                val finalChar = if (index == 0) char.uppercaseChar() else char
+                
+                // Fallback: если символ уже использован, пропускаем или заменяем
+                if (!enforceUnique || !usedChars.contains(finalChar.lowercaseChar())) {
+                    result.append(finalChar)
+                    usedChars.add(finalChar.lowercaseChar())
+                } else {
+                    // Пробуем добавить цифру или спецсимвол
+                    val fallbackChars = listOf('1', '2', '3', '@', '$', '!')
+                    val fallbackChar = fallbackChars.firstOrNull { !usedChars.contains(it) }
+                    if (fallbackChar != null) {
+                        result.append(fallbackChar)
+                        usedChars.add(fallbackChar)
+                    } else {
+                        result.append(finalChar)
+                    }
+                }
             }
         }
         return result.toString()
