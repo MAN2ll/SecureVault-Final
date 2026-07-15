@@ -40,8 +40,9 @@ fun SecureVaultNavHost(
         }
 
         composable("setup") {
+            //  onSetupComplete заменён на onCompleted
             SetupScreen(
-                onSetupComplete = {
+                onCompleted = {
                     navController.navigate("profiles") {
                         popUpTo("setup") { inclusive = true }
                     }
@@ -101,7 +102,6 @@ fun SecureVaultNavHost(
             )
         }
 
-        //  Добавлен profileId как query параметр
         composable(
             route = "entry/{entryId}?profileId={profileId}",
             arguments = listOf(
@@ -200,7 +200,6 @@ fun SecureVaultNavHost(
             )
         }
 
-        // Подключены реальные экраны вместо заглушек
         composable(
             route = "audit/{profileId}",
             arguments = listOf(navArgument("profileId") { type = NavType.IntType })
