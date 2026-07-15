@@ -103,7 +103,7 @@ fun ExportImportScreen(
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
-    
+
     //  Чекбокс для задания PIN импортируемым профилям
     var setPinForImport by remember { mutableStateOf(false) }
     var importPin by remember { mutableStateOf("") }
@@ -142,6 +142,20 @@ fun ExportImportScreen(
                 pendingImportMode = null
             }
         }
+    }
+
+    //  Проверка PIN перед импортом
+    fun validateImportPin(): Boolean {
+        if (!setPinForImport) return true
+        if (importPin.length !in 4..8) {
+            importPinError = "PIN должен быть 4-8 цифр"
+            return false
+        }
+        if (importPin != importPinConfirm) {
+            importPinError = "PIN не совпадает"
+            return false
+        }
+        return true
     }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
@@ -806,7 +820,14 @@ fun ExportImportScreen(
     //  Диалог режима импорта с чекбоксом задания PIN
     if (showImportModeDialog && pendingBackupData != null) {
         AlertDialog(
-            onDismissRequest = { showImportModeDialog = false; pendingBackupData = null },
+            onDismissRequest = {
+                showImportModeDialog = false
+                pendingBackupData = null
+                setPinForImport = false
+                importPin = ""
+                importPinConfirm = ""
+                importPinError = null
+            },
             icon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Режим импорта") },
             text = {
@@ -823,7 +844,7 @@ fun ExportImportScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = setPinForImport,
-                            onCheckedChange = { 
+                            onCheckedChange = {
                                 setPinForImport = it
                                 if (!it) {
                                     importPin = ""
@@ -863,18 +884,10 @@ fun ExportImportScreen(
 
                     Spacer(Modifier.height(8.dp))
 
+                    //  Используется validateImportPin() и нет return@Button
                     Button(
                         onClick = {
-                            if (setPinForImport) {
-                                if (importPin.length !in 4..8) {
-                                    importPinError = "PIN должен быть 4-8 цифр"
-                                    return@Button
-                                }
-                                if (importPin != importPinConfirm) {
-                                    importPinError = "PIN не совпадает"
-                                    return@Button
-                                }
-                            }
+                            if (!validateImportPin()) return@Button
                             pendingImportMode = ImportMode.ADD_AS_NEW
                             showImportModeDialog = false
                             val pinToUse = if (setPinForImport) importPin else null
@@ -887,16 +900,7 @@ fun ExportImportScreen(
 
                     OutlinedButton(
                         onClick = {
-                            if (setPinForImport) {
-                                if (importPin.length !in 4..8) {
-                                    importPinError = "PIN должен быть 4-8 цифр"
-                                    return@Button
-                                }
-                                if (importPin != importPinConfirm) {
-                                    importPinError = "PIN не совпадает"
-                                    return@Button
-                                }
-                            }
+                            if (!validateImportPin()) return@OutlinedButton
                             pendingImportMode = ImportMode.MERGE_IF_EXISTS
                             showImportModeDialog = false
                             val pinToUse = if (setPinForImport) importPin else null
@@ -909,16 +913,7 @@ fun ExportImportScreen(
 
                     OutlinedButton(
                         onClick = {
-                            if (setPinForImport) {
-                                if (importPin.length !in 4..8) {
-                                    importPinError = "PIN должен быть 4-8 цифр"
-                                    return@Button
-                                }
-                                if (importPin != importPinConfirm) {
-                                    importPinError = "PIN не совпадает"
-                                    return@Button
-                                }
-                            }
+                            if (!validateImportPin()) return@OutlinedButton
                             pendingImportMode = ImportMode.SKIP_IF_EXISTS
                             showImportModeDialog = false
                             val pinToUse = if (setPinForImport) importPin else null
@@ -932,7 +927,7 @@ fun ExportImportScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showImportModeDialog = false
                     pendingBackupData = null
                     setPinForImport = false
@@ -947,7 +942,12 @@ fun ExportImportScreen(
 
     if (showPinDialog && pendingBackupData != null) {
         AlertDialog(
-            onDismissRequest = { showPinDialog = false; pendingBackupData = null; newPin = ""; confirmPin = "" },
+            onDismissRequest = {
+                showPinDialog = false
+                pendingBackupData = null
+                newPin = ""
+                confirmPin = ""
+            },
             icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Задайте PIN для импортируемых профилей") },
             text = {
@@ -997,7 +997,12 @@ fun ExportImportScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showPinDialog = false; pendingBackupData = null; newPin = ""; confirmPin = "" }) {
+                TextButton(onClick = {
+                    showPinDialog = false
+                    pendingBackupData = null
+                    newPin = ""
+                    confirmPin = ""
+                }) {
                     Text("Отмена")
                 }
             }
