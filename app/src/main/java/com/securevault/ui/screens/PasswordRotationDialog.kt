@@ -2,7 +2,10 @@
 
 package com.securevault.ui.screens
 
+import androidx.compose.foundation.clickable 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -96,7 +99,6 @@ fun PasswordRotationDialog(
             targetLength
         }
 
-        //  Убраны includeServiceCode, includeRotationCode, separator
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
@@ -292,7 +294,6 @@ fun PasswordRotationDialog(
                                     }
                                 }
 
-                                //  Оставлен только чекбокс "Позиционные замены"
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
                                     Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp)
@@ -373,8 +374,8 @@ fun PasswordRotationDialog(
                                 if (availableEntries.isEmpty()) {
                                     Text("В этом профиле нет других записей.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                 } else {
-                                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        androidx.compose.foundation.lazy.items(availableEntries) { entry ->
+                                    LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        items(availableEntries) { entry ->
                                             val isSelected = selectedExistingEntry?.id == entry.id
                                             Card(
                                                 modifier = Modifier
