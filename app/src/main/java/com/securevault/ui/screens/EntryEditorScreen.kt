@@ -31,7 +31,6 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.security.MasterPasswordHasher
 import com.securevault.security.ProfilePasswordHasher
 import com.securevault.utils.AccessMode
 import com.securevault.utils.AccessResult
@@ -505,31 +504,6 @@ fun EntryEditorScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConfirmMasterPasswordDialogForEditor(context: Context, existingEntry: Entry?, onConfirmed: (decryptedPassword: String) -> Unit, onDismiss: () -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) }, title = { Text("Подтверждение") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Для просмотра текущего пароля введите мастер-пароль:", fontSize = 13.sp)
-            OutlinedTextField(value = password, onValueChange = { password = it; error = null }, label = { Text("Мастер-пароль") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth(), isError = error != null)
-            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-        }
-    }, confirmButton = {
-        Button(onClick = {
-            val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            val storedHash = prefs.getString("master_hash", null)
-            val storedSalt = prefs.getString("master_salt", null)
-            val iterations = prefs.getInt("master_iterations", 100_000)
-            if (storedHash != null && storedSalt != null && MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                try { onConfirmed(existingEntry?.password ?: "") } catch (e: Exception) { error = "Не удалось расшифровать пароль" }
-            } else { error = "Неверный пароль" }
-            password = ""
-        }) { Text("Подтвердить") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } })
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 private fun SimplePasswordGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String) -> Unit) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -592,7 +566,6 @@ private fun MnemonicGeneratorDialog(
     val context = LocalContext.current
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf(initialServiceName) }
-    var includeLeet by remember { mutableStateOf(true) }
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     
@@ -616,9 +589,9 @@ private fun MnemonicGeneratorDialog(
             targetLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
                 when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
             } else { targetLength },
-            includeLeet = includeLeet,
+            rotationMonth = null,
+            rotationYear = null,
             variantOffset = nextOffset,
-            enforceUniqueChars = true,
             splitMode = splitMode
         )
         
@@ -627,7 +600,7 @@ private fun MnemonicGeneratorDialog(
         if (newVariants.isNotEmpty()) {
             variantPages = variantPages + listOf(newVariants)
             currentPageIndex = variantPages.size - 1
-            nextOffset = options.variantOffset + 150
+            nextOffset = options.variantOffset + 300
             noMoreVariants = newVariants.size < 3
         } else {
             noMoreVariants = true
@@ -643,7 +616,7 @@ private fun MnemonicGeneratorDialog(
         }
     }
 
-    LaunchedEffect(phrase, serviceName, includeLeet, splitMode, targetLength) {
+    LaunchedEffect(phrase, serviceName, splitMode, targetLength) {
         variantPages = emptyList()
         currentPageIndex = 0
         nextOffset = 0
@@ -674,7 +647,6 @@ private fun MnemonicGeneratorDialog(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(16, 18, 20).forEach { length -> FilterChip(selected = targetLength == length, onClick = { targetLength = length }, label = { Text("$length") }) } }
                     Text("Каждая часть по ${targetLength / 2} символов", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp) }
 
                 if (variantPages.isNotEmpty()) {
                     val currentPage = variantPages[currentPageIndex]
