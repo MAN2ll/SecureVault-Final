@@ -113,4 +113,108 @@ fun SecureVaultNavHost(
             )
         ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")
-            val rawProfileId = backStackEntry.arguments?.getInt
+            val rawProfileId = backStackEntry.arguments?.getInt("profileId") ?: -1
+            val profileId = rawProfileId.takeIf { it > 0 }
+            EntryEditorScreen(
+                id = entryId,
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("export") {
+            ExportImportScreen(
+                profileId = null,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "export/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            ExportImportScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "rotation/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            RotationScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "rotation_journal/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            RotationJournalScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "profile_settings/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            ProfileSettingsScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() },
+                onNavigateToRotation = { navController.navigate("rotation/$profileId") },
+                onNavigateToRotationJournal = { navController.navigate("rotation_journal/$profileId") },
+                onNavigateToAudit = { navController.navigate("audit/$profileId") },
+                onNavigateToExport = { navController.navigate("export/$profileId") },
+                onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") }
+            )
+        }
+
+        composable(
+            route = "mnemonic_generator/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            MnemonicGeneratorScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "qr_scanner/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            QrScannerScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "audit/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            AuditScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("change_password") {
+            ChangeMasterPasswordScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
