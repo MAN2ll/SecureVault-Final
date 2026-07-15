@@ -28,6 +28,7 @@ object MnemonicPasswordGenerator {
         val strength: PasswordGenerator.Strength,
         val part1: String?,
         val part2: String?,
+        val splitMode: SplitMode,
         val explanation: String
     )
 
@@ -127,6 +128,7 @@ object MnemonicPasswordGenerator {
                 strength = calculateStrength(password),
                 part1 = part1,
                 part2 = part2,
+                splitMode = options.splitMode,
                 explanation = explanation.toString()
             )
         } else {
@@ -150,6 +152,7 @@ object MnemonicPasswordGenerator {
                 strength = calculateStrength(password),
                 part1 = null,
                 part2 = null,
+                splitMode = options.splitMode,
                 explanation = explanation.toString()
             )
         }
