@@ -13,12 +13,10 @@ object MnemonicPasswordGenerator {
         val username: String = "",
         val profileId: Int? = null,
         val targetLength: Int = 16,
-        val includeLeet: Boolean = true,
         val rotationMonth: Int? = null,
         val rotationYear: Int? = null,
         val variantOffset: Int = 0,
-        val splitMode: SplitMode = SplitMode.SINGLE_USER,
-        val enforceUniqueChars: Boolean = true
+        val splitMode: SplitMode = SplitMode.SINGLE_USER
     )
 
     data class GenerationResult(
@@ -47,6 +45,7 @@ object MnemonicPasswordGenerator {
     fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
         if (password.isEmpty()) return false
         
+        // Глобальная проверка уникальности (M и m считаются повтором)
         val lowerPassword = password.lowercase()
         if (lowerPassword.length != lowerPassword.toSet().size) return false
 
@@ -81,7 +80,7 @@ object MnemonicPasswordGenerator {
         }
 
         var currentOffset = options.variantOffset
-        val maxAttempts = 150
+        val maxAttempts = 300 // Увеличено для гарантии нахождения валидных вариантов
 
         while (results.size < count && currentOffset < options.variantOffset + maxAttempts) {
             val variantOptions = options.copy(variantOffset = currentOffset)
@@ -109,106 +108,99 @@ object MnemonicPasswordGenerator {
         val seedStr = "${options.phrase}${options.serviceName}${options.username}${options.profileId}${options.rotationMonth}${options.rotationYear}${options.variantOffset}"
         val seedHash = seedStr.hashCode()
 
+        val globalUsedChars = mutableSetOf<Char>()
         val explanation = StringBuilder()
         explanation.append("Фраза: ${options.phrase}\n")
         explanation.append("Транслитерация: ${transliterate(options.phrase)}\n")
         explanation.append("Внутренние факторы: сервис, логин, профиль и ротация влияют на позиции замен внутри блоков. Отдельные технические хвосты не используются.\n")
 
-        if (options.splitMode == SplitMode.TWO_USERS && words.size >= 2) {
-            val halfLength = targetLength / 2
-            val part1 = buildRhythmicBlock(words[0], seedHash, halfLength, options.includeLeet, options.enforceUniqueChars, explanation)
-            val part2 = buildRhythmicBlock(words[1 % words.size], seedHash + 1, halfLength, options.includeLeet, options.enforceUniqueChars, explanation)
-            
-            val password = part1 + part2
+        val passwordBuilder = StringBuilder()
+        var currentSeed = seedHash
+        var wordIndex = 0
 
-            return GenerationResult(
-                password = password,
-                mnemonicHint = options.phrase.take(30),
-                variantName = "Вариант ${options.variantOffset + 1}",
-                strength = calculateStrength(password),
-                part1 = part1,
-                part2 = part2,
-                splitMode = options.splitMode,
-                explanation = explanation.toString()
-            )
-        } else {
-            val blocks = words.take(4).mapIndexed { index, word ->
-                buildRhythmicBlock(word, seedHash + index, 4, options.includeLeet, options.enforceUniqueChars, explanation)
+        // Собираем пароль блоками до достижения targetLength
+        while (passwordBuilder.length < targetLength && wordIndex < 100) {
+            val word = words[wordIndex % words.size]
+            val charsNeeded = targetLength - passwordBuilder.length
+            val blockLength = minOf(4, charsNeeded)
+            
+            val blockResult = buildRhythmicBlock(word, currentSeed, blockLength, globalUsedChars, explanation)
+            if (blockResult == null) {
+                return null // Не удалось собрать блок без глобальных повторов
             }
             
-            var password = blocks.joinToString("")
-            var currentSeed = seedHash + blocks.size
-            while (password.length < targetLength) {
-                val extraBlock = buildRhythmicBlock(words[0], currentSeed, 4, options.includeLeet, options.enforceUniqueChars, explanation)
-                password += extraBlock
-                currentSeed++
-            }
-            password = password.take(targetLength)
-
-            return GenerationResult(
-                password = password,
-                mnemonicHint = options.phrase.take(30),
-                variantName = "Вариант ${options.variantOffset + 1}",
-                strength = calculateStrength(password),
-                part1 = null,
-                part2 = null,
-                splitMode = options.splitMode,
-                explanation = explanation.toString()
-            )
+            passwordBuilder.append(blockResult)
+            currentSeed += 1
+            wordIndex++
         }
+
+        val password = passwordBuilder.toString()
+        if (password.length != targetLength) return null
+
+        return GenerationResult(
+            password = password,
+            mnemonicHint = options.phrase.take(30),
+            variantName = "Вариант ${options.variantOffset + 1}",
+            strength = calculateStrength(password),
+            part1 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(0, password.length / 2) else null,
+            part2 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(password.length / 2) else null,
+            splitMode = options.splitMode,
+            explanation = explanation.toString()
+        )
     }
 
-    private fun buildRhythmicBlock(word: String, seed: Int, maxLength: Int, useLeet: Boolean, enforceUnique: Boolean, explanation: StringBuilder): String {
+    private fun buildRhythmicBlock(
+        word: String, seed: Int, targetLength: Int,
+        globalUsedChars: MutableSet<Char>, explanation: StringBuilder
+    ): String? {
         val transliterated = transliterate(word)
-        val base = transliterated.take(maxLength)
-        
+        val base = transliterated.take(targetLength)
         val result = StringBuilder()
-        val usedChars = mutableSetOf<Char>()
-        
-        explanation.append("Блок '$word' -> ")
-        
+
         for ((index, char) in base.withIndex()) {
-            if (useLeet && char in leetMap) {
-                val replacements = leetMap[char]!!
-                var replacementAdded = false
-                for (attempt in 0 until replacements.size) {
-                    val replacementIndex = Math.abs((seed + index + attempt) % replacements.size)
-                    val replacement = replacements[replacementIndex]
-                    
-                    if (!enforceUnique || !usedChars.contains(replacement.lowercaseChar())) {
-                        result.append(replacement)
-                        usedChars.add(replacement.lowercaseChar())
-                        replacementAdded = true
+            val isUpperCase = index == 0
+            val baseChar = if (isUpperCase) char.uppercaseChar() else char
+            
+            val candidates = mutableListOf<Char>()
+            if (char.lowercaseChar() in leetMap) {
+                candidates.addAll(leetMap[char.lowercaseChar()]!!)
+            }
+            candidates.add(baseChar)
+            if (isUpperCase) candidates.add(char.lowercaseChar())
+
+            // Детерминированный выбор кандидата на основе seed
+            val startIndex = (seed + index) % candidates.size
+            var added = false
+            
+            for (i in 0 until candidates.size) {
+                val candidate = candidates[(startIndex + i) % candidates.size]
+                if (!globalUsedChars.contains(candidate.lowercaseChar())) {
+                    result.append(candidate)
+                    globalUsedChars.add(candidate.lowercaseChar())
+                    added = true
+                    break
+                }
+            }
+
+            // Если все leet-варианты заняты, используем детерминированный fallback
+            if (!added) {
+                val fallbacks = listOf('1','2','3','4','5','6','7','8','9','0','@','#','$','!','%','&','*')
+                val fbStartIndex = (seed + index + 100) % fallbacks.size
+                for (i in 0 until fallbacks.size) {
+                    val fb = fallbacks[(fbStartIndex + i) % fallbacks.size]
+                    if (!globalUsedChars.contains(fb)) {
+                        result.append(fb)
+                        globalUsedChars.add(fb)
+                        added = true
                         break
                     }
                 }
-                
-                if (!replacementAdded) {
-                    val finalChar = if (index == 0) char.uppercaseChar() else char
-                    result.append(finalChar)
-                    usedChars.add(finalChar.lowercaseChar())
-                }
-            } else {
-                val finalChar = if (index == 0) char.uppercaseChar() else char
-                if (!enforceUnique || !usedChars.contains(finalChar.lowercaseChar())) {
-                    result.append(finalChar)
-                    usedChars.add(finalChar.lowercaseChar())
-                } else {
-                    val fallbackChars = listOf('1', '2', '3', '@', '$', '!')
-                    val fallbackChar = fallbackChars.firstOrNull { !usedChars.contains(it) }
-                    if (fallbackChar != null) {
-                        result.append(fallbackChar)
-                        usedChars.add(fallbackChar)
-                    } else {
-                        result.append(finalChar)
-                    }
-                }
             }
+
+            if (!added) return null // Невозможно соблюсти глобальную уникальность
         }
-        explanation.append(result.toString())
-        if (base.length < 4) explanation.append(" (дополнено)")
-        explanation.append("\n")
         
+        explanation.append("Блок '${word}' -> ${result}\n")
         return result.toString()
     }
 
