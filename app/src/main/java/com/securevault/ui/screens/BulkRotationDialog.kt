@@ -47,7 +47,6 @@ fun BulkRotationDialog(
     var mnemonicPhrase by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
 
-    //  Убраны includeServiceCode, includeRotationCode
     val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet) {
         if (selectedMode == BulkMode.RANDOM) {
             entries.mapIndexed { index, entry ->
@@ -58,10 +57,12 @@ fun BulkRotationDialog(
             if (mnemonicPhrase.isNotBlank()) {
                 entries.mapIndexedNotNull { index, entry ->
                     try {
-                        // Убраны includeServiceCode, includeRotationCode, separator
+                        // Передаём username и profileId, убраны устаревшие параметры
                         val options = MnemonicPasswordGenerator.GenerationOptions(
                             phrase = mnemonicPhrase,
                             serviceName = entry.service,
+                            username = entry.username,
+                            profileId = entry.profileId,
                             targetLength = 16,
                             includeLeet = includeLeet,
                             variantOffset = index,
@@ -83,7 +84,6 @@ fun BulkRotationDialog(
     }
 
     val canReplaceAll = generatedPasswords.size == entries.size
-
     val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
 
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
@@ -101,9 +101,7 @@ fun BulkRotationDialog(
         },
         text = {
             Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .fillMaxWidth(),
+                modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -128,52 +126,24 @@ fun BulkRotationDialog(
                                 Text("Параметры", fontWeight = FontWeight.Bold)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Длина: $randomLength", modifier = Modifier.weight(1f))
-                                    Slider(
-                                        value = randomLength.toFloat(),
-                                        onValueChange = { randomLength = it.toInt() },
-                                        valueRange = 8f..32f,
-                                        steps = 24,
-                                        modifier = Modifier.weight(2f)
-                                    )
+                                    Slider(value = randomLength.toFloat(), onValueChange = { randomLength = it.toInt() }, valueRange = 8f..32f, steps = 24, modifier = Modifier.weight(2f))
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useUpper, onCheckedChange = { useUpper = it })
-                                    Text("A-Z", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useDigits, onCheckedChange = { useDigits = it })
-                                    Text("0-9", Modifier.padding(start = 8.dp))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it })
-                                    Text("!@#", Modifier.padding(start = 8.dp))
-                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = useUpper, onCheckedChange = { useUpper = it }); Text("A-Z", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = useDigits, onCheckedChange = { useDigits = it }); Text("0-9", Modifier.padding(start = 8.dp)) }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = useSpecial, onCheckedChange = { useSpecial = it }); Text("!@#", Modifier.padding(start = 8.dp)) }
                             }
                         }
                     }
-
                     BulkMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                OutlinedTextField(
-                                    value = mnemonicPhrase,
-                                    onValueChange = { mnemonicPhrase = it },
-                                    label = { Text("Мнемоническая фраза") },
-                                    placeholder = { Text("например: метроном жёлтый камень") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                //  Оставлен только чекбокс "Позиционные замены"
+                                OutlinedTextField(value = mnemonicPhrase, onValueChange = { mnemonicPhrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: метроном жёлтый камень") }, modifier = Modifier.fillMaxWidth())
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
                                     Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp))
                                 }
-
-                                Text(
-                                    "Каждый сервис получит уникальный пароль",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Text("Каждый сервис получит уникальный пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -185,113 +155,58 @@ fun BulkRotationDialog(
                             Text("Preview (${generatedPasswords.size} из ${entries.size} записей):", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Spacer(Modifier.height(8.dp))
                             generatedPasswords.take(5).forEach { (entry, password, _) ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text(entry.service, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                                    Text(
-                                        password.take(12) + "...",
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Text(password.take(12) + "...", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             if (generatedPasswords.size > 5) {
-                                Text(
-                                    "... и ещё ${generatedPasswords.size - 5} записей",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Text("... и ещё ${generatedPasswords.size - 5} записей", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
 
                 if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
+                            Text("Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
                 }
 
                 if (!hasUniquePasswords && canReplaceAll) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Некоторые пароли совпадают. Измените фразу или параметры.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
+                            Text("Некоторые пароли совпадают. Измените фразу или параметры.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
                 }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Все старые пароли будут сохранены в истории.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                        Text("Все старые пароли будут сохранены в истории.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = { showMasterPasswordDialog = true },
-                enabled = !isProcessing && canReplaceAll && hasUniquePasswords
-            ) {
+            Button(onClick = { showMasterPasswordDialog = true }, enabled = !isProcessing && canReplaceAll && hasUniquePasswords) {
                 if (isProcessing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                 }
                 Text("Заменить все")
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !isProcessing
-            ) {
-                Text("Отмена")
-            }
+            TextButton(onClick = onDismiss, enabled = !isProcessing) { Text("Отмена") }
         }
     )
 
@@ -326,11 +241,7 @@ fun BulkRotationDialog(
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Ошибка ротации") },
             text = { Text(errorMessage ?: "") },
-            confirmButton = {
-                TextButton(onClick = { errorMessage = null }) {
-                    Text("Понятно")
-                }
-            }
+            confirmButton = { TextButton(onClick = { errorMessage = null }) { Text("Понятно") } }
         )
     }
 }
