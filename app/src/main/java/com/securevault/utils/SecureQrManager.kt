@@ -27,19 +27,16 @@ object SecureQrManager {
         val errorMessage: String? = null
     )
 
-    //  Генерация токена для QR-кода
     fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
         val deviceId = getDeviceId(context)
         val timestamp = System.currentTimeMillis().toString()
         
-        // Формат: version|entryId|profileId|deviceId|timestamp|signature
         val payload = "$TOKEN_VERSION$TOKEN_SEPARATOR$entryId$TOKEN_SEPARATOR$profileId$TOKEN_SEPARATOR$deviceId$TOKEN_SEPARATOR$timestamp"
         val signature = generateSignature(payload, context)
         
         return "$payload$TOKEN_SEPARATOR$signature"
     }
 
-    //  Генерация Bitmap из содержимого QR-кода
     fun generateQrBitmap(content: String, size: Int = 512): Bitmap {
         val hints = Hashtable<EncodeHintType, Any>()
         hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
@@ -61,7 +58,6 @@ object SecureQrManager {
         return bitmap
     }
 
-    //  Валидация QR-кода при сканировании
     fun validateQrToken(token: String, currentProfileId: Int, context: Context): QrValidationResult {
         return try {
             val parts = token.split(TOKEN_SEPARATOR)
@@ -77,23 +73,19 @@ object SecureQrManager {
             val timestamp = parts[4]
             val signature = parts[5]
 
-            // Проверка версии
             if (version != TOKEN_VERSION) {
                 return QrValidationResult(false, errorMessage = "Неподдерживаемая версия QR-кода")
             }
 
-            // Проверка профиля
             if (profileId != currentProfileId) {
                 return QrValidationResult(false, errorMessage = "QR-код принадлежит другому профилю")
             }
 
-            // Проверка устройства
             val currentDeviceId = getDeviceId(context)
             if (deviceId != currentDeviceId) {
                 return QrValidationResult(false, errorMessage = "QR-код не предназначен для этого устройства")
             }
 
-            // Проверка подписи
             val payload = "$version$TOKEN_SEPARATOR$entryId$TOKEN_SEPARATOR$profileId$TOKEN_SEPARATOR$deviceId$TOKEN_SEPARATOR$timestamp"
             val expectedSignature = generateSignature(payload, context)
             
@@ -101,14 +93,8 @@ object SecureQrManager {
                 return QrValidationResult(false, errorMessage = "Недействительная подпись QR-кода")
             }
 
-            // Проверка времени (опционально: QR действует 24 часа)
-            val tokenTime = timestamp.toLongOrNull() ?: return QrValidationResult(false, errorMessage = "Неверное время")
-            val currentTime = System.currentTimeMillis()
-            val maxAge = 24 * 60 * 60 * 1000L // 24 часа
-            
-            if (currentTime - tokenTime > maxAge) {
-                return QrValidationResult(false, errorMessage = "QR-код истёк")
-            }
+            //  Убрана проверка времени (QR не истекает через 24 часа)
+            // QR остаётся рабочим после ротации пароля
 
             QrValidationResult(true, entryId = entryId, profileId = profileId)
         } catch (e: Exception) {
@@ -116,13 +102,11 @@ object SecureQrManager {
         }
     }
 
-    //  Получение стабильного идентификатора устройства
     private fun getDeviceId(context: Context): String {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         return androidId ?: "unknown_device"
     }
 
-    //  Генерация HMAC-SHA256 подписи
     private fun generateSignature(payload: String, context: Context): String {
         return try {
             val key = getHmacKey(context)
@@ -131,14 +115,12 @@ object SecureQrManager {
             val hash = mac.doFinal(payload.toByteArray(StandardCharsets.UTF_8))
             Base64.encodeToString(hash, Base64.NO_WRAP)
         } catch (e: Exception) {
-            // Fallback на SHA-256 если Keystore недоступен
             val digest = MessageDigest.getInstance("SHA-256")
             val hash = digest.digest(payload.toByteArray(StandardCharsets.UTF_8))
             Base64.encodeToString(hash, Base64.NO_WRAP)
         }
     }
 
-    //  Получение ключа HMAC из Keystore или генерация нового
     private fun getHmacKey(context: Context): ByteArray {
         val prefs = context.getSharedPreferences("qr_hmac_prefs", Context.MODE_PRIVATE)
         val existingKey = prefs.getString("hmac_key", null)
@@ -147,7 +129,6 @@ object SecureQrManager {
             return Base64.decode(existingKey, Base64.NO_WRAP)
         }
 
-        // Генерация нового ключа
         val key = ByteArray(32)
         java.security.SecureRandom().nextBytes(key)
         prefs.edit().putString("hmac_key", Base64.encodeToString(key, Base64.NO_WRAP)).apply()
