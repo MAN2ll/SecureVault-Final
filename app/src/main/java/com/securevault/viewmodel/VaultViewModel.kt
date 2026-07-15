@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -51,7 +50,7 @@ class VaultViewModel @Inject constructor(
     val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    //  Убран init блок, который ссылался на несуществующий _rotationEntries
+    //  Убран старый init-блок. Оставлен только вычисляемый StateFlow
     val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { all, pid ->
             if (pid == null) emptyList()
