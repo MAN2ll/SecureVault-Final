@@ -27,7 +27,7 @@ import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
-import com.securevault.utils.AccessMode
+import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.viewmodel.ProfileViewModel
@@ -62,6 +62,9 @@ fun RotationJournalScreen(
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
+    
+    //  Диалог для случая, когда PIN не задан
+    var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -76,10 +79,7 @@ fun RotationJournalScreen(
         }
     ) { padding ->
         if (entries.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.History, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                     Spacer(Modifier.height(16.dp))
@@ -87,11 +87,7 @@ fun RotationJournalScreen(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(entries) { entry ->
                     val history = entry.getPasswordHistory()
                     if (history.isNotEmpty()) {
@@ -110,27 +106,12 @@ fun RotationJournalScreen(
                                 Spacer(Modifier.height(8.dp))
                                 
                                 history.forEach { item ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = formatDate(item.date),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            Text(
-                                                text = "Тип: ${item.type}",
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            Text(text = formatDate(item.date), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text(text = "Тип: ${item.type}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             if (!item.relatedService.isNullOrBlank()) {
-                                                Text(
-                                                    text = "Источник: ${item.relatedService}",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
+                                                Text(text = "Источник: ${item.relatedService}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                                             }
                                         }
                                         
@@ -153,6 +134,9 @@ fun RotationJournalScreen(
                                                     },
                                                     onPinRequired = {
                                                         showPinDialogForHistory = true
+                                                    },
+                                                    onPinNotSet = {
+                                                        showPinNotSetDialog = true
                                                     }
                                                 )
                                             }
@@ -179,7 +163,7 @@ fun RotationJournalScreen(
                     OutlinedTextField(
                         value = pinInput,
                         onValueChange = { pinInput = it; pinError = null },
-                        label = { Text("PIN") },
+                        label = { Text("PIN профиля") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
                         singleLine = true,
@@ -219,18 +203,8 @@ fun RotationJournalScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Сервис: ${historyItemToShow!!.first.service}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = revealedHistoryPassword!!,
-                                fontSize = 16.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = revealedHistoryPassword!!, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             IconButton(onClick = {
                                 context.getSystemService(android.content.ClipboardManager::class.java)
                                     .setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
@@ -247,6 +221,18 @@ fun RotationJournalScreen(
             }
         )
     }
+    
+    //  Диалог предупреждения об отсутствии PIN
+    if (showPinNotSetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinNotSetDialog = false },
+            title = { Text("PIN профиля не задан") },
+            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
+            confirmButton = {
+                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
+            }
+        )
+    }
 }
 
 private fun requestHistoryAccess(
@@ -255,7 +241,8 @@ private fun requestHistoryAccess(
     context: Context,
     activity: FragmentActivity?,
     onAccessGranted: () -> Unit,
-    onPinRequired: () -> Unit
+    onPinRequired: () -> Unit,
+    onPinNotSet: () -> Unit // 
 ) {
     if (profile == null) {
         onPinRequired()
@@ -265,13 +252,9 @@ private fun requestHistoryAccess(
     val accessMode = PasswordAccessPolicy.resolve(entry, profile)
     
     when (accessMode) {
-        AccessMode.NO_CONFIRMATION -> {
-            onAccessGranted()
-        }
-        AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
-            onPinRequired()
-        }
-        AccessMode.BIOMETRIC_OR_PIN -> {
+        is AccessResult.Granted -> onAccessGranted()
+        is AccessResult.PinRequired -> onPinRequired()
+        is AccessResult.BiometricOrPin -> {
             val biometricManager = BiometricManager.from(context)
             val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
             
@@ -284,11 +267,11 @@ private fun requestHistoryAccess(
                     }
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                         super.onAuthenticationError(errorCode, errString)
-                        onPinRequired()
+                        if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
                     }
                     override fun onAuthenticationFailed() {
                         super.onAuthenticationFailed()
-                        onPinRequired()
+                        if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
                     }
                 })
 
@@ -300,10 +283,10 @@ private fun requestHistoryAccess(
 
                 biometricPrompt.authenticate(promptInfo)
             } else {
-                onPinRequired()
+                if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
             }
         }
-        else -> onPinRequired()
+        is AccessResult.PinNotSet -> onPinNotSet()
     }
 }
 
