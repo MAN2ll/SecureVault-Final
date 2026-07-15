@@ -3,6 +3,8 @@
 package com.securevault.ui.screens
 
 import android.content.Context
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,12 +26,17 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.security.MasterPasswordHasher
+import com.securevault.security.ProfilePasswordHasher
 import com.securevault.utils.AccessMode
+import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.MnemonicPasswordGenerator
+import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.PasswordOperationResult
@@ -47,6 +54,7 @@ fun EntryEditorScreen(
 ) {
     val isNewEntry = id == null || id == "new"
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
 
     val allEntries by viewModel.allEntries.collectAsState()
     val existingEntry = remember(id, allEntries) {
@@ -84,7 +92,12 @@ fun EntryEditorScreen(
 
     var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
-    var showConfirmPasswordDialog by remember { mutableStateOf(false) }
+    
+    // Состояния для диалога доступа по политике
+    var showAccessDialog by remember { mutableStateOf(false) }
+    var accessPinInput by remember { mutableStateOf("") }
+    var accessPinError by remember { mutableStateOf<String?>(null) }
+    var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
     var showMnemonicDialog by remember { mutableStateOf(false) }
@@ -110,6 +123,58 @@ fun EntryEditorScreen(
             mnemonicOptionsJson = entry.mnemonicOptionsJson
             passwordAccessMode = entry.passwordAccessMode ?: AccessMode.INHERIT.value
             passwordChanged = false
+        }
+    }
+
+    //  Функция запроса доступа к текущему паролю
+    fun requestPasswordAccess() {
+        if (existingEntry == null) return
+        val profile = profiles.find { it.id == effectiveProfileId } ?: return
+        val result = PasswordAccessPolicy.resolve(existingEntry, profile)
+        
+        when (result) {
+            is AccessResult.Granted -> {
+                password = existingEntry.password
+                passwordChanged = false
+                showPassword = true
+            }
+            is AccessResult.PinRequired -> {
+                showAccessDialog = true
+            }
+            is AccessResult.BiometricOrPin -> {
+                val biometricManager = BiometricManager.from(context)
+                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
+                    val executor = ContextCompat.getMainExecutor(context)
+                    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            super.onAuthenticationSucceeded(result)
+                            password = existingEntry.password
+                            passwordChanged = false
+                            showPassword = true
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            super.onAuthenticationError(errorCode, errString)
+                            showAccessDialog = true
+                        }
+                        override fun onAuthenticationFailed() {
+                            super.onAuthenticationFailed()
+                            showAccessDialog = true
+                        }
+                    })
+                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Подтвердите личность")
+                        .setSubtitle("Для просмотра текущего пароля")
+                        .setNegativeButtonText("Использовать PIN")
+                        .build()
+                    biometricPrompt.authenticate(promptInfo)
+                } else {
+                    showAccessDialog = true
+                }
+            }
+            is AccessResult.PinNotSet -> {
+                showPinNotSetDialog = true
+            }
         }
     }
 
@@ -266,7 +331,8 @@ fun EntryEditorScreen(
                 trailingIcon = {
                     Row {
                         if (!isNewEntry && existingEntry != null && !passwordChanged) {
-                            IconButton(onClick = { showConfirmPasswordDialog = true }) { Icon(Icons.Default.Visibility, "Показать текущий пароль") }
+                            //  Вызов политики доступа вместо мастер-пароля
+                            IconButton(onClick = { requestPasswordAccess() }) { Icon(Icons.Default.Visibility, "Показать текущий пароль") }
                         } else if (showPassword) {
                             IconButton(onClick = { showPassword = false }) { Icon(Icons.Default.VisibilityOff, "Скрыть пароль") }
                         }
@@ -372,55 +438,72 @@ fun EntryEditorScreen(
         }
     }
 
-    if (showConfirmPasswordDialog) {
-        ConfirmMasterPasswordDialogForEditor(context = context, existingEntry = existingEntry, onConfirmed = { decryptedPassword -> password = decryptedPassword; passwordChanged = false; showPassword = true; showConfirmPasswordDialog = false }, onDismiss = { showConfirmPasswordDialog = false })
+    //  Диалог ввода PIN профиля для просмотра текущего пароля
+    if (showAccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccessDialog = false },
+            title = { Text("Введите PIN профиля") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = accessPinInput,
+                        onValueChange = { accessPinInput = it; accessPinError = null },
+                        label = { Text("PIN профиля") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = accessPinError != null
+                    )
+                    if (accessPinError != null) Text(accessPinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val profile = profiles.find { it.id == effectiveProfileId }
+                    if (profile != null && ProfilePasswordHasher.verify(accessPinInput, profile.passwordHash, profile.passwordSalt)) {
+                        password = existingEntry?.password ?: ""
+                        passwordChanged = false
+                        showPassword = true
+                        showAccessDialog = false
+                        accessPinInput = ""
+                    } else {
+                        accessPinError = "Неверный PIN профиля"
+                    }
+                }) { Text("Подтвердить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAccessDialog = false; accessPinInput = "" }) { Text("Отмена") }
+            }
+        )
     }
+
+    // ✅ Диалог предупреждения об отсутствии PIN
+    if (showPinNotSetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinNotSetDialog = false },
+            title = { Text("PIN профиля не задан") },
+            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
+            confirmButton = {
+                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
+            }
+        )
+    }
+
     if (showGeneratorDialog) {
         SimplePasswordGeneratorDialog(onDismiss = { showGeneratorDialog = false }, onGenerated = { pwd -> password = pwd; passwordChanged = true; generationType = "random"; showGeneratorDialog = false })
     }
     if (showMnemonicDialog) {
-        // Передаём username и effectiveProfileId в диалог
         MnemonicGeneratorDialog(
             username = username,
             profileId = effectiveProfileId,
             onDismiss = { showMnemonicDialog = false },
-            onGenerated = { pwd, hint ->
-                password = pwd
-                passwordChanged = true
-                textHint = hint
-                generationType = "mnemonic"
-                showMnemonicDialog = false
-            }
+            onGenerated = { pwd, hint -> password = pwd; passwordChanged = true; textHint = hint; generationType = "mnemonic"; showMnemonicDialog = false }
         )
     }
     if (showSaveErrorDialog) {
         AlertDialog(onDismissRequest = { showSaveErrorDialog = false }, icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) }, title = { Text("Ошибка сохранения") }, text = { Text(saveErrorMessage ?: "Неизвестная ошибка") }, confirmButton = { TextButton(onClick = { showSaveErrorDialog = false }) { Text("Понятно") } })
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ConfirmMasterPasswordDialogForEditor(context: Context, existingEntry: Entry?, onConfirmed: (decryptedPassword: String) -> Unit, onDismiss: () -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) }, title = { Text("Подтверждение") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Для просмотра текущего пароля введите мастер-пароль:", fontSize = 13.sp)
-            OutlinedTextField(value = password, onValueChange = { password = it; error = null }, label = { Text("Мастер-пароль") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth(), isError = error != null)
-            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-        }
-    }, confirmButton = {
-        Button(onClick = {
-            val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-            val storedHash = prefs.getString("master_hash", null)
-            val storedSalt = prefs.getString("master_salt", null)
-            val iterations = prefs.getInt("master_iterations", 100_000)
-            if (storedHash != null && storedSalt != null && MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-                try { onConfirmed(existingEntry?.password ?: "") } catch (e: Exception) { error = "Не удалось расшифровать пароль" }
-            } else { error = "Неверный пароль" }
-            password = ""
-        }) { Text("Подтвердить") }
-    }, dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -477,8 +560,8 @@ private fun SimplePasswordGeneratorDialog(onDismiss: () -> Unit, onGenerated: (S
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MnemonicGeneratorDialog(
-    username: String, 
-    profileId: Int?, 
+    username: String,
+    profileId: Int?,
     onDismiss: () -> Unit,
     onGenerated: (String, String) -> Unit
 ) {
@@ -502,7 +585,6 @@ private fun MnemonicGeneratorDialog(
             when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
         } else { targetLength }
 
-        //  Теперь username и profileId доступны, так как переданы как параметры
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
