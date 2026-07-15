@@ -43,11 +43,9 @@ object MnemonicPasswordGenerator {
         'l' to listOf('1')
     )
 
-    //  ЦЕНТРАЛИЗОВАННАЯ ПРОВЕРКА ВАЛИДНОСТИ
     fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
         if (password.isEmpty()) return false
         
-        // Проверка дубликатов с учётом регистра (M и m считаются повтором)
         val lowerPassword = password.lowercase()
         if (lowerPassword.length != lowerPassword.toSet().size) return false
 
@@ -69,7 +67,6 @@ object MnemonicPasswordGenerator {
         return upper >= 2 && digit >= 2 && special >= 2
     }
 
-    //  ВОЗВРАЩАЕТ ТОЛЬКО ВАЛИДНЫЕ ВАРИАНТЫ
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val effectiveLength = if (options.splitMode == SplitMode.TWO_USERS) {
@@ -83,14 +80,13 @@ object MnemonicPasswordGenerator {
         }
 
         var currentOffset = options.variantOffset
-        val maxAttempts = 150 // Защита от бесконечного цикла
+        val maxAttempts = 150
 
         while (results.size < count && currentOffset < options.variantOffset + maxAttempts) {
             val variantOptions = options.copy(variantOffset = currentOffset)
             val result = generateSingleVariant(variantOptions, effectiveLength)
 
             if (result != null && isValidVariant(result.password, options.splitMode)) {
-                // Проверка на уникальность внутри текущей выборки
                 if (results.none { it.password == result.password }) {
                     results.add(result)
                 }
@@ -166,7 +162,7 @@ object MnemonicPasswordGenerator {
         val result = StringBuilder()
         val usedChars = mutableSetOf<Char>()
         
-        explanation.append("Блок '$word' → ")
+        explanation.append("Блок '$word' -> ")
         
         for ((index, char) in base.withIndex()) {
             if (useLeet && char in leetMap) {
@@ -228,4 +224,22 @@ object MnemonicPasswordGenerator {
 
     private fun calculateStrength(password: String): PasswordGenerator.Strength {
         val length = password.length
-        val hasUpper = password.any
+        val hasUpper = password.any { it.isUpperCase() }
+        val hasLower = password.any { it.isLowerCase() }
+        val hasDigit = password.any { it.isDigit() }
+        val hasSpecial = password.any { !it.isLetterOrDigit() }
+
+        val score = when {
+            length >= 16 && hasUpper && hasLower && hasDigit && hasSpecial -> 4
+            length >= 12 && hasUpper && hasLower && hasDigit && hasSpecial -> 3
+            length >= 10 && (hasUpper && hasLower) && (hasDigit || hasSpecial) -> 2
+            else -> 1
+        }
+        return when (score) {
+            4 -> PasswordGenerator.Strength.VERY_STRONG
+            3 -> PasswordGenerator.Strength.STRONG
+            2 -> PasswordGenerator.Strength.MEDIUM
+            else -> PasswordGenerator.Strength.WEAK
+        }
+    }
+}
