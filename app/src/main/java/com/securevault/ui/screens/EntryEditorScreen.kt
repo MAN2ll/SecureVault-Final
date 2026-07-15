@@ -379,7 +379,19 @@ fun EntryEditorScreen(
         SimplePasswordGeneratorDialog(onDismiss = { showGeneratorDialog = false }, onGenerated = { pwd -> password = pwd; passwordChanged = true; generationType = "random"; showGeneratorDialog = false })
     }
     if (showMnemonicDialog) {
-        MnemonicGeneratorDialog(onDismiss = { showMnemonicDialog = false }, onGenerated = { pwd, hint -> password = pwd; passwordChanged = true; textHint = hint; generationType = "mnemonic"; showMnemonicDialog = false })
+        // Передаём username и effectiveProfileId в диалог
+        MnemonicGeneratorDialog(
+            username = username,
+            profileId = effectiveProfileId,
+            onDismiss = { showMnemonicDialog = false },
+            onGenerated = { pwd, hint ->
+                password = pwd
+                passwordChanged = true
+                textHint = hint
+                generationType = "mnemonic"
+                showMnemonicDialog = false
+            }
+        )
     }
     if (showSaveErrorDialog) {
         AlertDialog(onDismissRequest = { showSaveErrorDialog = false }, icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) }, title = { Text("Ошибка сохранения") }, text = { Text(saveErrorMessage ?: "Неизвестная ошибка") }, confirmButton = { TextButton(onClick = { showSaveErrorDialog = false }) { Text("Понятно") } })
@@ -464,7 +476,12 @@ private fun SimplePasswordGeneratorDialog(onDismiss: () -> Unit, onGenerated: (S
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String, String) -> Unit) {
+private fun MnemonicGeneratorDialog(
+    username: String, 
+    profileId: Int?, 
+    onDismiss: () -> Unit,
+    onGenerated: (String, String) -> Unit
+) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     var phrase by remember { mutableStateOf("") }
@@ -485,12 +502,12 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
             when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
         } else { targetLength }
 
-        // Передаём username и profileId в seed
+        //  Теперь username и profileId доступны, так как переданы как параметры
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
             username = username,
-            profileId = effectiveProfileId,
+            profileId = profileId,
             targetLength = effectiveLength,
             includeLeet = includeLeet,
             variantOffset = variantOffset,
