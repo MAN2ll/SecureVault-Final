@@ -48,11 +48,9 @@ class VaultViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    //  Все записи из всех профилей (для общего экспорта)
     val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    //  Вычисляемый поток, реагирующий на изменения allEntries
     val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { all, pid ->
             if (pid == null) emptyList()
@@ -61,6 +59,18 @@ class VaultViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favoritesOnly = MutableStateFlow(false)
+
+    init {
+        viewModelScope.launch {
+            _currentProfileId.collect { pid ->
+                if (pid != null) {
+                    _rotationEntries.value = repository.getEntriesWithRotation().filter { it.profileId == pid }
+                } else {
+                    _rotationEntries.value = emptyList()
+                }
+            }
+        }
+    }
 
     fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
     fun toggleFavoritesOnly() { favoritesOnly.value = !favoritesOnly.value }
@@ -133,11 +143,7 @@ class VaultViewModel @Inject constructor(
             val updatedMnemonicPhrase = if (newGenerationType == "mnemonic") newMnemonicPhraseHint else null
             val updatedMnemonicOptions = if (newGenerationType == "mnemonic") newMnemonicOptionsJson else null
 
-            val updated = entry.addToPasswordHistory(
-                oldPassword = entry.password,
-                generationType = entry.generationType,
-                oldPasswordFingerprint = oldFp
-            ).copy(
+            val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                 encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
                 generationType = newGenerationType,
                 textHint = updatedHint,
@@ -192,11 +198,7 @@ class VaultViewModel @Inject constructor(
                 val updatedMnemonicPhrase = if (replacement.generationType == "mnemonic") replacement.mnemonicPhraseHint else null
                 val updatedMnemonicOptions = if (replacement.generationType == "mnemonic") replacement.mnemonicOptionsJson else null
 
-                val updated = entry.addToPasswordHistory(
-                    oldPassword = entry.password,
-                    generationType = entry.generationType,
-                    oldPasswordFingerprint = oldFp
-                ).copy(
+                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                     encryptedPassword = encryptedPwd, passwordFingerprint = newFp, lastChanged = now,
                     generationType = replacement.generationType,
                     textHint = updatedHint,
@@ -239,11 +241,7 @@ class VaultViewModel @Inject constructor(
             for (entry in entries) {
                 val upd = updates[entry.id] ?: continue
                 val oldFp = PasswordValidator.buildPasswordFingerprint(entry.password, appContext)
-                val updated = entry.addToPasswordHistory(
-                    oldPassword = entry.password,
-                    generationType = entry.generationType,
-                    oldPasswordFingerprint = oldFp
-                ).copy(
+                val updated = entry.addToPasswordHistory(entry.password, entry.generationType, oldFp).copy(
                     encryptedPassword = upd.first, passwordFingerprint = upd.second, lastChanged = now,
                     generationType = "shuffled",
                     textHint = null,
@@ -297,11 +295,7 @@ class VaultViewModel @Inject constructor(
                 val enc = CryptoUtils.encrypt(newPwd)
                 val newFp = PasswordValidator.buildPasswordFingerprint(newPwd, appContext)
                 val oldFp = PasswordValidator.buildPasswordFingerprint(tgt.password, appContext)
-                val updated = tgt.addToPasswordHistory(
-                    oldPassword = tgt.password,
-                    generationType = tgt.generationType,
-                    oldPasswordFingerprint = oldFp
-                ).copy(
+                val updated = tgt.addToPasswordHistory(tgt.password, tgt.generationType, oldFp).copy(
                     encryptedPassword = enc, passwordFingerprint = newFp, lastChanged = now,
                     generationType = "shuffled",
                     textHint = null,
@@ -315,7 +309,6 @@ class VaultViewModel @Inject constructor(
         } catch (e: Exception) { onResult(PasswordShufflePlanResult(false, emptyList(), e.message ?: "Ошибка")) }
     }
 
-    //  Передаём relatedService и relatedEntryId в историю
     fun applyManagedShuffle(
         assignments: Map<String, String?>,
         onResult: (PasswordOperationResult) -> Unit
@@ -386,7 +379,6 @@ class VaultViewModel @Inject constructor(
                 val newFp = PasswordValidator.buildPasswordFingerprint(newPassword, appContext)
                 val oldFp = PasswordValidator.buildPasswordFingerprint(target.password, appContext)
 
-                //  Передаём relatedService и relatedEntryId
                 val updated = target.addToPasswordHistory(
                     oldPassword = target.password,
                     generationType = target.generationType,
@@ -414,6 +406,7 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    // newPin теперь nullable для поддержки профилей без PIN
     suspend fun exportAllProfiles(): BackupData {
         return BackupManager.exportAllProfiles(repository, appContext)
     }
@@ -421,7 +414,7 @@ class VaultViewModel @Inject constructor(
     suspend fun importBackup(
         backupData: BackupData,
         mode: ImportMode,
-        newPin: String
+        newPin: String?
     ): com.securevault.utils.ImportResult {
         return BackupManager.importBackup(repository, backupData, mode, newPin, appContext)
     }
