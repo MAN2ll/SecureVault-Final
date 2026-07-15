@@ -2,10 +2,7 @@
 
 package com.securevault.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -58,10 +55,7 @@ fun PasswordRotationDialog(
 
     var phrase by remember { mutableStateOf(currentHint ?: "") }
     var includeLeet by remember { mutableStateOf(true) }
-    var includeServiceCode by remember { mutableStateOf(true) }
-    var includeRotationCode by remember { mutableStateOf(true) }
 
-    //  Режим генерации
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
@@ -102,17 +96,15 @@ fun PasswordRotationDialog(
             targetLength
         }
 
+        //  Убраны includeServiceCode, includeRotationCode, separator
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
             targetLength = effectiveLength,
             includeLeet = includeLeet,
-            includeServiceCode = includeServiceCode,
-            includeRotationCode = includeRotationCode,
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
             variantOffset = variantOffset,
-            separator = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) "" else "",
             enforceUniqueChars = true,
             splitMode = splitMode
         )
@@ -120,7 +112,7 @@ fun PasswordRotationDialog(
         selectedVariantIndex = -1
     }
 
-    LaunchedEffect(phrase, includeLeet, includeServiceCode, includeRotationCode, variantOffset, splitMode, targetLength) {
+    LaunchedEffect(phrase, includeLeet, variantOffset, splitMode, targetLength) {
         if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
     }
 
@@ -243,7 +235,6 @@ fun PasswordRotationDialog(
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("AMPG v2", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
-                                //  Переключатель режимов
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     RadioButton(
                                         selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
@@ -274,7 +265,6 @@ fun PasswordRotationDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
-                                // Длина пароля
                                 if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp)
@@ -302,20 +292,12 @@ fun PasswordRotationDialog(
                                     }
                                 }
 
+                                //  Оставлен только чекбокс "Позиционные замены"
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Leet-замены", Modifier.padding(start = 8.dp), fontSize = 12.sp)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                                    Text("Код сервиса", Modifier.padding(start = 8.dp), fontSize = 12.sp)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                                    Text("Код ротации", Modifier.padding(start = 8.dp), fontSize = 12.sp)
+                                    Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
 
-                                // Номер набора вынесен над кнопкой
                                 if (variants.isNotEmpty()) {
                                     Text(
                                         "Набор №${(variantOffset / 5) + 1}",
@@ -358,7 +340,6 @@ fun PasswordRotationDialog(
                                     }
                                 }
 
-                                // Короткая кнопка
                                 OutlinedButton(
                                     onClick = { variantOffset += 5 },
                                     modifier = Modifier.fillMaxWidth().height(44.dp)
@@ -392,8 +373,8 @@ fun PasswordRotationDialog(
                                 if (availableEntries.isEmpty()) {
                                     Text("В этом профиле нет других записей.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                 } else {
-                                    LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        items(availableEntries) { entry ->
+                                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        androidx.compose.foundation.lazy.items(availableEntries) { entry ->
                                             val isSelected = selectedExistingEntry?.id == entry.id
                                             Card(
                                                 modifier = Modifier
