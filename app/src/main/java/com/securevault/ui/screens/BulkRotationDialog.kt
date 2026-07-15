@@ -55,9 +55,9 @@ fun BulkRotationDialog(
             }
         } else {
             if (mnemonicPhrase.isNotBlank()) {
-                entries.mapIndexedNotNull { index, entry ->
+                //  mapNotNull отфильтрует записи, для которых не удалось найти валидный вариант
+                entries.mapNotNull { entry ->
                     try {
-                        // Передаём username и profileId, убраны устаревшие параметры
                         val options = MnemonicPasswordGenerator.GenerationOptions(
                             phrase = mnemonicPhrase,
                             serviceName = entry.service,
@@ -65,14 +65,16 @@ fun BulkRotationDialog(
                             profileId = entry.profileId,
                             targetLength = 16,
                             includeLeet = includeLeet,
-                            variantOffset = index,
+                            variantOffset = 0, // Генератор сам найдёт валидный вариант внутри (до 150 попыток)
                             enforceUniqueChars = true,
                             splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER
                         )
                         val variants = MnemonicPasswordGenerator.generateVariants(options, count = 1)
                         if (variants.isNotEmpty()) {
                             Triple(entry, variants.first().password, "mnemonic")
-                        } else null
+                        } else {
+                            null // Не удалось создать валидный пароль для этой записи
+                        }
                     } catch (e: Exception) {
                         null
                     }
@@ -167,12 +169,13 @@ fun BulkRotationDialog(
                     }
                 }
 
+                //  Предупреждение, если не для всех записей удалось создать валидный пароль
                 if (!canReplaceAll && selectedMode == BulkMode.MNEMONIC) {
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Не удалось сгенерировать пароль для ${entries.size - generatedPasswords.size} записей.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Не удалось создать валидный AMPG-пароль для ${entries.size - generatedPasswords.size} записей. Попробуйте изменить фразу или длину.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
                 }
@@ -197,6 +200,7 @@ fun BulkRotationDialog(
             }
         },
         confirmButton = {
+            //  Кнопка неактивна, если не для всех записей найден валидный пароль
             Button(onClick = { showMasterPasswordDialog = true }, enabled = !isProcessing && canReplaceAll && hasUniquePasswords) {
                 if (isProcessing) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
