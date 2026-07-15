@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
-import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
 
 enum class RotationMode { RANDOM, MNEMONIC, MANUAL, FROM_EXISTING }
@@ -61,10 +60,15 @@ fun PasswordRotationDialog(
 
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
-    var variantOffset by remember { mutableIntStateOf(0) }
-
-    var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
-    var selectedVariantIndex by remember { mutableIntStateOf(-1) }
+    
+    // Состояние пагинации для AMPG
+    var rotVariantPages by remember { mutableStateOf<List<List<MnemonicPasswordGenerator.GenerationResult>>>(emptyList()) }
+    var rotCurrentPageIndex by remember { mutableIntStateOf(0) }
+    var rotNextOffset by remember { mutableIntStateOf(0) }
+    var rotIsGenerating by remember { mutableStateOf(false) }
+    var rotNoMoreVariants by remember { mutableStateOf(false) }
+    var rotSelectedVariantIndex by remember { mutableIntStateOf(-1) }
+    var rotShowExplanation by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
 
     var generatedRandomPwd by remember { mutableStateOf("") }
     var randomLength by remember { mutableIntStateOf(16) }
@@ -77,56 +81,71 @@ fun PasswordRotationDialog(
     val availableEntries = remember(allProfileEntries, currentEntryId) {
         allProfileEntries.filter { it.id != currentEntryId }
     }
+    
+    val currentEntryForSeed = remember(allProfileEntries, currentEntryId) {
+        allProfileEntries.find { it.id == currentEntryId }
+    }
 
     fun generateRandom() {
         val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
         generatedRandomPwd = result.password
     }
 
-    fun generateMnemonicVariants() {
-        if (phrase.isBlank()) {
-            variants = emptyList()
-            return
-        }
-
-        // Находим текущую запись для получения username и profileId
-        val currentEntry = allProfileEntries.find { it.id == currentEntryId }
-
+    fun rotLoadNextPage() {
+        if (rotIsGenerating || rotNoMoreVariants || phrase.isBlank()) return
+        rotIsGenerating = true
+        
         val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
-            when {
-                targetLength <= 16 -> 16
-                targetLength <= 18 -> 18
-                else -> 20
-            }
-        } else {
-            targetLength
-        }
+            when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
+        } else { targetLength }
 
-        // Передаём username и profileId, убраны устаревшие параметры
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase,
             serviceName = serviceName,
-            username = currentEntry?.username ?: "",
-            profileId = currentEntry?.profileId,
+            username = currentEntryForSeed?.username ?: "",
+            profileId = currentEntryForSeed?.profileId,
             targetLength = effectiveLength,
             includeLeet = includeLeet,
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
-            variantOffset = variantOffset,
+            variantOffset = rotNextOffset,
             enforceUniqueChars = true,
             splitMode = splitMode
         )
-        variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
-        selectedVariantIndex = -1
+        
+        val newVariants = MnemonicPasswordGenerator.generateVariants(options, count = 3)
+        if (newVariants.isNotEmpty()) {
+            rotVariantPages = rotVariantPages + listOf(newVariants)
+            rotCurrentPageIndex = rotVariantPages.size - 1
+            rotNextOffset = options.variantOffset + 150
+            rotNoMoreVariants = newVariants.size < 3
+        } else {
+            rotNoMoreVariants = true
+        }
+        rotIsGenerating = false
+        rotSelectedVariantIndex = -1
     }
 
-    LaunchedEffect(phrase, includeLeet, variantOffset, splitMode, targetLength) {
-        if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
+    fun rotLoadPreviousPage() {
+        if (rotCurrentPageIndex > 0) {
+            rotCurrentPageIndex--
+            rotSelectedVariantIndex = -1
+        }
     }
 
     LaunchedEffect(selectedMode) {
         if (selectedMode == RotationMode.RANDOM) generateRandom()
-        else if (selectedMode == RotationMode.MNEMONIC) generateMnemonicVariants()
+    }
+    
+    LaunchedEffect(phrase, includeLeet, splitMode, targetLength) {
+        if (selectedMode == RotationMode.MNEMONIC) {
+            rotVariantPages = emptyList()
+            rotCurrentPageIndex = 0
+            rotNextOffset = 0
+            rotNoMoreVariants = false
+            rotSelectedVariantIndex = -1
+            if (phrase.isNotBlank()) rotLoadNextPage()
+        }
     }
 
     AlertDialog(
@@ -230,39 +249,69 @@ fun PasswordRotationDialog(
                                     }
                                 }
 
-                                //  Оставлен только чекбокс "Позиционные замены"
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
                                     Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
 
-                                if (variants.isNotEmpty()) {
-                                    Text("Набор №${(variantOffset / 5) + 1}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("Выберите вариант:", fontWeight = FontWeight.Medium, fontSize = 12.sp)
-                                    variants.forEachIndexed { index, result ->
-                                        val isSelected = selectedVariantIndex == index
+                                if (rotVariantPages.isNotEmpty()) {
+                                    val currentPage = rotVariantPages[rotCurrentPageIndex]
+                                    Text("Варианты ${rotCurrentPageIndex * 3 + 1}–${rotCurrentPageIndex * 3 + currentPage.size}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    
+                                    currentPage.forEachIndexed { index, result ->
+                                        val isSelected = rotSelectedVariantIndex == index
                                         Card(
-                                            modifier = Modifier.fillMaxWidth().clickable { selectedVariantIndex = index },
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { rotSelectedVariantIndex = index },
                                             colors = CardDefaults.cardColors(
                                                 containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                             )
                                         ) {
-                                            Column(modifier = Modifier.padding(8.dp)) {
-                                                Text(result.variantName, fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                                Text(result.password, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                                                if (result.splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
-                                                    Text("Части: ${result.part1?.length ?: 0} + ${result.part2?.length ?: 0}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(text = "Вариант ${rotCurrentPageIndex * 3 + index + 1}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                                        Spacer(Modifier.height(2.dp))
+                                                        Text(text = result.password, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                                        if (result.splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+                                                            Text("Части: ${result.part1?.length ?: 0} + ${result.part2?.length ?: 0}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        }
+                                                    }
+                                                    Column {
+                                                        IconButton(onClick = {
+                                                            clipboardManager.setText(AnnotatedString(result.password))
+                                                            android.widget.Toast.makeText(context, "Скопировано!", android.widget.Toast.LENGTH_SHORT).show()
+                                                        }) {
+                                                            Icon(Icons.Default.ContentCopy, contentDescription = "Копировать", Modifier.size(18.dp))
+                                                        }
+                                                        RadioButton(selected = isSelected, onClick = { rotSelectedVariantIndex = index })
+                                                    }
                                                 }
+                                                TextButton(onClick = { rotShowExplanation = result }, modifier = Modifier.align(Alignment.End)) { Text("Как собран", fontSize = 10.sp) }
                                             }
                                         }
-                                        Spacer(Modifier.height(4.dp))
                                     }
-                                }
 
-                                OutlinedButton(onClick = { variantOffset += 5 }, modifier = Modifier.fillMaxWidth().height(44.dp)) {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ещё варианты")
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        TextButton(onClick = { rotLoadPreviousPage() }, enabled = rotCurrentPageIndex > 0 && !rotIsGenerating) {
+                                            Icon(Icons.Default.ArrowBack, null, Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Предыдущие")
+                                        }
+                                        if (rotIsGenerating) {
+                                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                        } else {
+                                            TextButton(onClick = { rotLoadNextPage() }, enabled = !rotNoMoreVariants && !rotIsGenerating) {
+                                                Text("Следующие")
+                                                Spacer(Modifier.width(4.dp))
+                                                Icon(Icons.Default.ArrowForward, null, Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                    if (rotNoMoreVariants && !rotIsGenerating) {
+                                        Text("Новых подходящих вариантов не найдено.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                                    }
+                                } else if (phrase.isNotBlank() && !rotIsGenerating) {
+                                    Text("Не удалось сгенерировать валидные варианты. Попробуйте изменить фразу или длину.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -318,8 +367,10 @@ fun PasswordRotationDialog(
                         onPasswordReplaced(generatedRandomPwd, null, "random", null, null)
                     }
                     RotationMode.MNEMONIC -> {
-                        if (selectedVariantIndex < 0 || selectedVariantIndex >= variants.size) { showError = "Выберите вариант"; return@Button }
-                        val selected = variants[selectedVariantIndex]
+                        if (rotSelectedVariantIndex < 0 || rotVariantPages.isEmpty() || rotCurrentPageIndex >= rotVariantPages.size) { 
+                            showError = "Выберите вариант"; return@Button 
+                        }
+                        val selected = rotVariantPages[rotCurrentPageIndex][rotSelectedVariantIndex]
                         onPasswordReplaced(selected.password, selected.mnemonicHint, "mnemonic", phrase, null)
                     }
                     RotationMode.MANUAL -> {
@@ -339,4 +390,13 @@ fun PasswordRotationDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
+
+    if (rotShowExplanation != null) {
+        AlertDialog(
+            onDismissRequest = { rotShowExplanation = null },
+            title = { Text("Как собран пароль") },
+            text = { Text(rotShowExplanation!!.explanation, fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+            confirmButton = { TextButton(onClick = { rotShowExplanation = null }) { Text("Понятно") } }
+        )
+    }
 }
