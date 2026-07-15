@@ -56,7 +56,6 @@ fun PasswordRotationDialog(
     var showError by remember { mutableStateOf<String?>(null) }
 
     var phrase by remember { mutableStateOf(currentHint ?: "") }
-    var includeLeet by remember { mutableStateOf(true) }
 
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
@@ -104,11 +103,9 @@ fun PasswordRotationDialog(
             username = currentEntryForSeed?.username ?: "",
             profileId = currentEntryForSeed?.profileId,
             targetLength = effectiveLength,
-            includeLeet = includeLeet,
             rotationMonth = rotationMonth,
             rotationYear = rotationYear,
             variantOffset = rotNextOffset,
-            enforceUniqueChars = true,
             splitMode = splitMode
         )
         
@@ -116,7 +113,7 @@ fun PasswordRotationDialog(
         if (newVariants.isNotEmpty()) {
             rotVariantPages = rotVariantPages + listOf(newVariants)
             rotCurrentPageIndex = rotVariantPages.size - 1
-            rotNextOffset = options.variantOffset + 150
+            rotNextOffset = options.variantOffset + 300
             rotNoMoreVariants = newVariants.size < 3
         } else {
             rotNoMoreVariants = true
@@ -136,7 +133,7 @@ fun PasswordRotationDialog(
         if (selectedMode == RotationMode.RANDOM) generateRandom()
     }
     
-    LaunchedEffect(phrase, includeLeet, splitMode, targetLength) {
+    LaunchedEffect(phrase, splitMode, targetLength) {
         if (selectedMode == RotationMode.MNEMONIC) {
             rotVariantPages = emptyList()
             rotCurrentPageIndex = 0
@@ -246,11 +243,6 @@ fun PasswordRotationDialog(
                                             FilterChip(selected = targetLength == length, onClick = { targetLength = length }, label = { Text("$length") })
                                         }
                                     }
-                                }
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                                    Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp)
                                 }
 
                                 if (rotVariantPages.isNotEmpty()) {
