@@ -2,20 +2,24 @@
 
 package com.securevault.ui
 
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
 
+//  Добавлен дефолтный параметр navController
 @Composable
 fun SecureVaultNavHost(
-    navController: NavHostController,
+    navController: NavHostController = rememberNavController(),
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val authState by authViewModel.authState.collectAsState()
@@ -46,7 +50,6 @@ fun SecureVaultNavHost(
             )
         }
 
-        // ✅ ИСПРАВЛЕНО: Убраны лишние параметры onLock и onNavigateToExportImport
         composable("profiles") {
             ProfileListScreen(
                 onProfileSelected = { profileId ->
@@ -71,7 +74,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "vault/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             VaultListScreen(
@@ -90,7 +93,6 @@ fun SecureVaultNavHost(
                         popUpTo("vault/$profileId") { inclusive = true }
                     }
                 },
-                // ✅ ИСПРАВЛЕНО: Добавлен параметр onLock
                 onLock = {
                     authViewModel.lock()
                     navController.navigate("lock") {
@@ -102,7 +104,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "entry/{entryId}",
-            arguments = listOf(navArgument("entryId") { type = androidx.navigation.NavType.StringType })
+            arguments = listOf(navArgument("entryId") { type = NavType.StringType })
         ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")
             val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
@@ -122,7 +124,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "export/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             ExportImportScreen(
@@ -133,7 +135,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "rotation/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             RotationScreen(
@@ -144,7 +146,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "rotation_journal/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             RotationJournalScreen(
@@ -155,7 +157,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "profile_settings/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             ProfileSettingsScreen(
@@ -171,7 +173,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "mnemonic_generator/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             MnemonicGeneratorScreen(
@@ -182,7 +184,7 @@ fun SecureVaultNavHost(
 
         composable(
             route = "qr_scanner/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
         ) { backStackEntry ->
             val profileId = backStackEntry.arguments?.getInt("profileId")
             QrScannerScreen(
