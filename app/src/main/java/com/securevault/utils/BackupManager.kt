@@ -128,11 +128,12 @@ object BackupManager {
         return BackupData(profiles = backupProfiles)
     }
 
+    //  newPin теперь String? для поддержки профилей без PIN
     suspend fun importBackup(
         repository: VaultRepository,
         backupData: BackupData,
         mode: ImportMode,
-        newPin: String,
+        newPin: String?,
         context: Context
     ): ImportResult {
         val profileMapping = mutableMapOf<Int, Int>()
@@ -141,12 +142,18 @@ object BackupManager {
         var skippedEntries = 0
         val errors = mutableListOf<String>()
 
-        val pinSalt = ProfilePasswordHasher.generateSalt()
-        val pinHash = ProfilePasswordHasher.hash(newPin, pinSalt)
-
         for (backupProfile in backupData.profiles) {
             try {
                 val existingProfile = repository.getProfileByName(backupProfile.name)
+
+                // ✅ ИСПРАВЛЕНИЕ: Поддержка профилей без PIN
+                val (pinHash, pinSalt) = if (!newPin.isNullOrBlank()) {
+                    val s = ProfilePasswordHasher.generateSalt()
+                    val h = ProfilePasswordHasher.hash(newPin, s)
+                    h to s
+                } else {
+                    "" to ""
+                }
 
                 val newProfileId = when (mode) {
                     ImportMode.ADD_AS_NEW -> {
