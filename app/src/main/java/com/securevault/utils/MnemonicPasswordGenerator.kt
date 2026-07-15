@@ -9,7 +9,7 @@ object MnemonicPasswordGenerator {
 
     data class GenerationOptions(
         val phrase: String,
-        val serviceName: String = "", // Используется только как seed, не добавляется в хвост
+        val serviceName: String = "",
         val targetLength: Int = 16,
         val includeLeet: Boolean = true,
         val rotationMonth: Int? = null,
@@ -71,7 +71,6 @@ object MnemonicPasswordGenerator {
 
         if (words.isEmpty()) return null
 
-        //  Детерминированный seed на основе фразы, сервиса и ротации
         val seedStr = "${options.phrase}${options.serviceName}${options.rotationMonth}${options.rotationYear}${options.variantOffset}"
         val seedHash = seedStr.hashCode()
 
@@ -83,7 +82,7 @@ object MnemonicPasswordGenerator {
             val password = part1 + part2
             val hasUnique = !options.enforceUniqueChars || !PasswordValidator.hasDuplicateCharacters(password)
             
-            if (!hasUnique && options.enforceUniqueChars) return null // Fallback to next variant
+            if (!hasUnique && options.enforceUniqueChars) return null
 
             return GenerationResult(
                 password = password,
@@ -96,13 +95,11 @@ object MnemonicPasswordGenerator {
                 splitMode = SplitMode.TWO_USERS
             )
         } else {
-            // SINGLE_USER: берём первые 3-4 слова и формируем блоки
             val blocks = words.take(4).mapIndexed { index, word ->
                 buildRhythmicBlock(word, seedHash + index, 4, options.includeLeet)
             }
             
             var password = blocks.joinToString("")
-            // Добиваем длину, повторяя блоки с модификацией seed
             var currentSeed = seedHash + blocks.size
             while (password.length < targetLength) {
                 val extraBlock = buildRhythmicBlock(words[0], currentSeed, 4, options.includeLeet)
@@ -127,7 +124,7 @@ object MnemonicPasswordGenerator {
         }
     }
 
-    // ЛОГИКА AMPG: транслитерация → ритмичные блоки → позиционные замены
+    //Убран лишний .append(char)
     private fun buildRhythmicBlock(word: String, seed: Int, maxLength: Int, useLeet: Boolean): String {
         val transliterated = transliterate(word)
         val base = transliterated.take(maxLength)
@@ -136,14 +133,11 @@ object MnemonicPasswordGenerator {
         for ((index, char) in base.withIndex()) {
             if (useLeet && char in leetMap) {
                 val replacements = leetMap[char]!!
-                // Позиционная замена зависит от seed и индекса символа (детерминировано)
                 val replacementIndex = Math.abs((seed + index) % replacements.size)
                 result.append(replacements[replacementIndex])
             } else {
-                // Первая буква блока всегда заглавная для читаемости
                 if (index == 0) result.append(char.uppercaseChar())
                 else result.append(char)
-           .append(char)
             }
         }
         return result.toString()
