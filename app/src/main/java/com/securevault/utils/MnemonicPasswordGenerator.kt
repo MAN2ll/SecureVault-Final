@@ -28,9 +28,7 @@ object MnemonicPasswordGenerator {
         val strength: PasswordGenerator.Strength,
         val part1: String?,
         val part2: String?,
-        val hasUniqueChars: Boolean,
-        val splitMode: SplitMode,
-        val explanation: String //  Объяснение "Как собран пароль"
+        val explanation: String
     )
 
     private val leetMap = mapOf(
@@ -45,27 +43,34 @@ object MnemonicPasswordGenerator {
         'l' to listOf('1')
     )
 
-    //  Проверка сложности частей для двухпользовательского режима
-    fun validatePasswordPartsComplexity(password: String, splitMode: Boolean): Boolean {
-        if (splitMode) {
+    //  ЦЕНТРАЛИЗОВАННАЯ ПРОВЕРКА ВАЛИДНОСТИ
+    fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
+        if (password.isEmpty()) return false
+        
+        // Проверка дубликатов с учётом регистра (M и m считаются повтором)
+        val lowerPassword = password.lowercase()
+        if (lowerPassword.length != lowerPassword.toSet().size) return false
+
+        if (splitMode == SplitMode.TWO_USERS) {
             if (password.length % 2 != 0) return false
             val half = password.length / 2
             val part1 = password.substring(0, half)
             val part2 = password.substring(half)
-            return checkComplexity(part1) && checkComplexity(part2)
+            return checkPartComplexity(part1) && checkPartComplexity(part2)
         } else {
-            return checkComplexity(password)
+            return checkPartComplexity(password)
         }
     }
 
-    private fun checkComplexity(part: String): Boolean {
+    private fun checkPartComplexity(part: String): Boolean {
         val upper = part.count { it.isUpperCase() }
         val digit = part.count { it.isDigit() }
         val special = part.count { !it.isLetterOrDigit() }
         return upper >= 2 && digit >= 2 && special >= 2
     }
 
-    fun generateVariants(options: GenerationOptions, count: Int = 5): List<GenerationResult> {
+    //  ВОЗВРАЩАЕТ ТОЛЬКО ВАЛИДНЫЕ ВАРИАНТЫ
+    fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val effectiveLength = if (options.splitMode == SplitMode.TWO_USERS) {
             when {
@@ -77,10 +82,20 @@ object MnemonicPasswordGenerator {
             options.targetLength.coerceAtLeast(12)
         }
 
-        for (i in 0 until count) {
-            val variantOptions = options.copy(variantOffset = options.variantOffset + i)
+        var currentOffset = options.variantOffset
+        val maxAttempts = 150 // Защита от бесконечного цикла
+
+        while (results.size < count && currentOffset < options.variantOffset + maxAttempts) {
+            val variantOptions = options.copy(variantOffset = currentOffset)
             val result = generateSingleVariant(variantOptions, effectiveLength)
-            if (result != null) results.add(result)
+
+            if (result != null && isValidVariant(result.password, options.splitMode)) {
+                // Проверка на уникальность внутри текущей выборки
+                if (results.none { it.password == result.password }) {
+                    results.add(result)
+                }
+            }
+            currentOffset++
         }
         return results
     }
@@ -94,7 +109,6 @@ object MnemonicPasswordGenerator {
 
         if (words.isEmpty()) return null
 
-        //  Seed учитывает все факторы, но не добавляет их как хвост
         val seedStr = "${options.phrase}${options.serviceName}${options.username}${options.profileId}${options.rotationMonth}${options.rotationYear}${options.variantOffset}"
         val seedHash = seedStr.hashCode()
 
@@ -109,8 +123,7 @@ object MnemonicPasswordGenerator {
             val part2 = buildRhythmicBlock(words[1 % words.size], seedHash + 1, halfLength, options.includeLeet, options.enforceUniqueChars, explanation)
             
             val password = part1 + part2
-            val hasUnique = !options.enforceUniqueChars || !PasswordValidator.hasDuplicateCharacters(password)
-            
+
             return GenerationResult(
                 password = password,
                 mnemonicHint = options.phrase.take(30),
@@ -118,8 +131,6 @@ object MnemonicPasswordGenerator {
                 strength = calculateStrength(password),
                 part1 = part1,
                 part2 = part2,
-                hasUniqueChars = hasUnique,
-                splitMode = SplitMode.TWO_USERS,
                 explanation = explanation.toString()
             )
         } else {
@@ -136,8 +147,6 @@ object MnemonicPasswordGenerator {
             }
             password = password.take(targetLength)
 
-            val hasUnique = !options.enforceUniqueChars || !PasswordValidator.hasDuplicateCharacters(password)
-
             return GenerationResult(
                 password = password,
                 mnemonicHint = options.phrase.take(30),
@@ -145,8 +154,6 @@ object MnemonicPasswordGenerator {
                 strength = calculateStrength(password),
                 part1 = null,
                 part2 = null,
-                hasUniqueChars = hasUnique,
-                splitMode = SplitMode.SINGLE_USER,
                 explanation = explanation.toString()
             )
         }
@@ -221,22 +228,4 @@ object MnemonicPasswordGenerator {
 
     private fun calculateStrength(password: String): PasswordGenerator.Strength {
         val length = password.length
-        val hasUpper = password.any { it.isUpperCase() }
-        val hasLower = password.any { it.isLowerCase() }
-        val hasDigit = password.any { it.isDigit() }
-        val hasSpecial = password.any { !it.isLetterOrDigit() }
-
-        val score = when {
-            length >= 16 && hasUpper && hasLower && hasDigit && hasSpecial -> 4
-            length >= 12 && hasUpper && hasLower && hasDigit && hasSpecial -> 3
-            length >= 10 && (hasUpper && hasLower) && (hasDigit || hasSpecial) -> 2
-            else -> 1
-        }
-        return when (score) {
-            4 -> PasswordGenerator.Strength.VERY_STRONG
-            3 -> PasswordGenerator.Strength.STRONG
-            2 -> PasswordGenerator.Strength.MEDIUM
-            else -> PasswordGenerator.Strength.WEAK
-        }
-    }
-}
+        val hasUpper = password.any
