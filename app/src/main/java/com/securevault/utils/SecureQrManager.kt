@@ -63,42 +63,43 @@ object SecureQrManager {
             val parts = token.split(TOKEN_SEPARATOR)
             
             if (parts.size != 6) {
-                return QrValidationResult(false, errorMessage = "Неверный формат QR-кода")
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
             val version = parts[0]
             val entryId = parts[1]
-            val profileId = parts[2].toIntOrNull() ?: return QrValidationResult(false, errorMessage = "Неверный профиль")
+            val profileId = parts[2].toIntOrNull() ?: return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             val deviceId = parts[3]
             val timestamp = parts[4]
             val signature = parts[5]
 
             if (version != TOKEN_VERSION) {
-                return QrValidationResult(false, errorMessage = "Неподдерживаемая версия QR-кода")
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
             if (profileId != currentProfileId) {
-                return QrValidationResult(false, errorMessage = "QR-код принадлежит другому профилю")
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
             val currentDeviceId = getDeviceId(context)
             if (deviceId != currentDeviceId) {
-                return QrValidationResult(false, errorMessage = "QR-код не предназначен для этого устройства")
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
             val payload = "$version$TOKEN_SEPARATOR$entryId$TOKEN_SEPARATOR$profileId$TOKEN_SEPARATOR$deviceId$TOKEN_SEPARATOR$timestamp"
             val expectedSignature = generateSignature(payload, context)
             
             if (signature != expectedSignature) {
-                return QrValidationResult(false, errorMessage = "Недействительная подпись QR-кода")
+                return QrValidationResult(false, errorMessage = "Недействительный QR-код")
             }
 
-            //  Убрана проверка времени (QR не истекает через 24 часа)
+            //  Удалена проверка времени (QR больше не истекает через 24 часа)
             // QR остаётся рабочим после ротации пароля
 
             QrValidationResult(true, entryId = entryId, profileId = profileId)
         } catch (e: Exception) {
-            QrValidationResult(false, errorMessage = "Ошибка проверки: ${e.message}")
+            //  Унифицированный текст ошибки
+            QrValidationResult(false, errorMessage = "Недействительный QR-код")
         }
     }
 
