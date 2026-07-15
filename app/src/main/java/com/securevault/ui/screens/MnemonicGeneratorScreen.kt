@@ -44,9 +44,6 @@ fun MnemonicGeneratorScreen(
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
-    var includeServiceCode by remember { mutableStateOf(true) }
-    var includeRotationCode by remember { mutableStateOf(true) }
-    var separator by remember { mutableStateOf("") }
     var enforceUniqueChars by remember { mutableStateOf(true) }
 
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
@@ -78,12 +75,9 @@ fun MnemonicGeneratorScreen(
             serviceName = serviceName,
             targetLength = effectiveLength,
             includeLeet = includeLeet,
-            includeServiceCode = includeServiceCode,
-            includeRotationCode = includeRotationCode,
             variantOffset = globalOffset,
-            separator = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) "" else separator,
-            enforceUniqueChars = enforceUniqueChars,
-            splitMode = splitMode
+            splitMode = splitMode,
+            enforceUniqueChars = enforceUniqueChars
         )
 
         val results = MnemonicPasswordGenerator.generateVariants(options, count = 5)
@@ -156,7 +150,7 @@ fun MnemonicGeneratorScreen(
             OutlinedTextField(
                 value = serviceName,
                 onValueChange = { serviceName = it },
-                label = { Text("Название сервиса") },
+                label = { Text("Сервис (влияет на генерацию)") },
                 placeholder = { Text("например: Gmail") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -193,34 +187,9 @@ fun MnemonicGeneratorScreen(
                 )
             }
 
-            // Разделитель скрыт в TWO_USERS
-            if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
-                Text("Разделитель между частями:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("" to "Нет", "-" to "-", "*" to "*", "@" to "@").forEach { (value, label) ->
-                        FilterChip(
-                            selected = separator == value,
-                            onClick = { separator = value },
-                            label = { Text(label) }
-                        )
-                    }
-                }
-            }
-
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it })
-                Text("Leet-замены (a→@, o→0...)", Modifier.padding(start = 8.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it })
-                Text("Код сервиса", Modifier.padding(start = 8.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it })
-                Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp))
+                Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = enforceUniqueChars, onCheckedChange = { enforceUniqueChars = it })
@@ -346,7 +315,6 @@ fun MnemonicGeneratorScreen(
                     }
                 }
 
-                //  Номер набора вынесен над кнопкой
                 Text(
                     "Текущий набор: №${(globalOffset / variants.size) + 1}",
                     fontSize = 11.sp,
