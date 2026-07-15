@@ -61,7 +61,6 @@ fun PasswordRotationDialog(
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     
-    // Состояние пагинации для AMPG
     var rotVariantPages by remember { mutableStateOf<List<List<MnemonicPasswordGenerator.GenerationResult>>>(emptyList()) }
     var rotCurrentPageIndex by remember { mutableIntStateOf(0) }
     var rotNextOffset by remember { mutableIntStateOf(0) }
