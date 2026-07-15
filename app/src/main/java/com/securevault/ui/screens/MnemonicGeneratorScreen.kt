@@ -94,7 +94,8 @@ fun MnemonicGeneratorScreen(
         }
         
         if (newVariants.isNotEmpty()) {
-            variantPages = variantPages + newVariants
+            //  Оборачиваем newVariants в listOf(), чтобы добавить как новую страницу
+            variantPages = variantPages + listOf(newVariants)
             currentPageIndex = variantPages.size - 1
             nextOffset = offset
             noMoreVariants = newVariants.size < 3
