@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
 import com.securevault.security.ProfilePasswordHasher
+import com.securevault.utils.AccessMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,29 +27,35 @@ class ProfileViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    //  ПОДДЕРЖКА ПРОФИЛЯ БЕЗ PIN: pin может быть null или пустым
     fun insertProfile(name: String, pin: String?, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
                 val (hash, salt) = if (!pin.isNullOrBlank()) {
                     val s = ProfilePasswordHasher.generateSalt()
-                    val h = ProfilePasswordHasher.hash(pin, s)
-                    h to s
+                    ProfilePasswordHasher.hash(pin, s) to s
                 } else {
                     "" to ""
                 }
-                val profile = Profile(name = name, passwordHash = hash, passwordSalt = salt)
+                
+                // Явное задание режима доступа в зависимости от наличия PIN
+                val accessMode = if (pin.isNullOrBlank()) {
+                    AccessMode.NO_CONFIRMATION.value
+                } else {
+                    AccessMode.PIN_REQUIRED.value
+                }
+
+                val profile = Profile(
+                    name = name, 
+                    passwordHash = hash, 
+                    passwordSalt = salt,
+                    passwordAccessMode = accessMode
+                )
                 repository.insertProfile(profile)
                 onResult(PasswordOperationResult.Success)
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
         }
-    }
-
-    // Совместимость со старыми вызовами
-    fun insert(name: String, pin: String) {
-        insertProfile(name, pin) { }
     }
 
     fun verifyPassword(profile: Profile, pin: String): Boolean {
@@ -68,13 +75,17 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    //  Установка или изменение PIN профиля
+    //  При установке PIN режим становится PIN_REQUIRED
     fun setProfilePin(profile: Profile, newPin: String, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
                 val salt = ProfilePasswordHasher.generateSalt()
                 val hash = ProfilePasswordHasher.hash(newPin, salt)
-                repository.updateProfile(profile.copy(passwordHash = hash, passwordSalt = salt))
+                repository.updateProfile(profile.copy(
+                    passwordHash = hash, 
+                    passwordSalt = salt,
+                    passwordAccessMode = AccessMode.PIN_REQUIRED.value
+                ))
                 onResult(PasswordOperationResult.Success)
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -82,11 +93,15 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    //  Удаление PIN профиля (требует подтверждения мастер-паролем на уровне UI)
+    //  При удалении PIN режим становится NO_CONFIRMATION
     fun removeProfilePin(profile: Profile, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
-                repository.updateProfile(profile.copy(passwordHash = "", passwordSalt = ""))
+                repository.updateProfile(profile.copy(
+                    passwordHash = "", 
+                    passwordSalt = "",
+                    passwordAccessMode = AccessMode.NO_CONFIRMATION.value
+                ))
                 onResult(PasswordOperationResult.Success)
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
