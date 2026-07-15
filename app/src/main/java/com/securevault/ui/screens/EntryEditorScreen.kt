@@ -344,7 +344,6 @@ fun EntryEditorScreen(
                             modifier = Modifier.menuAnchor().fillMaxWidth()
                         )
                         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            //  Убран дубликат PIN_ALWAYS, оставлены только 4 уникальных варианта
                             listOf(
                                 AccessMode.INHERIT to "Как в профиле",
                                 AccessMode.NO_CONFIRMATION to "Без подтверждения",
@@ -481,8 +480,23 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
     fun generateVariants() {
         validationError = null
         if (phrase.isBlank()) { variants = emptyList(); validationError = "Введите мнемоническую фразу"; return }
-        val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) { when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 } } else { targetLength }
-        val options = MnemonicPasswordGenerator.GenerationOptions(phrase = phrase, serviceName = serviceName, targetLength = effectiveLength, includeLeet = includeLeet, variantOffset = variantOffset, splitMode = splitMode)
+        
+        val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
+            when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
+        } else { targetLength }
+
+        // Передаём username и profileId в seed
+        val options = MnemonicPasswordGenerator.GenerationOptions(
+            phrase = phrase,
+            serviceName = serviceName,
+            username = username,
+            profileId = effectiveProfileId,
+            targetLength = effectiveLength,
+            includeLeet = includeLeet,
+            variantOffset = variantOffset,
+            enforceUniqueChars = true,
+            splitMode = splitMode
+        )
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
         if (variants.isEmpty()) validationError = "Не удалось сгенерировать варианты без повторов"
