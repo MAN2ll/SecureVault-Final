@@ -336,7 +336,7 @@ fun EntryEditorScreen(
                                 AccessMode.INHERIT -> "Как в профиле"
                                 AccessMode.NO_CONFIRMATION -> "Без подтверждения"
                                 AccessMode.BIOMETRIC_OR_PIN -> "Отпечаток или PIN профиля"
-                                AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> "Только PIN профиля"
+                                AccessMode.PIN_REQUIRED -> "Только PIN профиля"
                                 else -> "Как в профиле"
                             },
                             onValueChange = {}, label = { Text("Режим защиты") },
@@ -344,12 +344,12 @@ fun EntryEditorScreen(
                             modifier = Modifier.menuAnchor().fillMaxWidth()
                         )
                         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            //  Убран дубликат PIN_ALWAYS, оставлены только 4 уникальных варианта
                             listOf(
                                 AccessMode.INHERIT to "Как в профиле",
                                 AccessMode.NO_CONFIRMATION to "Без подтверждения",
                                 AccessMode.BIOMETRIC_OR_PIN to "Отпечаток или PIN профиля",
-                                AccessMode.PIN_REQUIRED to "Только PIN профиля",
-                                AccessMode.PIN_ALWAYS to "Только PIN профиля"
+                                AccessMode.PIN_REQUIRED to "Только PIN профиля"
                             ).forEach { (mode, label) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { passwordAccessMode = mode.value; expanded = false })
                             }
@@ -471,8 +471,6 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
     var phrase by remember { mutableStateOf("") }
     var serviceName by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
-    var includeServiceCode by remember { mutableStateOf(true) }
-    var includeRotationCode by remember { mutableStateOf(true) }
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
     var targetLength by remember { mutableIntStateOf(16) }
     var variantOffset by remember { mutableIntStateOf(0) }
@@ -483,15 +481,14 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
     fun generateVariants() {
         validationError = null
         if (phrase.isBlank()) { variants = emptyList(); validationError = "Введите мнемоническую фразу"; return }
-        if (includeServiceCode && serviceName.isBlank()) { variants = emptyList(); validationError = "Введите название сервиса для кода сервиса"; return }
         val effectiveLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) { when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 } } else { targetLength }
-        val options = MnemonicPasswordGenerator.GenerationOptions(phrase = phrase, serviceName = serviceName, targetLength = effectiveLength, includeLeet = includeLeet, includeServiceCode = includeServiceCode, includeRotationCode = includeRotationCode, variantOffset = variantOffset, separator = "", enforceUniqueChars = true, splitMode = splitMode)
+        val options = MnemonicPasswordGenerator.GenerationOptions(phrase = phrase, serviceName = serviceName, targetLength = effectiveLength, includeLeet = includeLeet, variantOffset = variantOffset, splitMode = splitMode)
         variants = MnemonicPasswordGenerator.generateVariants(options, count = 5)
         selectedVariantIndex = -1
         if (variants.isEmpty()) validationError = "Не удалось сгенерировать варианты без повторов"
     }
 
-    LaunchedEffect(phrase, serviceName, includeLeet, includeServiceCode, includeRotationCode, splitMode, targetLength) { variantOffset = 0; generateVariants() }
+    LaunchedEffect(phrase, serviceName, includeLeet, splitMode, targetLength) { variantOffset = 0; generateVariants() }
     LaunchedEffect(variantOffset) { generateVariants() }
 
     AlertDialog(onDismissRequest = onDismiss, title = { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Lightbulb, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(8.dp)); Column { Text("Мнемонический генератор", fontWeight = FontWeight.Bold); Text("AMPG v2", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }, text = {
@@ -505,7 +502,7 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
                 }
             }
             OutlinedTextField(value = phrase, onValueChange = { phrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: мой кот любит молоко") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text(if (includeServiceCode) "Сервис *" else "Сервис (необяз.)") }, placeholder = { Text("например: Gmail") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text("Сервис (влияет на генерацию)") }, placeholder = { Text("например: Gmail") }, modifier = Modifier.fillMaxWidth())
             if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Длина: $targetLength", modifier = Modifier.weight(1f), fontSize = 12.sp); Slider(value = targetLength.toFloat(), onValueChange = { targetLength = it.toInt() }, valueRange = 12f..24f, steps = 12, modifier = Modifier.weight(2f)) }
             } else {
@@ -513,9 +510,7 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(16, 18, 20).forEach { length -> FilterChip(selected = targetLength == length, onClick = { targetLength = length }, label = { Text("$length") }) } }
                 Text("Каждая часть по ${targetLength / 2} символов", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Leet-замены", Modifier.padding(start = 8.dp), fontSize = 12.sp) }
-            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = includeServiceCode, onCheckedChange = { includeServiceCode = it }); Text("Код сервиса", Modifier.padding(start = 8.dp), fontSize = 12.sp) }
-            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = includeRotationCode, onCheckedChange = { includeRotationCode = it }); Text("Код ротации (MMYY)", Modifier.padding(start = 8.dp), fontSize = 12.sp) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = includeLeet, onCheckedChange = { includeLeet = it }); Text("Позиционные замены (leet)", Modifier.padding(start = 8.dp), fontSize = 12.sp) }
             if (validationError != null) Text(validationError!!, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
             if (variants.isNotEmpty()) {
                 Text("Набор №${(variantOffset / 5) + 1}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -541,7 +536,7 @@ private fun MnemonicGeneratorDialog(onDismiss: () -> Unit, onGenerated: (String,
                     Spacer(Modifier.height(4.dp))
                 }
             }
-            OutlinedButton(onClick = { variantOffset += 5 }, modifier = Modifier.fillMaxWidth().height(44.dp), enabled = phrase.isNotBlank() && (!includeServiceCode || serviceName.isNotBlank())) { Icon(Icons.Default.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ещё варианты") }
+            OutlinedButton(onClick = { variantOffset += 5 }, modifier = Modifier.fillMaxWidth().height(44.dp), enabled = phrase.isNotBlank()) { Icon(Icons.Default.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Ещё варианты") }
         }
     }, confirmButton = { Button(onClick = { if (selectedVariantIndex >= 0 && selectedVariantIndex < variants.size) { val selected = variants[selectedVariantIndex]; onGenerated(selected.password, selected.mnemonicHint) } }, enabled = selectedVariantIndex >= 0) { Icon(Icons.Default.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Выбрать") } }, dismissButton = { TextButton(onDismiss) { Text("Отмена") } }, modifier = Modifier.fillMaxWidth(0.95f))
 }
