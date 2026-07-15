@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
+import com.securevault.ui.screens.MnemonicGeneratorScreen
 
 @Composable
 fun SecureVaultNavHost(
