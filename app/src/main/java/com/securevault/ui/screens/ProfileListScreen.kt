@@ -1,28 +1,25 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui.screens
 
-import android.content.Context
-import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
-import com.securevault.security.MasterPasswordHasher
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -31,61 +28,23 @@ import com.securevault.viewmodel.VaultViewModel
 @Composable
 fun ProfileListScreen(
     onProfileSelected: (Int) -> Unit,
-    onLock: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToExportImport: () -> Unit,
-    profileViewModel: ProfileViewModel = hiltViewModel(),
+    viewModel: ProfileViewModel = hiltViewModel(),
     vaultViewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val profiles by profileViewModel.profiles.collectAsState()
+    val profiles by viewModel.profiles.collectAsState()
+
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<Profile?>(null) }
-
-    var profileToDelete by remember { mutableStateOf<Profile?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
-    var showMasterPasswordForDelete by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        vaultViewModel.setCurrentProfile(null)
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SecureVault", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                title = { Text("Профили", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, "Общие настройки")
-                    }
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, "Меню")
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Экспорт / импорт") },
-                                onClick = {
-                                    showMenu = false
-                                    onNavigateToExportImport()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Upload, null) }
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Заблокировать") },
-                                onClick = {
-                                    showMenu = false
-                                    onLock()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Lock, null) }
-                            )
-                        }
+                        Icon(Icons.Default.Settings, "Настройки")
                     }
                 }
             )
@@ -97,37 +56,45 @@ fun ProfileListScreen(
         }
     ) { padding ->
         if (profiles.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Folder, null, Modifier.size(80.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                    Icon(Icons.Default.FolderOff, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
                     Spacer(Modifier.height(16.dp))
-                    Text("Нет профилей", fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                    Text("Создайте первый профиль", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(24.dp))
-                    Button(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Default.Add, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Создать профиль")
-                    }
+                    Text("Нет профилей", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                contentPadding = PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(profiles) { profile ->
-                    ProfileCard(
-                        profile = profile,
-                        onClick = { selectedProfile = profile },
-                        onDeleteClick = { profileToDelete = profile }
-                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            //  Мгновенный вход, если PIN не задан
+                            if (profile.passwordHash.isBlank()) {
+                                vaultViewModel.setCurrentProfile(profile.id)
+                                onProfileSelected(profile.id)
+                            } else {
+                                selectedProfile = profile
+                            }
+                        }
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(
+                                    if (profile.passwordHash.isBlank()) "Без PIN" else "Защищено PIN",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
@@ -136,219 +103,105 @@ fun ProfileListScreen(
     if (showCreateDialog) {
         CreateProfileDialog(
             onDismiss = { showCreateDialog = false },
-            onCreated = { showCreateDialog = false }
+            onCreate = { name, pin ->
+                viewModel.insertProfile(name, pin) { result ->
+                    if (result is PasswordOperationResult.Success) {
+                        showCreateDialog = false
+                    } else {
+                        operationError = result.message
+                    }
+                }
+            }
         )
     }
 
     if (selectedProfile != null) {
         UnlockProfileDialog(
             profile = selectedProfile!!,
-            onDismiss = { selectedProfile = null },
             onUnlocked = {
                 vaultViewModel.setCurrentProfile(selectedProfile!!.id)
                 onProfileSelected(selectedProfile!!.id)
                 selectedProfile = null
-            }
-        )
-    }
-
-    // Проверка наличия записей перед удалением
-    if (profileToDelete != null && !showDeleteConfirmDialog && !showMasterPasswordForDelete) {
-        LaunchedEffect(profileToDelete) {
-            val profile = profileToDelete!!
-            profileViewModel.hasEntriesInProfile(profile.id) { hasEntries ->
-                if (hasEntries) {
-                    operationError = "Нельзя удалить профиль, пока в нём есть пароли. Сначала удалите все пароли профиля."
-                    profileToDelete = null
-                } else {
-                    showMasterPasswordForDelete = true
-                }
-            }
-        }
-    }
-
-    if (showMasterPasswordForDelete && profileToDelete != null) {
-        MasterPasswordConfirmDialog(
-            title = "Подтверждение удаления профиля",
-            onConfirmed = {
-                showMasterPasswordForDelete = false
-                showDeleteConfirmDialog = true
             },
-            onDismiss = {
-                showMasterPasswordForDelete = false
-                profileToDelete = null
-            }
-        )
-    }
-
-    if (showDeleteConfirmDialog && profileToDelete != null) {
-        AlertDialog(
-            onDismissRequest = {
-                showDeleteConfirmDialog = false
-                profileToDelete = null
-            },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Удалить профиль?") },
-            text = { Text("Удалить профиль \"${profileToDelete!!.name}\"? Это действие необратимо.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val profile = profileToDelete!!
-                        profileViewModel.deleteProfile(profile.id) { result ->
-                            when (result) {
-                                is PasswordOperationResult.Success -> {
-                                    showDeleteConfirmDialog = false
-                                    profileToDelete = null
-                                }
-                                is PasswordOperationResult.Error -> {
-                                    operationError = result.message
-                                    showDeleteConfirmDialog = false
-                                    profileToDelete = null
-                                }
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Удалить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showDeleteConfirmDialog = false
-                    profileToDelete = null
-                }) {
-                    Text("Отмена")
-                }
-            }
+            onDismiss = { selectedProfile = null },
+            viewModel = viewModel
         )
     }
 
     if (operationError != null) {
         AlertDialog(
             onDismissRequest = { operationError = null },
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Ошибка") },
-            text = { Text(operationError ?: "") },
-            confirmButton = {
-                TextButton(onClick = { operationError = null }) {
-                    Text("Понятно")
-                }
-            }
+            text = { Text(operationError!!) },
+            confirmButton = { TextButton(onClick = { operationError = null }) { Text("OK") } }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileCard(
-    profile: Profile,
-    onClick: () -> Unit,
-    onDeleteClick: () -> Unit
+private fun CreateProfileDialog(
+    onDismiss: () -> Unit,
+    onCreate: (String, String?) -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, "Меню профиля", modifier = Modifier.size(20.dp))
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Удалить профиль", color = MaterialTheme.colorScheme.error) },
-                                onClick = {
-                                    showMenu = false
-                                    onDeleteClick()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
-                            )
-                        }
-                    }
-                }
-                Column {
-                    Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
-                    Text("Нажмите для входа", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
     var name by remember { mutableStateOf("") }
+    var protectWithPin by remember { mutableStateOf(true) }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    val viewModel: ProfileViewModel = hiltViewModel()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Новый профиль", fontWeight = FontWeight.Bold) },
+        title = { Text("Новый профиль") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "PIN профиля — короткий пароль для локального разделения профилей. Мастер-пароль защищает всё хранилище.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
-
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it; error = null },
                     label = { Text("Название профиля") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { pin = it; error = null },
-                    label = { Text("PIN профиля (4-8 символов)") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = confirmPin,
-                    onValueChange = { confirmPin = it; error = null },
-                    label = { Text("Подтвердите PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                     isError = error != null
                 )
+
+                // Чекбокс защиты PIN-кодом
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = protectWithPin,
+                        onCheckedChange = { 
+                            protectWithPin = it
+                            if (!it) {
+                                pin = ""
+                                confirmPin = ""
+                                error = null
+                            }
+                        }
+                    )
+                    Text("Защитить профиль PIN-кодом", modifier = Modifier.padding(start = 8.dp))
+                }
+
+                if (protectWithPin) {
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it; error = null },
+                        label = { Text("PIN профиля (4-8 цифр)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = error != null
+                    )
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { confirmPin = it; error = null },
+                        label = { Text("Подтвердите PIN профиля") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = error != null
+                    )
+                }
 
                 if (error != null) {
                     Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
@@ -357,70 +210,76 @@ private fun CreateProfileDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
         },
         confirmButton = {
             Button(onClick = {
-                when {
-                    name.isBlank() -> error = "Введите название"
-                    pin.length < 4 -> error = "PIN слишком короткий (минимум 4 символа)"
-                    pin.length > 8 -> error = "PIN слишком длинный (максимум 8 символов)"
-                    pin != confirmPin -> error = "PIN не совпадают"
-                    else -> {
-                        viewModel.insert(name, pin)
-                        onCreated()
-                    }
+                if (name.isBlank()) {
+                    error = "Введите название профиля"
+                    return@Button
                 }
-            }) {
-                Text("Создать")
-            }
+                if (protectWithPin) {
+                    if (pin.length !in 4..8) {
+                        error = "PIN профиля должен содержать от 4 до 8 цифр"
+                        return@Button
+                    }
+                    if (pin != confirmPin) {
+                        error = "PIN профиля не совпадает"
+                        return@Button
+                    }
+                    onCreate(name, pin)
+                } else {
+                    onCreate(name, null) //  Создаём без PIN
+                }
+            }) { Text("Создать") }
         },
-        dismissButton = {
-            TextButton(onDismiss) {
-                Text("Отмена")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UnlockProfileDialog(profile: Profile, onDismiss: () -> Unit, onUnlocked: () -> Unit) {
+private fun UnlockProfileDialog(
+    profile: Profile,
+    onUnlocked: () -> Unit,
+    onDismiss: () -> Unit,
+    viewModel: ProfileViewModel
+) {
     var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    val viewModel: ProfileViewModel = hiltViewModel()
+    var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Профиль: ${profile.name}", fontWeight = FontWeight.Bold) },
+        title = { Text("Вход в профиль") },
         text = {
-            Column {
-                Text("Введите PIN профиля", fontSize = 14.sp)
-                Spacer(Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Введите PIN профиля для \"${profile.name}\"", fontSize = 13.sp)
                 OutlinedTextField(
                     value = pin,
-                    onValueChange = { pin = it; error = false },
-                    label = { Text("PIN") },
+                    onValueChange = { pin = it; error = null },
+                    //  Единый термин "PIN профиля"
+                    label = { Text("PIN профиля") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
-                    isError = error
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
                 )
-                if (error) {
-                    Text("Неверный PIN", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             }
         },
         confirmButton = {
             Button(onClick = {
+                if (pin.isBlank()) {
+                    error = "Введите PIN профиля"
+                    return@Button
+                }
                 if (viewModel.verifyPassword(profile, pin)) {
                     onUnlocked()
                 } else {
-                    error = true
+                    //  "Неверный PIN профиля"
+                    error = "Неверный PIN профиля"
                 }
-            }) {
-                Text("Войти")
-            }
+            }) { Text("Войти") }
         },
-        dismissButton = {
-            TextButton(onDismiss) {
-                Text("Отмена")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
 }
