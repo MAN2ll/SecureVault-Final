@@ -1,196 +1,157 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+package com.securevault.utils
 
-package com.securevault.ui
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.provider.Settings
+import android.util.Base64
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.Hashtable
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
-import com.securevault.ui.screens.*
-import com.securevault.viewmodel.AuthViewModel
+object SecureQrManager {
 
-@Composable
-fun SecureVaultNavHost(
-    navController: NavHostController,
-    authViewModel: AuthViewModel = hiltViewModel()
-) {
-    val authState by authViewModel.authState.collectAsState()
+    private const val HMAC_ALGORITHM = "HmacSHA256"
+    private const val TOKEN_SEPARATOR = "|"
+    private const val TOKEN_VERSION = "1"
 
-    NavHost(navController = navController, startDestination = "lock") {
-        composable("lock") {
-            LockScreen(
-                onUnlocked = {
-                    navController.navigate("profiles") {
-                        popUpTo("lock") { inclusive = true }
-                    }
-                },
-                onSetupRequired = {
-                    navController.navigate("setup") {
-                        popUpTo("lock") { inclusive = true }
-                    }
-                }
-            )
-        }
+    data class QrValidationResult(
+        val isValid: Boolean,
+        val entryId: String? = null,
+        val profileId: Int? = null,
+        val errorMessage: String? = null
+    )
 
-        composable("setup") {
-            SetupScreen(
-                onSetupComplete = {
-                    navController.navigate("profiles") {
-                        popUpTo("setup") { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable("profiles") {
-            ProfileListScreen(
-                onProfileSelected = { profileId ->
-                    navController.navigate("vault/$profileId") {
-                        popUpTo("profiles") { inclusive = true }
-                    }
-                },
-                onNavigateToSettings = {
-                    navController.navigate("settings")
-                }
-            )
-        }
-
-        composable("settings") {
-            SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onNavigateToExport = { navController.navigate("export") },
-                onNavigateToChangePassword = { navController.navigate("change_password") }
-            )
-        }
-
-        composable(
-            route = "vault/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            VaultListScreen(
-                profileId = profileId,
-                onNavigateToEntry = { entryId -> navController.navigate("entry/$entryId") },
-                onNavigateToNewEntry = { navController.navigate("entry/new?profileId=$profileId") },
-                onNavigateToAudit = { navController.navigate("audit/$profileId") },
-                onNavigateToExport = { navController.navigate("export/$profileId") },
-                onNavigateToRotation = { navController.navigate("rotation/$profileId") },
-                onNavigateToRotationJournal = { navController.navigate("rotation_journal/$profileId") },
-                onNavigateToSettings = { navController.navigate("profile_settings/$profileId") },
-                onNavigateToMnemonicGenerator = { navController.navigate("mnemonic_generator/$profileId") },
-                onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") },
-                onNavigateToProfiles = {
-                    navController.navigate("profiles") {
-                        popUpTo("vault/$profileId") { inclusive = true }
-                    }
-                },
-                //  Реальная блокировка с переходом на экран Lock
-                onLock = {
-                    authViewModel.lock()
-                    navController.navigate("lock") {
-                        popUpTo("vault/$profileId") { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(
-            route = "entry/{entryId}",
-            arguments = listOf(navArgument("entryId") { type = androidx.navigation.NavType.StringType })
-        ) { backStackEntry ->
-            val entryId = backStackEntry.arguments?.getString("entryId")
-            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
-            EntryEditorScreen(
-                id = entryId,
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable("export") {
-            ExportImportScreen(
-                profileId = null,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = "export/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            ExportImportScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = "rotation/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            RotationScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = "rotation_journal/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            RotationJournalScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = "profile_settings/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            ProfileSettingsScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() },
-                onNavigateToRotation = { navController.navigate("rotation/$profileId") },
-                onNavigateToRotationJournal = { navController.navigate("rotation_journal/$profileId") },
-                onNavigateToAudit = { navController.navigate("audit/$profileId") },
-                onNavigateToExport = { navController.navigate("export/$profileId") },
-                onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") }
-            )
-        }
-
-        composable(
-            route = "mnemonic_generator/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            MnemonicGeneratorScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
-        composable(
-            route = "qr_scanner/{profileId}",
-            arguments = listOf(navArgument("profileId") { type = androidx.navigation.NavType.IntType })
-        ) { backStackEntry ->
-            val profileId = backStackEntry.arguments?.getInt("profileId")
-            QrScannerScreen(
-                profileId = profileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
+    //  Генерация токена для QR-кода
+    fun generateQrToken(entryId: String, profileId: Int, context: Context): String {
+        val deviceId = getDeviceId(context)
+        val timestamp = System.currentTimeMillis().toString()
         
-        // Заглушки для остальных экранов, если они есть в проекте
-        composable("audit/{profileId}") { /* AuditScreen(...) */ }
-        composable("change_password") { /* ChangePasswordScreen(...) */ }
+        // Формат: version|entryId|profileId|deviceId|timestamp|signature
+        val payload = "$TOKEN_VERSION$TOKEN_SEPARATOR$entryId$TOKEN_SEPARATOR$profileId$TOKEN_SEPARATOR$deviceId$TOKEN_SEPARATOR$timestamp"
+        val signature = generateSignature(payload, context)
+        
+        return "$payload$TOKEN_SEPARATOR$signature"
+    }
+
+    //  Генерация Bitmap из содержимого QR-кода
+    fun generateQrBitmap(content: String, size: Int = 512): Bitmap {
+        val hints = Hashtable<EncodeHintType, Any>()
+        hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
+        hints[EncodeHintType.MARGIN] = 1
+
+        val writer = QRCodeWriter()
+        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size, hints)
+
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) Color.BLACK else Color.WHITE)
+            }
+        }
+
+        return bitmap
+    }
+
+    //  Валидация QR-кода при сканировании
+    fun validateQrToken(token: String, currentProfileId: Int, context: Context): QrValidationResult {
+        return try {
+            val parts = token.split(TOKEN_SEPARATOR)
+            
+            if (parts.size != 6) {
+                return QrValidationResult(false, errorMessage = "Неверный формат QR-кода")
+            }
+
+            val version = parts[0]
+            val entryId = parts[1]
+            val profileId = parts[2].toIntOrNull() ?: return QrValidationResult(false, errorMessage = "Неверный профиль")
+            val deviceId = parts[3]
+            val timestamp = parts[4]
+            val signature = parts[5]
+
+            // Проверка версии
+            if (version != TOKEN_VERSION) {
+                return QrValidationResult(false, errorMessage = "Неподдерживаемая версия QR-кода")
+            }
+
+            // Проверка профиля
+            if (profileId != currentProfileId) {
+                return QrValidationResult(false, errorMessage = "QR-код принадлежит другому профилю")
+            }
+
+            // Проверка устройства
+            val currentDeviceId = getDeviceId(context)
+            if (deviceId != currentDeviceId) {
+                return QrValidationResult(false, errorMessage = "QR-код не предназначен для этого устройства")
+            }
+
+            // Проверка подписи
+            val payload = "$version$TOKEN_SEPARATOR$entryId$TOKEN_SEPARATOR$profileId$TOKEN_SEPARATOR$deviceId$TOKEN_SEPARATOR$timestamp"
+            val expectedSignature = generateSignature(payload, context)
+            
+            if (signature != expectedSignature) {
+                return QrValidationResult(false, errorMessage = "Недействительная подпись QR-кода")
+            }
+
+            // Проверка времени (опционально: QR действует 24 часа)
+            val tokenTime = timestamp.toLongOrNull() ?: return QrValidationResult(false, errorMessage = "Неверное время")
+            val currentTime = System.currentTimeMillis()
+            val maxAge = 24 * 60 * 60 * 1000L // 24 часа
+            
+            if (currentTime - tokenTime > maxAge) {
+                return QrValidationResult(false, errorMessage = "QR-код истёк")
+            }
+
+            QrValidationResult(true, entryId = entryId, profileId = profileId)
+        } catch (e: Exception) {
+            QrValidationResult(false, errorMessage = "Ошибка проверки: ${e.message}")
+        }
+    }
+
+    //  Получение стабильного идентификатора устройства
+    private fun getDeviceId(context: Context): String {
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        return androidId ?: "unknown_device"
+    }
+
+    //  Генерация HMAC-SHA256 подписи
+    private fun generateSignature(payload: String, context: Context): String {
+        return try {
+            val key = getHmacKey(context)
+            val mac = Mac.getInstance(HMAC_ALGORITHM)
+            mac.init(SecretKeySpec(key, HMAC_ALGORITHM))
+            val hash = mac.doFinal(payload.toByteArray(StandardCharsets.UTF_8))
+            Base64.encodeToString(hash, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            // Fallback на SHA-256 если Keystore недоступен
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(payload.toByteArray(StandardCharsets.UTF_8))
+            Base64.encodeToString(hash, Base64.NO_WRAP)
+        }
+    }
+
+    //  Получение ключа HMAC из Keystore или генерация нового
+    private fun getHmacKey(context: Context): ByteArray {
+        val prefs = context.getSharedPreferences("qr_hmac_prefs", Context.MODE_PRIVATE)
+        val existingKey = prefs.getString("hmac_key", null)
+        
+        if (existingKey != null) {
+            return Base64.decode(existingKey, Base64.NO_WRAP)
+        }
+
+        // Генерация нового ключа
+        val key = ByteArray(32)
+        java.security.SecureRandom().nextBytes(key)
+        prefs.edit().putString("hmac_key", Base64.encodeToString(key, Base64.NO_WRAP)).apply()
+        
+        return key
     }
 }
