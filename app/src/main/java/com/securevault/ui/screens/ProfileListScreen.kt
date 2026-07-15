@@ -72,7 +72,6 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            //  Мгновенный вход, если PIN не задан
                             if (profile.passwordHash.isBlank()) {
                                 vaultViewModel.setCurrentProfile(profile.id)
                                 onProfileSelected(profile.id)
@@ -83,7 +82,7 @@ fun ProfileListScreen(
                     ) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Folder, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 Text(
@@ -108,7 +107,8 @@ fun ProfileListScreen(
                     if (result is PasswordOperationResult.Success) {
                         showCreateDialog = false
                     } else {
-                        operationError = result.message
+                        // ✅ ИСПРАВЛЕНО: Явное приведение типа для доступа к message
+                        operationError = (result as PasswordOperationResult.Error).message
                     }
                 }
             }
@@ -164,7 +164,6 @@ private fun CreateProfileDialog(
                     isError = error != null
                 )
 
-                // Чекбокс защиты PIN-кодом
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = protectWithPin,
@@ -225,7 +224,7 @@ private fun CreateProfileDialog(
                     }
                     onCreate(name, pin)
                 } else {
-                    onCreate(name, null) //  Создаём без PIN
+                    onCreate(name, null)
                 }
             }) { Text("Создать") }
         },
@@ -253,7 +252,6 @@ private fun UnlockProfileDialog(
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { pin = it; error = null },
-                    //  Единый термин "PIN профиля"
                     label = { Text("PIN профиля") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -275,7 +273,6 @@ private fun UnlockProfileDialog(
                 if (viewModel.verifyPassword(profile, pin)) {
                     onUnlocked()
                 } else {
-                    //  "Неверный PIN профиля"
                     error = "Неверный PIN профиля"
                 }
             }) { Text("Войти") }
