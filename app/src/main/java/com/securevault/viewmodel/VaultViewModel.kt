@@ -51,6 +51,7 @@ class VaultViewModel @Inject constructor(
     val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    //  Убран init блок, который ссылался на несуществующий _rotationEntries
     val rotationEntries: StateFlow<List<Entry>> = repository.allEntries
         .combine(_currentProfileId) { all, pid ->
             if (pid == null) emptyList()
@@ -59,18 +60,6 @@ class VaultViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favoritesOnly = MutableStateFlow(false)
-
-    init {
-        viewModelScope.launch {
-            _currentProfileId.collect { pid ->
-                if (pid != null) {
-                    _rotationEntries.value = repository.getEntriesWithRotation().filter { it.profileId == pid }
-                } else {
-                    _rotationEntries.value = emptyList()
-                }
-            }
-        }
-    }
 
     fun setCurrentProfile(profileId: Int?) { _currentProfileId.value = profileId }
     fun toggleFavoritesOnly() { favoritesOnly.value = !favoritesOnly.value }
@@ -406,7 +395,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // newPin теперь nullable для поддержки профилей без PIN
     suspend fun exportAllProfiles(): BackupData {
         return BackupManager.exportAllProfiles(repository, appContext)
     }
