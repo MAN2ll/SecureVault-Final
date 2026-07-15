@@ -16,7 +16,6 @@ import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
 
-//  Добавлен дефолтный параметр navController
 @Composable
 fun SecureVaultNavHost(
     navController: NavHostController = rememberNavController(),
@@ -79,7 +78,7 @@ fun SecureVaultNavHost(
             val profileId = backStackEntry.arguments?.getInt("profileId")
             VaultListScreen(
                 profileId = profileId,
-                onNavigateToEntry = { entryId -> navController.navigate("entry/$entryId") },
+                onNavigateToEntry = { entryId -> navController.navigate("entry/$entryId?profileId=$profileId") },
                 onNavigateToNewEntry = { navController.navigate("entry/new?profileId=$profileId") },
                 onNavigateToAudit = { navController.navigate("audit/$profileId") },
                 onNavigateToExport = { navController.navigate("export/$profileId") },
@@ -102,12 +101,20 @@ fun SecureVaultNavHost(
             )
         }
 
+        //  Добавлен profileId как query параметр
         composable(
-            route = "entry/{entryId}",
-            arguments = listOf(navArgument("entryId") { type = NavType.StringType })
+            route = "entry/{entryId}?profileId={profileId}",
+            arguments = listOf(
+                navArgument("entryId") { type = NavType.StringType },
+                navArgument("profileId") {
+                    type = NavType.IntType
+                    defaultValue = -1
+                }
+            )
         ) { backStackEntry ->
             val entryId = backStackEntry.arguments?.getString("entryId")
-            val profileId = backStackEntry.arguments?.getString("profileId")?.toIntOrNull()
+            val rawProfileId = backStackEntry.arguments?.getInt("profileId") ?: -1
+            val profileId = rawProfileId.takeIf { it > 0 }
             EntryEditorScreen(
                 id = entryId,
                 profileId = profileId,
@@ -192,8 +199,23 @@ fun SecureVaultNavHost(
                 onBack = { navController.popBackStack() }
             )
         }
-        
-        composable("audit/{profileId}") { /* AuditScreen(...) */ }
-        composable("change_password") { /* ChangePasswordScreen(...) */ }
+
+        // Подключены реальные экраны вместо заглушек
+        composable(
+            route = "audit/{profileId}",
+            arguments = listOf(navArgument("profileId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val profileId = backStackEntry.arguments?.getInt("profileId")
+            AuditScreen(
+                profileId = profileId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("change_password") {
+            ChangeMasterPasswordScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
     }
 }
