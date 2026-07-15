@@ -11,7 +11,6 @@ enum class AccessMode(val value: String) {
     PIN_ALWAYS("PIN_ALWAYS")
 }
 
-//  Sealed class для безопасной обработки отсутствия PIN
 sealed class AccessResult {
     object Granted : AccessResult()
     object PinRequired : AccessResult()
@@ -22,26 +21,33 @@ sealed class AccessResult {
 object PasswordAccessPolicy {
     fun resolve(entry: Entry, profile: Profile): AccessResult {
         val entryMode = AccessMode.values().find { it.value == entry.passwordAccessMode } ?: AccessMode.INHERIT
+        val hasProfilePin = !profile.passwordHash.isNullOrBlank()
+
+        //  Если режим "Как в профиле" и у профиля нет PIN, доступ разрешён сразу
+        if (entryMode == AccessMode.INHERIT && !hasProfilePin) {
+            return AccessResult.Granted
+        }
+
         val mode = if (entryMode == AccessMode.INHERIT) {
             AccessMode.values().find { it.value == profile.passwordAccessMode } ?: AccessMode.PIN_REQUIRED
         } else {
             entryMode
         }
 
-        //  Профиль без PIN имеет пустую строку в passwordHash
-        val hasProfilePin = !profile.passwordHash.isNullOrBlank()
+        //  Если режим явно требует PIN, но у профиля его нет -> показываем PinNotSet
+        if (!hasProfilePin) {
+            return when (mode) {
+                AccessMode.NO_CONFIRMATION -> AccessResult.Granted
+                AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS, AccessMode.BIOMETRIC_OR_PIN -> AccessResult.PinNotSet
+                else -> AccessResult.Granted
+            }
+        }
 
         return when (mode) {
             AccessMode.NO_CONFIRMATION -> AccessResult.Granted
-            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> {
-                if (!hasProfilePin) AccessResult.PinNotSet else AccessResult.PinRequired
-            }
-            AccessMode.BIOMETRIC_OR_PIN -> {
-                //  UI попробует биометрию, а при неудаче проверит hasProfilePin и покажет PinNotSet
-                AccessResult.BiometricOrPin 
-            }
-            else -> if (!hasProfilePin) AccessResult.PinNotSet else AccessResult.PinRequired
-            }
+            AccessMode.PIN_REQUIRED, AccessMode.PIN_ALWAYS -> AccessResult.PinRequired
+            AccessMode.BIOMETRIC_OR_PIN -> AccessResult.BiometricOrPin
+            else -> AccessResult.PinRequired
         }
     }
 }
