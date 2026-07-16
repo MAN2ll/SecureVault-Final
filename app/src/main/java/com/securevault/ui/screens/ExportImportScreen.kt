@@ -35,6 +35,7 @@ import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.securevault.ui.components.LockActionButton
 
 data class OperationResult(val success: Boolean, val message: String)
 
@@ -49,6 +50,7 @@ enum class BackupMasterPasswordAction {
 fun ExportImportScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit
     vaultViewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -313,6 +315,9 @@ fun ExportImportScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
+                }
+                actions = {
+                    LockActionButton(onLock = onLock) 
                 }
             )
         }
