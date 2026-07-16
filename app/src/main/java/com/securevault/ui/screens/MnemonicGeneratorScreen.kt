@@ -21,17 +21,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MnemonicGeneratorScreen(
     profileId: Int?,
     onBack: () -> Unit,
-    onLock: () -> Unit
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     LaunchedEffect(profileId) {
@@ -68,6 +68,8 @@ fun MnemonicGeneratorScreen(
             targetLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
                 when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
             } else { targetLength },
+            rotationMonth = null,
+            rotationYear = null,
             variantOffset = nextOffset,
             splitMode = splitMode
         )
@@ -106,10 +108,10 @@ fun MnemonicGeneratorScreen(
         topBar = {
             TopAppBar(
                 title = { Text("AMPG генератор", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                   LockActionButton(onLock = onLock) 
-               }
+                    LockActionButton(onLock = onLock)
+                }
             )
         }
     ) { padding ->
@@ -149,18 +151,6 @@ fun MnemonicGeneratorScreen(
                     listOf(16, 18, 20).forEach { length ->
                         FilterChip(selected = targetLength == length, onClick = { targetLength = length }, label = { Text("$length") })
                     }
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Позиционные замены (leet) включены автоматически для обеспечения сложности пароля.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
                 }
             }
 
