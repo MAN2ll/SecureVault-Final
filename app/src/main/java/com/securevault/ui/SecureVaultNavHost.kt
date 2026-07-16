@@ -28,13 +28,11 @@ fun SecureVaultNavHost(
 ) {
     val authState by authViewModel.authState.collectAsState()
 
-    //  Определяем стартовый экран. Если настройка не завершена, идём в setup, иначе в profiles.
-    // Сам экран profiles будет заблокирован overlay, если authState == Locked.
     val startDestination = remember {
         if (authState is AuthViewModel.AuthState.SetupRequired) "setup" else "profiles"
     }
 
-    //  LockScreen работает как защитный overlay поверх всего NavHost
+    //  Защитный overlay
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = startDestination) {
             composable("setup") {
@@ -56,8 +54,7 @@ fun SecureVaultNavHost(
                         }
                     },
                     onNavigateToSettings = { navController.navigate("settings") },
-                    //  Ручная блокировка просто меняет состояние, overlay появляется автоматически
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() }  Передаём блокировку
                 )
             }
 
@@ -65,7 +62,8 @@ fun SecureVaultNavHost(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToExport = { navController.navigate("export") },
-                    onNavigateToChangePassword = { navController.navigate("change_password") }
+                    onNavigateToChangePassword = { navController.navigate("change_password") },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -90,8 +88,7 @@ fun SecureVaultNavHost(
                             popUpTo("vault/$profileId") { inclusive = true }
                         }
                     },
-                    // ✅ Ручная блокировка просто меняет состояние
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -99,10 +96,7 @@ fun SecureVaultNavHost(
                 route = "entry/{entryId}?profileId={profileId}",
                 arguments = listOf(
                     navArgument("entryId") { type = NavType.StringType },
-                    navArgument("profileId") {
-                        type = NavType.IntType
-                        defaultValue = -1
-                    }
+                    navArgument("profileId") { type = NavType.IntType; defaultValue = -1 }
                 )
             ) { backStackEntry ->
                 val entryId = backStackEntry.arguments?.getString("entryId")
@@ -111,14 +105,16 @@ fun SecureVaultNavHost(
                 EntryEditorScreen(
                     id = entryId,
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
             composable("export") {
                 ExportImportScreen(
                     profileId = null,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -129,7 +125,8 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 ExportImportScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -140,7 +137,8 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 RotationScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -151,7 +149,8 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 RotationJournalScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -167,7 +166,8 @@ fun SecureVaultNavHost(
                     onNavigateToRotationJournal = { navController.navigate("rotation_journal/$profileId") },
                     onNavigateToAudit = { navController.navigate("audit/$profileId") },
                     onNavigateToExport = { navController.navigate("export/$profileId") },
-                    onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") }
+                    onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -178,7 +178,8 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 MnemonicGeneratorScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -189,7 +190,8 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 QrScannerScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
@@ -200,25 +202,27 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 AuditScreen(
                     profileId = profileId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
 
             composable("change_password") {
                 ChangeMasterPasswordScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onLock = { authViewModel.lock() } 
                 )
             }
         }
 
-        //  Если приложение заблокировано, показываем LockScreen поверх всего
+        //  OVERLAY: Появляется поверх текущего экрана, не очищая стек
         if (authState is AuthViewModel.AuthState.Locked || authState is AuthViewModel.AuthState.BruteForceLocked) {
             LockScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
                 onUnlocked = {
-                    // Ничего не делаем. Изменение состояния на Unlocked автоматически скроет этот overlay
+                    // Ничего не делаем. Изменение состояния на Unlocked автоматически скроет overlay
                 },
                 onSetupRequired = {
                     navController.navigate("setup") {
