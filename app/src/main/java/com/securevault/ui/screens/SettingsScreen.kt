@@ -33,9 +33,21 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
+    val prefs = remember { context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE) }
     
-    //  Используем var для реактивного обновления
     var isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
+    
+    //  Настройка автоблокировки
+    var expandedAutoLock by remember { mutableStateOf(false) }
+    val timeoutOptions = listOf(
+        0 to "Сразу",
+        1 to "Через 1 минуту",
+        5 to "Через 5 минут",
+        15 to "Через 15 минут",
+        30 to "Через 30 минут"
+    )
+    var currentTimeout by remember { mutableStateOf(prefs.getInt("auto_lock_timeout_minutes", 5)) }
+    val currentTimeoutLabel = timeoutOptions.find { it.first == currentTimeout }?.second ?: "Через 5 минут"
 
     Scaffold(
         topBar = {
@@ -53,7 +65,44 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            //  Переключатель без запроса мастер-пароля
+            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+
+            //  Карточка настройки автоблокировки
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Автоблокировка", fontWeight = FontWeight.Medium, fontSize = 16.sp)
+                    Text(
+                        "Время до блокировки при сворачивании приложения",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    ExposedDropdownMenuBox(expanded = expandedAutoLock, onExpandedChange = { expandedAutoLock = !expandedAutoLock }) {
+                        OutlinedTextField(
+                            readOnly = true,
+                            value = currentTimeoutLabel,
+                            onValueChange = {},
+                            label = { Text("Время блокировки") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAutoLock) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(expanded = expandedAutoLock, onDismissRequest = { expandedAutoLock = false }) {
+                            timeoutOptions.forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        currentTimeout = value
+                                        prefs.edit().putInt("auto_lock_timeout_minutes", value).apply()
+                                        expandedAutoLock = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -72,7 +121,6 @@ fun SettingsScreen(
                         checked = isBiometricEnabled,
                         onCheckedChange = { newValue ->
                             if (newValue) {
-                                // Включаем: проверяем биометрию и показываем системный промпт
                                 triggerBiometricSetup(activity, context, true, viewModel) { success ->
                                     if (success) {
                                         viewModel.setBiometricLoginEnabled(true)
@@ -80,7 +128,6 @@ fun SettingsScreen(
                                     }
                                 }
                             } else {
-                                // Выключаем: просто меняем флаг, без мастер-пароля
                                 viewModel.setBiometricLoginEnabled(false)
                                 isBiometricEnabled = false
                             }
@@ -91,7 +138,7 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            Text("Безопасность и данные", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+            Text("Действия", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
 
             SettingsActionCard(
                 icon = Icons.Default.Lock,
@@ -130,7 +177,6 @@ private fun SettingsActionCard(
     }
 }
 
-//  Логика без мастер-пароля, только системная биометрия
 private fun triggerBiometricSetup(
     activity: FragmentActivity?,
     context: Context,
