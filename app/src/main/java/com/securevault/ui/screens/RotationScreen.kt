@@ -102,6 +102,7 @@ fun RotationScreen(
                     }
                 },
                 actions = {
+                    LockActionButton(onLock = onLock)
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
                             Icon(Icons.Default.Sort, "Сортировка")
