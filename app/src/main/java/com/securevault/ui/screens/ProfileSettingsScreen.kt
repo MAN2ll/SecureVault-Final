@@ -25,12 +25,14 @@ import com.securevault.utils.AccessMode
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSettingsScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit,
     onNavigateToRotation: () -> Unit,
     onNavigateToRotationJournal: () -> Unit,
     onNavigateToAudit: () -> Unit,
@@ -71,6 +73,9 @@ fun ProfileSettingsScreen(
             TopAppBar(
                 title = { Text("Настройки профиля", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                actions = {
+                   LockActionButton(onLock = onLock)
+               }
             )
         }
     ) { padding ->
