@@ -15,7 +15,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
-import com.securevault.ui.screens.MnemonicGeneratorScreen
 
 @Composable
 fun SecureVaultNavHost(
@@ -24,10 +23,12 @@ fun SecureVaultNavHost(
 ) {
     val authState by authViewModel.authState.collectAsState()
 
+    //  Жёсткое правило навигации. Если заблокировано или не настроено, показываем только соответствующие экраны.
     NavHost(navController = navController, startDestination = "lock") {
         composable("lock") {
             LockScreen(
                 onUnlocked = {
+                    // После успешной разблокировки ведём на безопасный главный экран, а не возвращаем назад
                     navController.navigate("profiles") {
                         popUpTo("lock") { inclusive = true }
                     }
@@ -41,7 +42,6 @@ fun SecureVaultNavHost(
         }
 
         composable("setup") {
-            // ✅ ИСПРАВЛЕНО: onSetupComplete заменён на onCompleted
             SetupScreen(
                 onCompleted = {
                     navController.navigate("profiles") {
@@ -61,6 +61,13 @@ fun SecureVaultNavHost(
                 },
                 onNavigateToSettings = {
                     navController.navigate("settings")
+                },
+                // Передаём функцию блокировки с полной очисткой стека
+                onLock = {
+                    authViewModel.lock()
+                    navController.navigate("lock") {
+                        popUpTo(0) { inclusive = true } // Очищаем весь стек, чтобы нельзя было вернуться назад
+                    }
                 }
             )
         }
@@ -94,10 +101,11 @@ fun SecureVaultNavHost(
                         popUpTo("vault/$profileId") { inclusive = true }
                     }
                 },
+                //  Передаём функцию блокировки с полной очисткой стека
                 onLock = {
                     authViewModel.lock()
                     navController.navigate("lock") {
-                        popUpTo("vault/$profileId") { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
