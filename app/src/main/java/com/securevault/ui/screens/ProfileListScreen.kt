@@ -23,6 +23,7 @@ import com.securevault.data.Profile
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,14 +41,11 @@ fun ProfileListScreen(
     var operationError by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        topBar = {
+         topBar = {
             TopAppBar(
                 title = { Text("Профили", fontWeight = FontWeight.Bold) },
                 actions = {
-                    //  Кнопка блокировки всегда доступна
-                    IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, "Заблокировать приложение")
-                    }
+                    LockActionButton(onLock = onLock) 
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, "Настройки")
                     }
