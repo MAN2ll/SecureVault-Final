@@ -3,17 +3,12 @@ package com.securevault.viewmodel
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.securevault.security.MasterPasswordHasher
-import javax.inject.Inject
 
-@HiltViewModel
-class AuthViewModel @Inject constructor(
-    application: Application
-) : AndroidViewModel(application) {
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
@@ -39,6 +34,7 @@ class AuthViewModel @Inject constructor(
         updateBruteForceState()
     }
 
+    // При холодном старте всегда требуем разблокировку, игнорируя старый флаг is_unlocked
     private fun checkInitialState(): AuthState {
         val hasMasterPassword = prefs.contains("master_hash")
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
@@ -49,11 +45,7 @@ class AuthViewModel @Inject constructor(
             return AuthState.BruteForceLocked(remaining)
         }
         
-        return when {
-            !hasMasterPassword -> AuthState.SetupRequired
-            prefs.getBoolean("is_unlocked", false) -> AuthState.Unlocked
-            else -> AuthState.Locked
-        }
+        return if (!hasMasterPassword) AuthState.SetupRequired else AuthState.Locked
     }
 
     private fun updateBruteForceState() {
@@ -83,19 +75,13 @@ class AuthViewModel @Inject constructor(
             prefs.edit().putInt("failed_attempts", 0).apply()
             _authState.value = AuthState.Unlocked
             prefs.edit().putBoolean("is_unlocked", true).apply()
+            //  Обновляем время только при успешном вводе мастер-пароля
             prefs.edit().putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
             true
         } else {
             incrementFailedAttempts()
             false
         }
-    }
-
-    fun unlockWithBiometric() {
-        _authState.value = AuthState.Unlocked
-        prefs.edit()
-            .putBoolean("is_unlocked", true)
-            .apply()
     }
 
     private fun incrementFailedAttempts() {
@@ -148,9 +134,20 @@ class AuthViewModel @Inject constructor(
         return true
     }
 
+    //  Строгая блокировка сессии
     fun lock() {
         _authState.value = AuthState.Locked
         prefs.edit().putBoolean("is_unlocked", false).apply()
+    }
+
+    //  Биометрия не может обойти недельную проверку
+    fun unlockWithBiometric(): Boolean {
+        if (isMasterPasswordRequired()) {
+            return false // Принуждаем к вводу мастер-пароля
+        }
+        _authState.value = AuthState.Unlocked
+        prefs.edit().putBoolean("is_unlocked", true).apply()
+        return true
     }
 
     fun isBiometricLoginEnabled(): Boolean = prefs.getBoolean("biometric_login_enabled", false)
