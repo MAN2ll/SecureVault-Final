@@ -51,9 +51,28 @@ object MnemonicPasswordGenerator {
         var specialCount: Int = 0
     )
 
+    // Безопасный положительный модуль
+    private fun positiveMod(value: Int, size: Int): Int {
+        return Math.floorMod(value, size)
+    }
+
+    //  Пересчёт квоты по фактическому содержимому сегмента
+    private fun calculateSegmentQuota(chars: CharArray, startIdx: Int, endIdx: Int): SegmentQuota {
+        val quota = SegmentQuota()
+        for (i in startIdx until endIdx) {
+            val c = chars[i]
+            when {
+                c.isUpperCase() -> quota.upperCount++
+                c.isDigit() -> quota.digitCount++
+                !c.isLetterOrDigit() -> quota.specialCount++
+            }
+        }
+        return quota
+    }
+
     fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
         if (password.isEmpty()) return false
-        
+
         val lowerPassword = password.lowercase()
         if (lowerPassword.length != lowerPassword.toSet().size) return false
 
@@ -94,6 +113,7 @@ object MnemonicPasswordGenerator {
             val variantOptions = options.copy(variantOffset = currentOffset)
             val result = generateSingleVariant(variantOptions, effectiveLength)
 
+            //  Если результат null (repair не удался), пробуем следующий offset
             if (result != null && isValidVariant(result.password, options.splitMode)) {
                 if (results.none { it.password == result.password }) {
                     results.add(result)
@@ -113,7 +133,6 @@ object MnemonicPasswordGenerator {
 
         if (words.isEmpty()) return null
 
-        //  Seed теперь включает targetLength и splitMode
         val seedStr = "${options.phrase}${options.serviceName}${options.username}${options.profileId}${options.rotationMonth}${options.rotationYear}${targetLength}${options.splitMode}${options.variantOffset}"
         val seedHash = seedStr.hashCode()
 
@@ -138,13 +157,12 @@ object MnemonicPasswordGenerator {
                 val word = words[wordIndex % words.size]
                 val charsNeeded = halfLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
-                
+
                 val blockResult = buildRhythmicBlockWithQuota(
-                    word, currentSeed, blockLength, 
+                    word, currentSeed, blockLength,
                     globalUsedChars, segment1Quota, explanation
-                )
-                if (blockResult == null) return null
-                
+                ) ?: return null
+
                 passwordBuilder.append(blockResult)
                 currentSeed += 1
                 wordIndex++
@@ -155,25 +173,23 @@ object MnemonicPasswordGenerator {
                 val word = words[wordIndex % words.size]
                 val charsNeeded = targetLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
-                
+
                 val blockResult = buildRhythmicBlockWithQuota(
-                    word, currentSeed, blockLength, 
+                    word, currentSeed, blockLength,
                     globalUsedChars, segment2Quota, explanation
-                )
-                if (blockResult == null) return null
-                
+                ) ?: return null
+
                 passwordBuilder.append(blockResult)
                 currentSeed += 1
                 wordIndex++
             }
 
             var password = passwordBuilder.toString()
-            
-            //  Deterministic repair для первой половины
-            password = repairSegment(password, 0, halfLength, segment1Quota, globalUsedChars, currentSeed)
-            //  Deterministic repair для второй половины
-            password = repairSegment(password, halfLength, targetLength, segment2Quota, globalUsedChars, currentSeed + 1000)
-            
+
+            //  repairSegment теперь nullable
+            password = repairSegment(password, 0, halfLength, segment1Quota, globalUsedChars, currentSeed) ?: return null
+            password = repairSegment(password, halfLength, targetLength, segment2Quota, globalUsedChars, currentSeed + 1000) ?: return null
+
             if (password.length != targetLength) return null
 
             return GenerationResult(
@@ -187,28 +203,26 @@ object MnemonicPasswordGenerator {
                 explanation = explanation.toString()
             )
         } else {
-            // SINGLE_USER режим
             val quota = SegmentQuota()
 
             while (passwordBuilder.length < targetLength && wordIndex < 100) {
                 val word = words[wordIndex % words.size]
                 val charsNeeded = targetLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
-                
+
                 val blockResult = buildRhythmicBlockWithQuota(
-                    word, currentSeed, blockLength, 
+                    word, currentSeed, blockLength,
                     globalUsedChars, quota, explanation
-                )
-                if (blockResult == null) return null
-                
+                ) ?: return null
+
                 passwordBuilder.append(blockResult)
                 currentSeed += 1
                 wordIndex++
             }
 
             var password = passwordBuilder.toString()
-            password = repairSegment(password, 0, targetLength, quota, globalUsedChars, currentSeed)
-            
+            password = repairSegment(password, 0, targetLength, quota, globalUsedChars, currentSeed) ?: return null
+
             if (password.length != targetLength) return null
 
             return GenerationResult(
@@ -236,17 +250,16 @@ object MnemonicPasswordGenerator {
         for ((index, char) in base.withIndex()) {
             val isUpperCase = index == 0
             val baseChar = if (isUpperCase) char.uppercaseChar() else char
-            
+
             val candidates = mutableListOf<Char>()
-            
-            //  Приоритет кандидатов зависит от квот
+
             if (quota.digitCount < 2) {
                 candidates.addAll(digitPool)
             }
             if (quota.specialCount < 2) {
                 candidates.addAll(specialPool)
             }
-            
+
             if (char.lowercaseChar() in leetMap) {
                 candidates.addAll(leetMap[char.lowercaseChar()]!!)
             }
@@ -255,22 +268,22 @@ object MnemonicPasswordGenerator {
                 candidates.add(0, char.uppercaseChar())
             }
 
-            val startIndex = (seed + index + candidates.size) % candidates.size
+            //  positiveMod вместо %
+            val startIndex = positiveMod(seed + index + candidates.size, candidates.size)
             var added = false
-            
+
             for (i in 0 until candidates.size) {
-                val candidate = candidates[(startIndex + i) % candidates.size]
+                val candidate = candidates[positiveMod(startIndex + i, candidates.size)]
                 if (!globalUsedChars.contains(candidate.lowercaseChar())) {
                     result.append(candidate)
                     globalUsedChars.add(candidate.lowercaseChar())
-                    
-                    // Обновляем квоты
+
                     when {
                         candidate.isUpperCase() -> quota.upperCount++
                         candidate.isDigit() -> quota.digitCount++
                         !candidate.isLetterOrDigit() -> quota.specialCount++
                     }
-                    
+
                     added = true
                     break
                 }
@@ -278,9 +291,9 @@ object MnemonicPasswordGenerator {
 
             if (!added) {
                 val fallbacks = digitPool + specialPool
-                val fbStartIndex = (seed + index + 100) % fallbacks.size
+                val fbStartIndex = positiveMod(seed + index + 100, fallbacks.size)
                 for (i in 0 until fallbacks.size) {
-                    val fb = fallbacks[(fbStartIndex + i) % fallbacks.size]
+                    val fb = fallbacks[positiveMod(fbStartIndex + i, fallbacks.size)]
                     if (!globalUsedChars.contains(fb)) {
                         result.append(fb)
                         globalUsedChars.add(fb)
@@ -294,71 +307,97 @@ object MnemonicPasswordGenerator {
 
             if (!added) return null
         }
-        
+
         explanation.append("Блок '${word}' -> ${result}\n")
         return result.toString()
     }
 
+    // repairSegment теперь nullable, с лимитом и пересчётом квот
     private fun repairSegment(
         password: String, startIdx: Int, endIdx: Int,
-        quota: SegmentQuota, globalUsedChars: MutableSet<Char>, seed: Int
-    ): String {
+        initialQuota: SegmentQuota, globalUsedChars: MutableSet<Char>, seed: Int
+    ): String? {
         val chars = password.toCharArray()
+        val segmentLength = endIdx - startIdx
+        if (segmentLength <= 0) return password
+
+        // Лимит попыток
+        val maxRepairAttempts = segmentLength * 10
+        var attempts = 0
         var repairSeed = seed
 
+        //  Пересчитываем квоту по фактическому содержимому
+        var quota = calculateSegmentQuota(chars, startIdx, endIdx)
+
         //  Ремонт недостающих цифр
-        while (quota.digitCount < 2) {
-            val pos = (repairSeed % (endIdx - startIdx)) + startIdx
+        while (quota.digitCount < 2 && attempts < maxRepairAttempts) {
+            val pos = positiveMod(repairSeed, segmentLength) + startIdx
             val currentChar = chars[pos]
-            
+
             if (currentChar.isLetter()) {
+                val oldNormalized = currentChar.lowercaseChar()
                 for (digit in digitPool) {
                     if (!globalUsedChars.contains(digit)) {
-                        globalUsedChars.remove(currentChar.lowercaseChar())
+                        globalUsedChars.remove(oldNormalized)
                         chars[pos] = digit
                         globalUsedChars.add(digit)
-                        quota.digitCount++
+                        quota = calculateSegmentQuota(chars, startIdx, endIdx)
                         break
                     }
                 }
             }
             repairSeed++
+            attempts++
         }
 
         //  Ремонт недостающих спецсимволов
-        while (quota.specialCount < 2) {
-            val pos = (repairSeed % (endIdx - startIdx)) + startIdx
+        while (quota.specialCount < 2 && attempts < maxRepairAttempts) {
+            val pos = positiveMod(repairSeed, segmentLength) + startIdx
             val currentChar = chars[pos]
-            
+
             if (currentChar.isLetterOrDigit()) {
+                val oldNormalized = currentChar.lowercaseChar()
                 for (special in specialPool) {
                     if (!globalUsedChars.contains(special)) {
-                        globalUsedChars.remove(currentChar.lowercaseChar())
+                        globalUsedChars.remove(oldNormalized)
                         chars[pos] = special
                         globalUsedChars.add(special)
-                        quota.specialCount++
+                        quota = calculateSegmentQuota(chars, startIdx, endIdx)
                         break
                     }
                 }
             }
             repairSeed++
+            attempts++
         }
 
         //  Ремонт недостающих заглавных
-        while (quota.upperCount < 2) {
-            val pos = (repairSeed % (endIdx - startIdx)) + startIdx
+        while (quota.upperCount < 2 && attempts < maxRepairAttempts) {
+            val pos = positiveMod(repairSeed, segmentLength) + startIdx
             val currentChar = chars[pos]
-            
+
+            //  Разрешаем замену на тот же символ в другом регистре
             if (currentChar.isLowerCase()) {
                 val upper = currentChar.uppercaseChar()
-                if (!globalUsedChars.contains(upper.lowercaseChar())) {
-                    globalUsedChars.remove(currentChar.lowercaseChar())
+                val oldNormalized = currentChar.lowercaseChar()
+                val newNormalized = upper.lowercaseChar()
+
+                // Разрешаем, если newNormalized == oldNormalized (смена регистра того же символа)
+                // ИЛИ если newNormalized не в globalUsedChars
+                if (newNormalized == oldNormalized || !globalUsedChars.contains(newNormalized)) {
+                    globalUsedChars.remove(oldNormalized)
                     chars[pos] = upper
-                    globalUsedChars.add(upper.lowercaseChar())
-                    quota.upperCount++
+                    globalUsedChars.add(newNormalized)
+                    quota = calculateSegmentQuota(chars, startIdx, endIdx)
                 }
             }
             repairSeed++
+            attempts++
+        }
+
+        // Если не удалось добрать квоты — возвращаем null
+        if (quota.digitCount < 2 || quota.specialCount < 2 || quota.upperCount < 2) {
+            return null
         }
 
         return String(chars)
