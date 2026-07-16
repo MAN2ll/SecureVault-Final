@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.viewmodel.AuthViewModel
 import com.securevault.ui.components.LockActionButton
+import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,7 +30,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
-    onLock: () -> Unit, 
+    onLock: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -39,7 +39,6 @@ fun SettingsScreen(
     
     var isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
     
-    //  Настройка автоблокировки
     var expandedAutoLock by remember { mutableStateOf(false) }
     val timeoutOptions = listOf(
         0 to "Сразу",
@@ -55,9 +54,9 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                    LockActionButton(onLock = onLock) 
+                    LockActionButton(onLock = onLock)
                 }
             )
         }
@@ -72,15 +71,10 @@ fun SettingsScreen(
         ) {
             Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
 
-            //  Карточка настройки автоблокировки
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Автоблокировка", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                    Text(
-                        "Время до блокировки при сворачивании приложения",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Время до блокировки при сворачивании приложения", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
                     
                     ExposedDropdownMenuBox(expanded = expandedAutoLock, onExpandedChange = { expandedAutoLock = !expandedAutoLock }) {
@@ -116,11 +110,7 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Вход по отпечатку пальца", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                        Text(
-                            "Используйте биометрию для быстрого входа",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Используйте биометрию для быстрого входа", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(
                         checked = isBiometricEnabled,
@@ -189,12 +179,7 @@ private fun triggerBiometricSetup(
     viewModel: AuthViewModel,
     onChanged: (Boolean) -> Unit
 ) {
-    if (!enable) {
-        onChanged(false)
-        return
-    }
-
-    if (activity == null) {
+    if (!enable || activity == null) {
         onChanged(false)
         return
     }
@@ -220,7 +205,6 @@ private fun triggerBiometricSetup(
         }
         override fun onAuthenticationFailed() {
             super.onAuthenticationFailed()
-            android.widget.Toast.makeText(context, "Ошибка биометрии", android.widget.Toast.LENGTH_SHORT).show()
             onChanged(false)
         }
     })
