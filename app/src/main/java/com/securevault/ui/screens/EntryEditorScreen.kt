@@ -42,6 +42,7 @@ import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +50,7 @@ fun EntryEditorScreen(
     id: String?,
     profileId: Int? = null,
     onBack: () -> Unit,
+    onLock: () -> Unit, 
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -179,6 +181,7 @@ fun EntryEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                LockActionButton(onLock = onLock)
                 title = { Text(if (isNewEntry) "Новая запись" else "Изменить", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
