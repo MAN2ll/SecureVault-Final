@@ -35,12 +35,14 @@ import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationJournalScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -75,6 +77,9 @@ fun RotationJournalScreen(
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
+                actions = {
+                   LockActionButton(onLock = onLock) 
+               }
             )
         }
     ) { padding ->
