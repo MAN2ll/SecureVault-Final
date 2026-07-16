@@ -124,19 +124,24 @@ fun VaultListScreen(
                         }
                     }
                 )
-            } else {
-                TopAppBar(
-                    title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
-                    actions = {
-                        IconButton(onClick = {
-                            showSearchField = !showSearchField
-                            if (!showSearchField) searchQuery = ""
-                        }) {
-                            Icon(
-                                if (showSearchField) Icons.Default.Close else Icons.Default.Search,
-                                if (showSearchField) "Закрыть поиск" else "Поиск"
-                            )
-                        }
+                       } else {
+                            TopAppBar(
+                                title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
+                                actions = {
+                                    //  Кнопка блокировки всегда доступна на главном экране храни a
+                                    IconButton(onClick = onLock) {
+                                        Icon(Icons.Default.Lock, "Заблокировать приложение")
+                                    }
+                                    
+                                    IconButton(onClick = {
+                                        showSearchField = !showSearchField
+                                        if (!showSearchField) searchQuery = ""
+                                    }) {
+                                        Icon(
+                                            if (showSearchField) Icons.Default.Close else Icons.Default.Search,
+                                            if (showSearchField) "Закрыть поиск" else "Поиск"
+                                        )
+                                    }
 
                         IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
                             Icon(
