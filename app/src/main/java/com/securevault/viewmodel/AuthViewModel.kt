@@ -34,7 +34,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         updateBruteForceState()
     }
 
-    // При холодном старте всегда требуем разблокировку, игнорируя старый флаг is_unlocked
+    //  При холодном старте всегда требуем разблокировку, игнорируя флаг is_unlocked
     private fun checkInitialState(): AuthState {
         val hasMasterPassword = prefs.contains("master_hash")
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
@@ -75,7 +75,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             prefs.edit().putInt("failed_attempts", 0).apply()
             _authState.value = AuthState.Unlocked
             prefs.edit().putBoolean("is_unlocked", true).apply()
-            //  Обновляем время только при успешном вводе мастер-пароля
             prefs.edit().putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
             true
         } else {
@@ -134,7 +133,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    //  Строгая блокировка сессии
+    //  Строгая блокировка сессии без навигации
     fun lock() {
         _authState.value = AuthState.Locked
         prefs.edit().putBoolean("is_unlocked", false).apply()
