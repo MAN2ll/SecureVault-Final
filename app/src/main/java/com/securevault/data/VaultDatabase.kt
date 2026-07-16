@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Profile::class, Entry::class],
-    version = 9,
+    version = 10, 
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
@@ -20,7 +20,6 @@ abstract class VaultDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: VaultDatabase? = null
 
-        //  Миграция для добавления полей гибкой защиты доступа
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE entries ADD COLUMN password_access_mode TEXT NOT NULL DEFAULT 'INHERIT'")
@@ -28,9 +27,12 @@ abstract class VaultDatabase : RoomDatabase() {
             }
         }
 
-        //  Если у вас были миграции 6->7 и 7->8, добавьте их сюда через запятую:
-        // .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-        // Для чистой установки или если старых миграций не было, оставляем только 8->9.
+        //  Миграция 9 → 10 для profileAccessMode
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE profiles ADD COLUMN profile_access_mode TEXT NOT NULL DEFAULT 'PIN_REQUIRED'")
+            }
+        }
 
         fun getDatabase(context: Context): VaultDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -39,7 +41,7 @@ abstract class VaultDatabase : RoomDatabase() {
                     VaultDatabase::class.java,
                     "securevault_database"
                 )
-                .addMigrations(MIGRATION_8_9)
+                .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
                 .build()
                 INSTANCE = instance
                 instance
