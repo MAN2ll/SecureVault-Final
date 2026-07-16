@@ -18,6 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 enum class RotationFilter(val label: String) {
     EXPIRED("Просроченные"),
@@ -36,6 +37,7 @@ enum class RotationSort(val label: String, val icon: androidx.compose.ui.graphic
 fun RotationScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     LaunchedEffect(profileId) {
