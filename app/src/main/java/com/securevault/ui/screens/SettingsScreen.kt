@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,6 +30,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
+    onLock: () -> Unit, 
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -54,6 +56,9 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                actions = {
+                    LockActionButton(onLock = onLock) 
+                }
             )
         }
     ) { padding ->
