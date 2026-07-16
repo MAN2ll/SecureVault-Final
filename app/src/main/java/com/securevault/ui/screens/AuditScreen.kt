@@ -25,15 +25,17 @@ import com.securevault.security.MasterPasswordHasher
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuditScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    // ✅ Устанавливаем профиль при входе
+    //  Устанавливаем профиль при входе
     LaunchedEffect(profileId) {
         if (profileId != null) {
             viewModel.setCurrentProfile(profileId)
@@ -62,6 +64,9 @@ fun AuditScreen(
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
+                actions = {
+                   LockActionButton(onLock = onLock)
+               }
             )
         }
     ) { padding ->
