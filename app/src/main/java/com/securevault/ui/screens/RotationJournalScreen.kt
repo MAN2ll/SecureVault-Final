@@ -27,6 +27,7 @@ import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
+import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordAccessPolicy
@@ -35,7 +36,6 @@ import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,22 +64,16 @@ fun RotationJournalScreen(
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
-    
-    //  Диалог для случая, когда PIN не задан
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Журнал ротации", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
-                    }
-                }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                   LockActionButton(onLock = onLock) 
-               }
+                    LockActionButton(onLock = onLock)
+                }
             )
         }
     ) { padding ->
@@ -92,7 +86,11 @@ fun RotationJournalScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 items(entries) { entry ->
                     val history = entry.getPasswordHistory()
                     if (history.isNotEmpty()) {
@@ -111,7 +109,10 @@ fun RotationJournalScreen(
                                 Spacer(Modifier.height(8.dp))
                                 
                                 history.forEach { item ->
-                                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(text = formatDate(item.date), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                             Text(text = "Тип: ${item.type}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -208,8 +209,18 @@ fun RotationJournalScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Сервис: ${historyItemToShow!!.first.service}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = revealedHistoryPassword!!, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Row(
+                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = revealedHistoryPassword!!,
+                                fontSize = 16.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
                             IconButton(onClick = {
                                 context.getSystemService(android.content.ClipboardManager::class.java)
                                     .setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
@@ -227,7 +238,6 @@ fun RotationJournalScreen(
         )
     }
     
-    //  Диалог предупреждения об отсутствии PIN
     if (showPinNotSetDialog) {
         AlertDialog(
             onDismissRequest = { showPinNotSetDialog = false },
@@ -247,7 +257,7 @@ private fun requestHistoryAccess(
     activity: FragmentActivity?,
     onAccessGranted: () -> Unit,
     onPinRequired: () -> Unit,
-    onPinNotSet: () -> Unit // 
+    onPinNotSet: () -> Unit
 ) {
     if (profile == null) {
         onPinRequired()
