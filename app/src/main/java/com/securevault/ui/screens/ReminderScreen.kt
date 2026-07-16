@@ -17,13 +17,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderScreen(
     onBack: () -> Unit,
-    onLock: () -> Unit
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val rotationEntries by viewModel.rotationEntries.collectAsState()
@@ -44,9 +42,6 @@ fun ReminderScreen(
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
-                 actions = {
-                   LockActionButton(onLock = onLock)
-               }
             )
         }
     ) { padding ->
