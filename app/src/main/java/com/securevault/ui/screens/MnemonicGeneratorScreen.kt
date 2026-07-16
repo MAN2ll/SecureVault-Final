@@ -24,12 +24,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MnemonicGeneratorScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     LaunchedEffect(profileId) {
@@ -105,6 +107,9 @@ fun MnemonicGeneratorScreen(
             TopAppBar(
                 title = { Text("AMPG генератор", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                actions = {
+                   LockActionButton(onLock = onLock) 
+               }
             )
         }
     ) { padding ->
