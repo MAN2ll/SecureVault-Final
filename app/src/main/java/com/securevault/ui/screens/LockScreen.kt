@@ -27,6 +27,7 @@ import com.securevault.viewmodel.AuthViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockScreen(
+    modifier: Modifier = Modifier,
     onUnlocked: () -> Unit,
     onSetupRequired: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
@@ -44,6 +45,7 @@ fun LockScreen(
             is AuthViewModel.AuthState.SetupRequired -> onSetupRequired()
             is AuthViewModel.AuthState.Unlocked -> onUnlocked()
             is AuthViewModel.AuthState.Locked -> {
+                // Биометрия предлагается только если не прошла неделя
                 if (viewModel.isBiometricLoginEnabled() && !viewModel.isMasterPasswordRequired()) {
                     showBiometricPrompt = true
                 }
@@ -58,8 +60,14 @@ fun LockScreen(
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
                 showBiometricPrompt = false
-                viewModel.unlockWithBiometric()
-                onUnlocked()
+                
+                // ✅ ИСПРАВЛЕНО: Проверка результата разблокировки
+                val unlocked = viewModel.unlockWithBiometric()
+                if (unlocked) {
+                    onUnlocked()
+                } else {
+                    error = "Для безопасности введите мастер-пароль"
+                }
             }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 super.onAuthenticationError(errorCode, errString)
@@ -81,17 +89,24 @@ fun LockScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = modifier
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(24.dp))
+        
         Text("SecureVault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         
         if (viewModel.isMasterPasswordRequired()) {
-            Text("Для безопасности введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
+            Text(
+                "Для безопасности введите мастер-пароль",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Medium
+            )
             Spacer(Modifier.height(16.dp))
         } else {
             Text("Введите мастер-пароль", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
