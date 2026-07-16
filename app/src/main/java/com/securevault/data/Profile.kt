@@ -12,5 +12,8 @@ data class Profile(
     @ColumnInfo(name = "password_hash") val passwordHash: String,
     @ColumnInfo(name = "password_salt") val passwordSalt: String,
     @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "password_access_mode") val passwordAccessMode: String = AccessMode.PIN_REQUIRED.value
+    // Режим защиты просмотра паролей записей с INHERIT
+    @ColumnInfo(name = "password_access_mode") val passwordAccessMode: String = AccessMode.PIN_REQUIRED.value,
+    // Режим входа в сам профиль
+    @ColumnInfo(name = "profile_access_mode") val profileAccessMode: String = AccessMode.PIN_REQUIRED.value
 )
