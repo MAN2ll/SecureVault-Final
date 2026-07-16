@@ -133,13 +133,13 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    //  Строгая блокировка сессии без навигации
+    // Строгая блокировка сессии
     fun lock() {
         _authState.value = AuthState.Locked
         prefs.edit().putBoolean("is_unlocked", false).apply()
     }
 
-    //  Биометрия не может обойти недельную проверку
+    // : Биометрия не может обойти недельную проверку, возвращает Boolean
     fun unlockWithBiometric(): Boolean {
         if (isMasterPasswordRequired()) {
             return false // Принуждаем к вводу мастер-пароля
