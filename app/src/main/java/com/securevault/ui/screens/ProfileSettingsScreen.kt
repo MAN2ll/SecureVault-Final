@@ -21,23 +21,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.security.MasterPasswordHasher
+import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.AccessMode
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSettingsScreen(
     profileId: Int?,
     onBack: () -> Unit,
-    onLock: () -> Unit,
     onNavigateToRotation: () -> Unit,
     onNavigateToRotationJournal: () -> Unit,
     onNavigateToAudit: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToQrScanner: () -> Unit,
+    onLock: () -> Unit,
     vaultViewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -72,10 +72,10 @@ fun ProfileSettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Настройки профиля", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                   LockActionButton(onLock = onLock)
-               }
+                    LockActionButton(onLock = onLock)
+                }
             )
         }
     ) { padding ->
@@ -100,7 +100,6 @@ fun ProfileSettingsScreen(
                 }
             }
 
-            // PIN профиля
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("PIN профиля", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -133,7 +132,6 @@ fun ProfileSettingsScreen(
                 }
             }
 
-            //  Режим входа в профиль
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Вход в профиль", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -171,12 +169,8 @@ fun ProfileSettingsScreen(
                                             profile?.let {
                                                 profileViewModel.setProfileAccessMode(it, mode) { result ->
                                                     when (result) {
-                                                        is PasswordOperationResult.Success -> {
-                                                            operationSuccess = "Режим входа обновлён"
-                                                        }
-                                                        is PasswordOperationResult.Error -> {
-                                                            operationError = result.message
-                                                        }
+                                                        is PasswordOperationResult.Success -> operationSuccess = "Режим входа обновлён"
+                                                        is PasswordOperationResult.Error -> operationError = result.message
                                                     }
                                                 }
                                             }
@@ -187,17 +181,10 @@ fun ProfileSettingsScreen(
                             }
                         }
                     }
-                    
-                    Text(
-                        "Определяет, как запрашивать подтверждение при входе в этот профиль.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                    Text("Определяет, как запрашивать подтверждение при входе в этот профиль.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 }
             }
 
-            // Защита просмотра паролей
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Защита просмотра паролей", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -214,7 +201,7 @@ fun ProfileSettingsScreen(
                                 AccessMode.NO_CONFIRMATION -> "Без подтверждения"
                                 AccessMode.PIN_REQUIRED -> "Только PIN профиля"
                                 AccessMode.BIOMETRIC_OR_PIN -> "Отпечаток или PIN профиля"
-                                else -> "Только PIN профиля" //  убран PIN_ALWAYS
+                                else -> "Только PIN профиля"
                             },
                             onValueChange = {},
                             label = { Text("Режим защиты") },
@@ -243,7 +230,6 @@ fun ProfileSettingsScreen(
                             }
                         }
                     }
-                    
                     if (!hasPin && (currentMode == AccessMode.PIN_REQUIRED || currentMode == AccessMode.BIOMETRIC_OR_PIN)) {
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -273,10 +259,7 @@ fun ProfileSettingsScreen(
 
             Text("Опасная зона", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
@@ -301,7 +284,6 @@ fun ProfileSettingsScreen(
         }
     }
 
-    // Диалоги
     if (showMasterPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showMasterPasswordDialog = false },
@@ -321,9 +303,7 @@ fun ProfileSettingsScreen(
                 }
             },
             confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showMasterPasswordDialog = false }) { Text("Отмена") }
-            }
+            dismissButton = { TextButton(onClick = { showMasterPasswordDialog = false }) { Text("Отмена") } }
         )
     }
 
@@ -332,12 +312,7 @@ fun ProfileSettingsScreen(
             onDismissRequest = { showDeleteProfileDialog = false },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Удалить профиль?") },
-            text = {
-                Text(
-                    "Профиль \"${profile?.name ?: ""}\" и все его пароли будут удалены безвозвратно.\n\nЭто действие нельзя отменить.",
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            },
+            text = { Text("Профиль \"${profile?.name ?: ""}\" и все его пароли будут удалены безвозвратно.\n\nЭто действие нельзя отменить.", color = MaterialTheme.colorScheme.onErrorContainer) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -357,9 +332,7 @@ fun ProfileSettingsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) { Text("Удалить") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteProfileDialog = false }) { Text("Отмена") }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteProfileDialog = false }) { Text("Отмена") } }
         )
     }
 
