@@ -35,6 +35,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
+import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordAccessPolicy
@@ -43,14 +44,13 @@ import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
     profileId: Int?,
     onBack: () -> Unit,
-    onLock: () -> Unit
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -143,14 +143,10 @@ fun QrScannerScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Сканирование QR", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Назад")
-                    }
-                }
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                   LockActionButton(onLock = onLock)
-               }
+                    LockActionButton(onLock = onLock)
+                }
             )
         }
     ) { padding ->
