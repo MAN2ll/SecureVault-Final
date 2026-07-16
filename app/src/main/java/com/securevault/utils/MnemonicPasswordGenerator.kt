@@ -19,7 +19,6 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode = SplitMode.SINGLE_USER
     )
 
-    //  поле variantOffset для определения схемы варианта
     data class GenerationResult(
         val password: String,
         val mnemonicHint: String,
@@ -30,6 +29,19 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode,
         val explanation: String,
         val variantOffset: Int = 0
+    )
+
+    //  Информация о блоке для объяснения
+    data class BlockInfo(
+        val word: String,
+        val block: String,
+        val reason: String
+    )
+
+    //  Результат выбора якоря
+    data class AnchorResult(
+        val char: Char,
+        val reason: String
     )
 
     private val leetMap = mapOf(
@@ -46,6 +58,7 @@ object MnemonicPasswordGenerator {
 
     private val digitPool = listOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
     private val specialPool = listOf('@', '#', '$', '!', '%', '&', '*', '?')
+    private val reserveSymbols = listOf('!', '#', '%', '&', '?', '*')
 
     data class SegmentQuota(
         var upperCount: Int = 0,
@@ -70,7 +83,6 @@ object MnemonicPasswordGenerator {
         return quota
     }
 
-    //  Определение схемы варианта по variantOffset
     private fun determineScheme(variantOffset: Int): String {
         return when (positiveMod(variantOffset, 3)) {
             0 -> "Гласные"
@@ -79,13 +91,52 @@ object MnemonicPasswordGenerator {
         }
     }
 
-    //  Описание схемы варианта
     private fun describeScheme(scheme: String): String {
         return when (scheme) {
             "Гласные" -> "Усилены замены на гласных: o → 0, a/я → @, e → 3."
             "Края блоков" -> "Усилены начало и конец каждого блока."
             else -> "Используются и гласные, и края блоков, и добор сложности."
         }
+    }
+
+    // ✅ НОВОЕ: Логика выбора якоря слова
+    private fun findAnchor(transliteratedWord: String, globalUsedChars: MutableSet<Char>): AnchorResult? {
+        // 1. Пробуем заглавные буквы из слова слева направо
+        for (c in transliteratedWord) {
+            val upper = c.uppercaseChar()
+            if (!globalUsedChars.contains(upper.lowercaseChar())) {
+                globalUsedChars.add(upper.lowercaseChar())
+                val reason = if (c.lowercaseChar() == transliteratedWord.first().lowercaseChar()) {
+                    "первая буква слова свободна"
+                } else {
+                    "первая буква уже использована, выбрана следующая свободная буква '$c'"
+                }
+                return AnchorResult(upper, reason)
+            }
+        }
+        
+        // 2. Пробуем понятные leet-замены букв этого слова
+        for (c in transliteratedWord) {
+            val lowerC = c.lowercaseChar()
+            if (lowerC in leetMap) {
+                for (leetChar in leetMap[lowerC]!!) {
+                    if (!globalUsedChars.contains(leetChar)) {
+                        globalUsedChars.add(leetChar)
+                        return AnchorResult(leetChar, "все буквы слова заняты, использована leet-замена '$leetChar' для буквы '$c'")
+                    }
+                }
+            }
+        }
+        
+        // 3. Крайний случай: резервный символ
+        for (sym in reserveSymbols) {
+            if (!globalUsedChars.contains(sym)) {
+                globalUsedChars.add(sym)
+                return AnchorResult(sym, "все буквы и их замены заняты, использован резервный символ '$sym'")
+            }
+        }
+        
+        return null
     }
 
     fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
@@ -158,8 +209,7 @@ object MnemonicPasswordGenerator {
         var currentSeed = seedHash
         var wordIndex = 0
 
-        //  Сбор информации о блоках для объяснения
-        val blockMapping = mutableListOf<Pair<String, String>>()
+        val blockInfos = mutableListOf<BlockInfo>()
 
         if (options.splitMode == SplitMode.TWO_USERS) {
             val halfLength = targetLength / 2
@@ -171,13 +221,13 @@ object MnemonicPasswordGenerator {
                 val charsNeeded = halfLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
 
-                val blockResult = buildRhythmicBlockWithQuota(
+                val blockInfo = buildRhythmicBlockWithQuota(
                     word, currentSeed, blockLength,
                     globalUsedChars, segment1Quota
                 ) ?: return null
 
-                blockMapping.add(word to blockResult)
-                passwordBuilder.append(blockResult)
+                blockInfos.add(blockInfo)
+                passwordBuilder.append(blockInfo.block)
                 currentSeed += 1
                 wordIndex++
             }
@@ -187,13 +237,13 @@ object MnemonicPasswordGenerator {
                 val charsNeeded = targetLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
 
-                val blockResult = buildRhythmicBlockWithQuota(
+                val blockInfo = buildRhythmicBlockWithQuota(
                     word, currentSeed, blockLength,
                     globalUsedChars, segment2Quota
                 ) ?: return null
 
-                blockMapping.add(word to blockResult)
-                passwordBuilder.append(blockResult)
+                blockInfos.add(blockInfo)
+                passwordBuilder.append(blockInfo.block)
                 currentSeed += 1
                 wordIndex++
             }
@@ -205,18 +255,15 @@ object MnemonicPasswordGenerator {
 
             if (password.length != targetLength) return null
 
-            val part1 = password.substring(0, halfLength)
-            val part2 = password.substring(halfLength)
-
             return GenerationResult(
                 password = password,
                 mnemonicHint = options.phrase.take(30),
                 variantName = "Вариант ${options.variantOffset + 1}",
                 strength = calculateStrength(password),
-                part1 = part1,
-                part2 = part2,
+                part1 = password.substring(0, halfLength),
+                part2 = password.substring(halfLength),
                 splitMode = SplitMode.TWO_USERS,
-                explanation = buildHumanReadableExplanation(options, password, blockMapping, targetLength),
+                explanation = buildHumanReadableExplanation(options, password, blockInfos, targetLength),
                 variantOffset = options.variantOffset
             )
         } else {
@@ -227,13 +274,13 @@ object MnemonicPasswordGenerator {
                 val charsNeeded = targetLength - passwordBuilder.length
                 val blockLength = minOf(4, charsNeeded)
 
-                val blockResult = buildRhythmicBlockWithQuota(
+                val blockInfo = buildRhythmicBlockWithQuota(
                     word, currentSeed, blockLength,
                     globalUsedChars, quota
                 ) ?: return null
 
-                blockMapping.add(word to blockResult)
-                passwordBuilder.append(blockResult)
+                blockInfos.add(blockInfo)
+                passwordBuilder.append(blockInfo.block)
                 currentSeed += 1
                 wordIndex++
             }
@@ -251,138 +298,67 @@ object MnemonicPasswordGenerator {
                 part1 = null,
                 part2 = null,
                 splitMode = SplitMode.SINGLE_USER,
-                explanation = buildHumanReadableExplanation(options, password, blockMapping, targetLength),
+                explanation = buildHumanReadableExplanation(options, password, blockInfos, targetLength),
                 variantOffset = options.variantOffset
             )
         }
     }
 
-    //  Построение человекочитаемого объяснения
-    private fun buildHumanReadableExplanation(
-        options: GenerationOptions,
-        password: String,
-        blockMapping: List<Pair<String, String>>,
-        targetLength: Int
-    ): String {
-        val sb = StringBuilder()
-        val scheme = determineScheme(options.variantOffset)
-
-        sb.appendLine("Как запомнить пароль")
-        sb.appendLine()
-        sb.appendLine("Фраза-подсказка:")
-        sb.appendLine(options.phrase)
-        sb.appendLine()
-
-        // Скелет фразы
-        sb.appendLine("Скелет фразы:")
-        for ((word, block) in blockMapping) {
-            val capitalized = word.replaceFirstChar { it.uppercaseChar() }
-            sb.appendLine("$word → $capitalized")
-        }
-        sb.appendLine()
-
-        // Схема варианта
-        sb.appendLine("Схема варианта: $scheme")
-        sb.appendLine(describeScheme(scheme))
-        sb.appendLine()
-
-        // Что изменилось
-        sb.appendLine("Что изменилось:")
-        sb.appendLine("1. Первые буквы блоков сделаны заглавными.")
-        sb.appendLine("2. Похожие буквы заменены на цифры: o → 0, e → 3, t → 7, b → 8.")
-        sb.appendLine("3. Похожие буквы заменены на символы: a/я → @, s/ш → $, i/l → !.")
-        sb.appendLine("4. Сервис, логин, профиль и ротация влияют на выбор позиций замен, но не добавляются отдельным хвостом.")
-        sb.appendLine()
-
-        // Почему есть неожиданные символы
-        sb.appendLine("Почему есть неожиданные символы:")
-        sb.appendLine("Пароль должен быть стойким: без повторов, с заглавными буквами, цифрами и спецсимволами. Поэтому некоторые символы выбраны не буквально из фразы, а как безопасные замены внутри блоков.")
-        sb.appendLine()
-
-        // Блоки
-        sb.appendLine("Блоки:")
-        for ((word, block) in blockMapping) {
-            sb.appendLine("$word → $block")
-        }
-        sb.appendLine()
-
-        // Итоговый пароль
-        sb.appendLine("Итоговый пароль:")
-        sb.appendLine(password)
-
-        // Для TWO_USERS — пояснение про деление пополам
-        if (options.splitMode == SplitMode.TWO_USERS) {
-            sb.appendLine()
-            sb.appendLine("Режим для двух пользователей:")
-            sb.appendLine("Полный пароль делится на две равные части:")
-            sb.appendLine()
-            val half = password.length / 2
-            sb.appendLine("User A: ${password.substring(0, half)}")
-            sb.appendLine("User B: ${password.substring(half)}")
-            sb.appendLine()
-            sb.appendLine("Каждая часть отдельно содержит:")
-            sb.appendLine("• минимум 2 заглавные буквы;")
-            sb.appendLine("• минимум 2 цифры;")
-            sb.appendLine("• минимум 2 спецсимвола.")
-            sb.appendLine()
-            sb.appendLine("Это один пароль, разделённый пополам, а не два разных пароля.")
-        }
-
-        return sb.toString()
-    }
-
+    //  Генерация блока с осмысленным якорем
     private fun buildRhythmicBlockWithQuota(
         word: String, seed: Int, targetLength: Int,
         globalUsedChars: MutableSet<Char>, quota: SegmentQuota
-    ): String? {
+    ): BlockInfo? {
         val transliterated = transliterate(word)
         val base = transliterated.take(targetLength)
+        if (base.isEmpty()) return null
+
+        val anchorResult = findAnchor(transliterated, globalUsedChars) ?: return null
+        
         val result = StringBuilder()
+        result.append(anchorResult.char)
+        
+        when {
+            anchorResult.char.isUpperCase() -> quota.upperCount++
+            anchorResult.char.isDigit() -> quota.digitCount++
+            !anchorResult.char.isLetterOrDigit() -> quota.specialCount++
+        }
 
-        for ((index, char) in base.withIndex()) {
-            val isUpperCase = index == 0
-            val baseChar = if (isUpperCase) char.uppercaseChar() else char
-
+        for ((index, char) in base.drop(1).withIndex()) {
+            val actualIndex = index + 1
+            val baseChar = char 
+            
             val candidates = mutableListOf<Char>()
-
-            if (quota.digitCount < 2) {
-                candidates.addAll(digitPool)
-            }
-            if (quota.specialCount < 2) {
-                candidates.addAll(specialPool)
-            }
-
+            if (quota.digitCount < 2) candidates.addAll(digitPool)
+            if (quota.specialCount < 2) candidates.addAll(specialPool)
+            
             if (char.lowercaseChar() in leetMap) {
                 candidates.addAll(leetMap[char.lowercaseChar()]!!)
             }
             candidates.add(baseChar)
-            if (isUpperCase && quota.upperCount < 2) {
-                candidates.add(0, char.uppercaseChar())
-            }
-
-            val startIndex = positiveMod(seed + index + candidates.size, candidates.size)
+            
+            val startIndex = positiveMod(seed + actualIndex + candidates.size, candidates.size)
             var added = false
-
+            
             for (i in 0 until candidates.size) {
                 val candidate = candidates[positiveMod(startIndex + i, candidates.size)]
                 if (!globalUsedChars.contains(candidate.lowercaseChar())) {
                     result.append(candidate)
                     globalUsedChars.add(candidate.lowercaseChar())
-
+                    
                     when {
                         candidate.isUpperCase() -> quota.upperCount++
                         candidate.isDigit() -> quota.digitCount++
                         !candidate.isLetterOrDigit() -> quota.specialCount++
                     }
-
                     added = true
                     break
                 }
             }
-
+            
             if (!added) {
                 val fallbacks = digitPool + specialPool
-                val fbStartIndex = positiveMod(seed + index + 100, fallbacks.size)
+                val fbStartIndex = positiveMod(seed + actualIndex + 100, fallbacks.size)
                 for (i in 0 until fallbacks.size) {
                     val fb = fallbacks[positiveMod(fbStartIndex + i, fallbacks.size)]
                     if (!globalUsedChars.contains(fb)) {
@@ -395,11 +371,11 @@ object MnemonicPasswordGenerator {
                     }
                 }
             }
-
+            
             if (!added) return null
         }
-
-        return result.toString()
+        
+        return BlockInfo(word, result.toString(), anchorResult.reason)
     }
 
     private fun repairSegment(
@@ -481,6 +457,74 @@ object MnemonicPasswordGenerator {
         }
 
         return String(chars)
+    }
+
+    //  Человеко-читаемое объяснение с якорями
+    private fun buildHumanReadableExplanation(
+        options: GenerationOptions,
+        password: String,
+        blockInfos: List<BlockInfo>,
+        targetLength: Int
+    ): String {
+        val sb = StringBuilder()
+        val scheme = determineScheme(options.variantOffset)
+
+        sb.appendLine("Как запомнить пароль")
+        sb.appendLine()
+        sb.appendLine("Фраза-подсказка:")
+        sb.appendLine(options.phrase)
+        sb.appendLine()
+
+        sb.appendLine("Скелет фразы:")
+        for (info in blockInfos) {
+            sb.appendLine("${info.word} → ${info.block.first()}")
+        }
+        sb.appendLine()
+
+        sb.appendLine("Почему выбраны такие якоря:")
+        for (info in blockInfos) {
+            sb.appendLine("- ${info.word}: ${info.reason}")
+        }
+        sb.appendLine()
+
+        sb.appendLine("Что изменилось:")
+        sb.appendLine("1. В качестве первого символа блока выбрана свободная буква из слова (или её замена).")
+        sb.appendLine("2. Похожие буквы заменены на цифры: o → 0, e → 3, t → 7, b → 8.")
+        sb.appendLine("3. Похожие буквы заменены на символы: a/я → @, s/ш → $, i/l → !.")
+        sb.appendLine("4. Сервис, логин, профиль и ротация влияют на выбор позиций замен, но не добавляются отдельным хвостом.")
+        sb.appendLine()
+
+        sb.appendLine("Почему есть неожиданные символы:")
+        sb.appendLine("Пароль должен быть стойким: без повторов, с заглавными буквами, цифрами и спецсимволами. Поэтому некоторые символы выбраны не буквально из фразы, а как безопасные замены внутри блоков.")
+        sb.appendLine()
+
+        sb.appendLine("Блоки:")
+        for (info in blockInfos) {
+            sb.appendLine("${info.word} → ${info.block}")
+        }
+        sb.appendLine()
+
+        sb.appendLine("Итоговый пароль:")
+        sb.appendLine(password)
+
+        if (options.splitMode == SplitMode.TWO_USERS) {
+            sb.appendLine()
+            sb.appendLine("Режим для двух пользователей:")
+            sb.appendLine("Полный пароль делится на две равные части:")
+            sb.appendLine()
+            val half = password.length / 2
+            sb.appendLine("User A: ${password.substring(0, half)}")
+            sb.appendLine("User B: ${password.substring(half)}")
+            sb.appendLine()
+            sb.appendLine("Каждая часть отдельно содержит:")
+            sb.appendLine("• минимум 2 заглавные буквы;")
+            sb.appendLine("• минимум 2 цифры;")
+            sb.appendLine("• минимум 2 спецсимвола.")
+            sb.appendLine()
+            sb.appendLine("Это один пароль, разделённый пополам, а не два разных пароля.")
+        }
+
+        return sb.toString()
     }
 
     private fun transliterate(text: String): String {
