@@ -27,6 +27,7 @@ import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,11 +128,8 @@ fun VaultListScreen(
                        } else {
                             TopAppBar(
                                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
-                                actions = {
-                                    //  Кнопка блокировки всегда доступна на главном экране храни a
-                                    IconButton(onClick = onLock) {
-                                        Icon(Icons.Default.Lock, "Заблокировать приложение")
-                                    }
+                               actions = {
+                                    LockActionButton(onLock = onLock) 
                                     
                                     IconButton(onClick = {
                                         showSearchField = !showSearchField
