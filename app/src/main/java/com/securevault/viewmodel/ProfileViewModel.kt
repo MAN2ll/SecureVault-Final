@@ -37,7 +37,6 @@ class ProfileViewModel @Inject constructor(
                     "" to ""
                 }
                 
-                // Явное задание режима доступа в зависимости от наличия PIN
                 val accessMode = if (pin.isNullOrBlank()) {
                     AccessMode.NO_CONFIRMATION.value
                 } else {
@@ -48,7 +47,8 @@ class ProfileViewModel @Inject constructor(
                     name = name, 
                     passwordHash = hash, 
                     passwordSalt = salt,
-                    passwordAccessMode = accessMode
+                    passwordAccessMode = accessMode,
+                    profileAccessMode = accessMode // Синхронизация при создании
                 )
                 repository.insertProfile(profile)
                 onResult(PasswordOperationResult.Success)
@@ -75,7 +75,6 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    //  При установке PIN режим становится PIN_REQUIRED
     fun setProfilePin(profile: Profile, newPin: String, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
@@ -93,15 +92,33 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    //  При удалении PIN режим становится NO_CONFIRMATION
     fun removeProfilePin(profile: Profile, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
                 repository.updateProfile(profile.copy(
                     passwordHash = "", 
                     passwordSalt = "",
-                    passwordAccessMode = AccessMode.NO_CONFIRMATION.value
+                    passwordAccessMode = AccessMode.NO_CONFIRMATION.value,
+                    profileAccessMode = AccessMode.NO_CONFIRMATION.value //  Сброс режима входа
                 ))
+                onResult(PasswordOperationResult.Success)
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    // Установка режима входа в профиль
+    fun setProfileAccessMode(profile: Profile, mode: AccessMode, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // Проверка: если выбран BIOMETRIC_OR_PIN или PIN_REQUIRED, но PIN не задан — ошибка
+                if (mode != AccessMode.NO_CONFIRMATION && profile.passwordHash.isBlank()) {
+                    onResult(PasswordOperationResult.Error("Сначала задайте PIN профиля"))
+                    return@launch
+                }
+                
+                repository.updateProfile(profile.copy(profileAccessMode = mode.value))
                 onResult(PasswordOperationResult.Success)
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
