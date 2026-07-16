@@ -209,8 +209,7 @@ fun ProfileSettingsScreen(
                                 AccessMode.NO_CONFIRMATION -> "Без подтверждения"
                                 AccessMode.PIN_REQUIRED -> "Только PIN профиля"
                                 AccessMode.BIOMETRIC_OR_PIN -> "Отпечаток или PIN профиля"
-                                AccessMode.PIN_ALWAYS -> "Только PIN профиля"
-                                else -> "Только PIN профиля"
+                                else -> "Только PIN профиля" //  убран PIN_ALWAYS
                             },
                             onValueChange = {},
                             label = { Text("Режим защиты") },
