@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -32,7 +33,6 @@ fun SecureVaultNavHost(
         if (authState is AuthViewModel.AuthState.SetupRequired) "setup" else "profiles"
     }
 
-    //  Защитный overlay
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = startDestination) {
             composable("setup") {
@@ -54,7 +54,7 @@ fun SecureVaultNavHost(
                         }
                     },
                     onNavigateToSettings = { navController.navigate("settings") },
-                    onLock = { authViewModel.lock() }  Передаём блокировку
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -63,7 +63,7 @@ fun SecureVaultNavHost(
                     onBack = { navController.popBackStack() },
                     onNavigateToExport = { navController.navigate("export") },
                     onNavigateToChangePassword = { navController.navigate("change_password") },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -88,7 +88,7 @@ fun SecureVaultNavHost(
                             popUpTo("vault/$profileId") { inclusive = true }
                         }
                     },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -96,7 +96,10 @@ fun SecureVaultNavHost(
                 route = "entry/{entryId}?profileId={profileId}",
                 arguments = listOf(
                     navArgument("entryId") { type = NavType.StringType },
-                    navArgument("profileId") { type = NavType.IntType; defaultValue = -1 }
+                    navArgument("profileId") {
+                        type = NavType.IntType
+                        defaultValue = -1
+                    }
                 )
             ) { backStackEntry ->
                 val entryId = backStackEntry.arguments?.getString("entryId")
@@ -106,7 +109,7 @@ fun SecureVaultNavHost(
                     id = entryId,
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -114,7 +117,7 @@ fun SecureVaultNavHost(
                 ExportImportScreen(
                     profileId = null,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -126,7 +129,7 @@ fun SecureVaultNavHost(
                 ExportImportScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -138,7 +141,7 @@ fun SecureVaultNavHost(
                 RotationScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -150,7 +153,7 @@ fun SecureVaultNavHost(
                 RotationJournalScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -167,7 +170,7 @@ fun SecureVaultNavHost(
                     onNavigateToAudit = { navController.navigate("audit/$profileId") },
                     onNavigateToExport = { navController.navigate("export/$profileId") },
                     onNavigateToQrScanner = { navController.navigate("qr_scanner/$profileId") },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -179,7 +182,7 @@ fun SecureVaultNavHost(
                 MnemonicGeneratorScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -191,7 +194,7 @@ fun SecureVaultNavHost(
                 QrScannerScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
@@ -203,27 +206,24 @@ fun SecureVaultNavHost(
                 AuditScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
 
             composable("change_password") {
                 ChangeMasterPasswordScreen(
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() } 
+                    onLock = { authViewModel.lock() }
                 )
             }
         }
 
-        //  OVERLAY: Появляется поверх текущего экрана, не очищая стек
         if (authState is AuthViewModel.AuthState.Locked || authState is AuthViewModel.AuthState.BruteForceLocked) {
             LockScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
-                onUnlocked = {
-                    // Ничего не делаем. Изменение состояния на Unlocked автоматически скроет overlay
-                },
+                onUnlocked = { },
                 onSetupRequired = {
                     navController.navigate("setup") {
                         popUpTo(0) { inclusive = true }
