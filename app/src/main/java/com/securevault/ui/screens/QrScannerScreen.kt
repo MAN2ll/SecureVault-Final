@@ -43,12 +43,14 @@ import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
     profileId: Int?,
     onBack: () -> Unit,
+    onLock: () -> Unit
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -146,6 +148,9 @@ fun QrScannerScreen(
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
+                actions = {
+                   LockActionButton(onLock = onLock)
+               }
             )
         }
     ) { padding ->
