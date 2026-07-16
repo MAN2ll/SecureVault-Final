@@ -111,7 +111,7 @@ fun ProfileListScreen(
         }
     }
 
-    if (showCreateDialog) {
+     if (showCreateDialog) {
         CreateProfileDialog(
             onDismiss = { showCreateDialog = false },
             onCreate = { name, pin ->
@@ -119,7 +119,8 @@ fun ProfileListScreen(
                     if (result is PasswordOperationResult.Success) {
                         showCreateDialog = false
                     } else {
-                        operationError = result.message
+                        //  явное приведение типа для доступа к message
+                        operationError = (result as PasswordOperationResult.Error).message
                     }
                 }
             }
