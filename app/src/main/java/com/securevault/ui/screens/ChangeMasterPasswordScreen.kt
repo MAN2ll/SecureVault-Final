@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
+import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangeMasterPasswordScreen(
     onBack: () -> Unit,
+    onLock: () -> Unit,
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
     var currentPassword by remember { mutableStateOf("") }
@@ -48,6 +50,9 @@ fun ChangeMasterPasswordScreen(
                         Icon(Icons.Default.ArrowBack, "Назад")
                     }
                 }
+                actions = {
+                   LockActionButton(onLock = onLock)
+               }
             )
         }
     ) { padding ->
