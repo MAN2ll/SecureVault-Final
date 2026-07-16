@@ -2,9 +2,6 @@
 
 package com.securevault.ui.screens
 
-import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,17 +13,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
-import com.securevault.utils.AccessMode
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -36,12 +29,10 @@ import com.securevault.viewmodel.VaultViewModel
 fun ProfileListScreen(
     onProfileSelected: (Int) -> Unit,
     onNavigateToSettings: () -> Unit,
+    onLock: () -> Unit, //  Добавлен параметр блокировки
     viewModel: ProfileViewModel = hiltViewModel(),
     vaultViewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
-    val activity = context as? FragmentActivity
-    
     val profiles by viewModel.profiles.collectAsState()
 
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -53,6 +44,10 @@ fun ProfileListScreen(
             TopAppBar(
                 title = { Text("Профили", fontWeight = FontWeight.Bold) },
                 actions = {
+                    //  Кнопка блокировки всегда доступна
+                    IconButton(onClick = onLock) {
+                        Icon(Icons.Default.Lock, "Заблокировать приложение")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, "Настройки")
                     }
@@ -82,9 +77,7 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            //  Профиль без защиты открывается сразу
-                            if (profile.passwordHash.isBlank() || 
-                                profile.profileAccessMode == AccessMode.NO_CONFIRMATION.value) {
+                            if (profile.passwordHash.isBlank()) {
                                 vaultViewModel.setCurrentProfile(profile.id)
                                 onProfileSelected(profile.id)
                             } else {
@@ -111,7 +104,7 @@ fun ProfileListScreen(
         }
     }
 
-     if (showCreateDialog) {
+    if (showCreateDialog) {
         CreateProfileDialog(
             onDismiss = { showCreateDialog = false },
             onCreate = { name, pin ->
@@ -119,7 +112,6 @@ fun ProfileListScreen(
                     if (result is PasswordOperationResult.Success) {
                         showCreateDialog = false
                     } else {
-                        //  явное приведение типа для доступа к message
                         operationError = (result as PasswordOperationResult.Error).message
                     }
                 }
@@ -127,7 +119,6 @@ fun ProfileListScreen(
         )
     }
 
-    // Передаём profileAccessMode в диалог
     if (selectedProfile != null) {
         UnlockProfileDialog(
             profile = selectedProfile!!,
@@ -137,8 +128,7 @@ fun ProfileListScreen(
                 selectedProfile = null
             },
             onDismiss = { selectedProfile = null },
-            viewModel = viewModel,
-            activity = activity
+            viewModel = viewModel
         )
     }
 
@@ -246,70 +236,16 @@ private fun CreateProfileDialog(
     )
 }
 
-//  диалог с поддержкой биометрии
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UnlockProfileDialog(
     profile: Profile,
     onUnlocked: () -> Unit,
     onDismiss: () -> Unit,
-    viewModel: ProfileViewModel,
-    activity: FragmentActivity?
+    viewModel: ProfileViewModel
 ) {
-    val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    var showPinInput by remember { mutableStateOf(false) }
-
-    //  Определяем режим входа
-    val accessMode = remember(profile.profileAccessMode) {
-        AccessMode.values().find { it.value == profile.profileAccessMode } ?: AccessMode.PIN_REQUIRED
-    }
-
-    //  Если режим BIOMETRIC_OR_PIN — сначала пробуем биометрию
-    LaunchedEffect(accessMode) {
-        if (accessMode == AccessMode.BIOMETRIC_OR_PIN && !showPinInput) {
-            val biometricManager = BiometricManager.from(context)
-            val canAuthenticate = biometricManager.canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or 
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-            
-            if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                val executor = ContextCompat.getMainExecutor(context)
-                val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
-                        onUnlocked()
-                    }
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        // При ошибке/отмене — показываем PIN
-                        showPinInput = true
-                    }
-                    override fun onAuthenticationFailed() {
-                        super.onAuthenticationFailed()
-                        // При неудаче — показываем PIN
-                        showPinInput = true
-                    }
-                })
-
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Вход в профиль")
-                    .setSubtitle("Профиль: ${profile.name}")
-                    .setNegativeButtonText("Использовать PIN")
-                    .build()
-
-                biometricPrompt.authenticate(promptInfo)
-            } else {
-                // Биометрия недоступна — сразу показываем PIN
-                showPinInput = true
-            }
-        } else if (accessMode == AccessMode.PIN_REQUIRED) {
-            // Режим только PIN — сразу показываем ввод
-            showPinInput = true
-        }
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -317,40 +253,33 @@ private fun UnlockProfileDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Введите PIN профиля для \"${profile.name}\"", fontSize = 13.sp)
-                
-                if (showPinInput) {
-                    OutlinedTextField(
-                        value = pin,
-                        onValueChange = { pin = it; error = null },
-                        label = { Text("PIN профиля") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = error != null
-                    )
-                    if (error != null) {
-                        Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                    }
-                } else {
-                    Text("Ожидание биометрии...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { pin = it; error = null },
+                    label = { Text("PIN профиля") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             }
         },
         confirmButton = {
-            if (showPinInput) {
-                Button(onClick = {
-                    if (pin.isBlank()) {
-                        error = "Введите PIN профиля"
-                        return@Button
-                    }
-                    if (viewModel.verifyPassword(profile, pin)) {
-                        onUnlocked()
-                    } else {
-                        error = "Неверный PIN профиля"
-                    }
-                }) { Text("Войти") }
-            }
+            Button(onClick = {
+                if (pin.isBlank()) {
+                    error = "Введите PIN профиля"
+                    return@Button
+                }
+                if (viewModel.verifyPassword(profile, pin)) {
+                    onUnlocked()
+                } else {
+                    error = "Неверный PIN профиля"
+                }
+            }) { Text("Войти") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
