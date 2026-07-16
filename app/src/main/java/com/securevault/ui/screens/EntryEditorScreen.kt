@@ -181,10 +181,10 @@ fun EntryEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                LockActionButton(onLock = onLock)
                 title = { Text(if (isNewEntry) "Новая запись" else "Изменить", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
+                    LockActionButton(onLock = onLock)
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Star else Icons.Outlined.Star,
