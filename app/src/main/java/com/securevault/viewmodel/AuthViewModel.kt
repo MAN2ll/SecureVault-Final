@@ -25,11 +25,13 @@ class AuthViewModel @Inject constructor(
         data class BruteForceLocked(val remainingMillis: Long) : AuthState()
     }
 
-    private val _authState = MutableStateFlow<AuthState>(checkInitialState())
-    val authState: StateFlow<AuthState> = _authState.asStateFlow()
-
+    // _remainingMillis инициализируется ПЕРЕД _authState, 
+    // чтобы checkInitialState() мог безопасно обращаться к нему, если потребуется.
     private val _remainingMillis = MutableStateFlow(0L)
     val remainingMillis: StateFlow<Long> = _remainingMillis.asStateFlow()
+
+    private val _authState = MutableStateFlow<AuthState>(checkInitialState())
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     init {
         updateBruteForceState()
