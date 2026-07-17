@@ -260,6 +260,7 @@ object MnemonicPasswordGenerator {
         }
     }
 
+    // ✅ ИСПРАВЛЕНО: Используется modulo для циклического прохода по буквам слова
     private fun buildRhythmicBlockWithQuota(
         word: String, seed: Int, targetLength: Int,
         globalUsedChars: MutableSet<Char>, quota: SegmentQuota
@@ -287,13 +288,11 @@ object MnemonicPasswordGenerator {
         val preserved = mutableListOf<Char>()
         val replaced = mutableMapOf<Char, Char>()
         
-        while (charsAdded < targetLength && currentIndex < transliterated.length) {
-            if (currentIndex == anchorIndex) {
-                currentIndex++
-                continue
-            }
-            
-            val c = transliterated[currentIndex]
+        // ✅ ИСПРАВЛЕНО: Убрано условие currentIndex < transliterated.length.
+        // Теперь используется modulo (%), чтобы алгоритм мог добрать символы до targetLength,
+        // даже если слово короткое (например, для TWO_USERS 18/20).
+        while (charsAdded < targetLength) {
+            val c = transliterated[currentIndex % transliterated.length]
             val lowerC = c.lowercaseChar()
             val isRepeat = globalUsedChars.contains(lowerC)
             
@@ -337,6 +336,9 @@ object MnemonicPasswordGenerator {
                     !chosenChar.isLetterOrDigit() -> quota.specialCount++
                 }
                 charsAdded++
+            } else {
+                // Защита от бесконечного цикла
+                break 
             }
             currentIndex++
         }
