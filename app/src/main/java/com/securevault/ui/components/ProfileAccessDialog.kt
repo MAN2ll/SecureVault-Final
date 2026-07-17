@@ -23,21 +23,21 @@ import com.securevault.security.ProfilePasswordHasher
 @Composable
 fun ProfileAccessDialog(
     profile: Profile,
-    title: String = "Подтверждение доступа",
-    subtitle: String = "Введите PIN профиля или используйте отпечаток",
-    isBiometricEnabled: Boolean,
+    title: String,
+    subtitle: String,
+    allowBiometric: Boolean, //  управляем запуском биометрии
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     
-    var showPinInput by remember { mutableStateOf(false) }
+    var showPinInput by remember { mutableStateOf(!allowBiometric) } //  Если биометрия запрещена, сразу показываем PIN
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        if (isBiometricEnabled && activity != null) {
+        if (allowBiometric && activity != null) {
             val biometricManager = BiometricManager.from(context)
             val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
             
@@ -68,6 +68,7 @@ fun ProfileAccessDialog(
                 return@LaunchedEffect
             }
         }
+        // Если биометрия недоступна или запрещена (allowBiometric == false), показываем PIN
         showPinInput = true
     }
 
