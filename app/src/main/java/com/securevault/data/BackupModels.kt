@@ -175,7 +175,7 @@ data class BackupProfile(
     val profileAccessMode: String? = null
 )
 
-// Добавлены passwordHistoryJson и passwordFingerprint
+//  Добавлены passwordHistoryJson и passwordFingerprint
 data class BackupEntry(
     val service: String,
     val username: String,
