@@ -59,6 +59,7 @@ fun RotationJournalScreen(
 
     var historyItemToShow by remember { mutableStateOf<Pair<Entry, PasswordHistoryItem>?>(null) }
     var showProfileAccessDialog by remember { mutableStateOf(false) }
+    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinDialogForHistory by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
@@ -137,6 +138,11 @@ fun RotationJournalScreen(
                                                         }
                                                     },
                                                     onBiometricOrPinRequired = {
+                                                        currentAccessAllowBiometric = true
+                                                        showProfileAccessDialog = true
+                                                    },
+                                                    onPinRequired = {
+                                                        currentAccessAllowBiometric = false
                                                         showProfileAccessDialog = true
                                                     },
                                                     onPinNotSet = {
@@ -160,11 +166,13 @@ fun RotationJournalScreen(
 
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
         val entry = historyItemToShow!!.first
+        val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+        
         ProfileAccessDialog(
             profile = currentProfile,
             title = "Подтверждение доступа",
-            subtitle = "Введите PIN профиля или используйте отпечаток",
-            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            subtitle = dialogSubtitle,
+            allowBiometric = currentAccessAllowBiometric,
             onConfirmed = {
                 revealedHistoryPassword = try {
                     historyItemToShow!!.second.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
@@ -255,40 +263,4 @@ fun RotationJournalScreen(
         )
     }
     
-    if (showPinNotSetDialog) {
-        AlertDialog(
-            onDismissRequest = { showPinNotSetDialog = false },
-            title = { Text("PIN профиля не задан") },
-            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = {
-                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
-            }
-        )
-    }
-}
-
-private fun requestHistoryAccess(
-    entry: Entry,
-    profile: Profile?,
-    context: Context,
-    onAccessGranted: () -> Unit,
-    onBiometricOrPinRequired: () -> Unit,
-    onPinNotSet: () -> Unit
-) {
-    if (profile == null) {
-        onBiometricOrPinRequired()
-        return
-    }
-    
-    val accessMode = PasswordAccessPolicy.resolve(entry, profile)
-    
-    when (accessMode) {
-        is AccessResult.Granted -> onAccessGranted()
-        is AccessResult.BiometricOrPin -> onBiometricOrPinRequired()
-        is AccessResult.PinNotSet -> onPinNotSet()
-    }
-}
-
-private fun formatDate(timestamp: Long): String {
-    return SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(timestamp))
-}
+    if (show
