@@ -4,8 +4,6 @@ package com.securevault.ui.screens
 
 import android.content.Context
 import android.widget.Toast
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,13 +16,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.Profile
-import com.securevault.security.ProfilePasswordHasher
+import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,19 +32,15 @@ fun PasswordViewDialog(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onQr: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
 
     var showPassword by remember { mutableStateOf(false) }
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     
-    var showPinDialog by remember { mutableStateOf(false) }
-    var pinInput by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf<String?>(null) }
-    
-    // ✅ НОВОЕ: Диалог для случая, когда PIN не задан
+    var showProfileAccessDialog by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     fun requestAccess() {
@@ -55,41 +49,8 @@ fun PasswordViewDialog(
                 showPassword = true
                 decryptedPassword = entry.password
             }
-            is AccessResult.PinRequired -> {
-                showPinDialog = true
-            }
             is AccessResult.BiometricOrPin -> {
-                val biometricManager = BiometricManager.from(context)
-                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                
-                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                    val executor = ContextCompat.getMainExecutor(context)
-                    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            super.onAuthenticationSucceeded(result)
-                            showPassword = true
-                            decryptedPassword = entry.password
-                        }
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            super.onAuthenticationError(errorCode, errString)
-                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
-                        }
-                        override fun onAuthenticationFailed() {
-                            super.onAuthenticationFailed()
-                            if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
-                        }
-                    })
-
-                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Подтвердите личность")
-                        .setSubtitle("Для просмотра пароля")
-                        .setNegativeButtonText("Использовать PIN")
-                        .build()
-
-                    biometricPrompt.authenticate(promptInfo)
-                } else {
-                    if (profile.passwordHash.isNullOrBlank()) showPinNotSetDialog = true else showPinDialog = true
-                }
+                showProfileAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
                 showPinNotSetDialog = true
@@ -160,44 +121,21 @@ fun PasswordViewDialog(
         }
     )
 
-    if (showPinDialog) {
-        AlertDialog(
-            onDismissRequest = { showPinDialog = false },
-            title = { Text("Введите PIN профиля") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = { pinInput = it; pinError = null },
-                        label = { Text("PIN профиля") },
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = pinError != null
-                    )
-                    if (pinError != null) Text(pinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
+    if (showProfileAccessDialog) {
+        ProfileAccessDialog(
+            profile = profile,
+            title = "Подтверждение доступа",
+            subtitle = "Введите PIN профиля или используйте отпечаток",
+            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            onConfirmed = {
+                showPassword = true
+                decryptedPassword = entry.password
+                showProfileAccessDialog = false
             },
-            confirmButton = {
-                Button(onClick = {
-                    if (ProfilePasswordHasher.verify(pinInput, profile.passwordHash, profile.passwordSalt)) {
-                        showPassword = true
-                        decryptedPassword = entry.password
-                        showPinDialog = false
-                        pinInput = ""
-                    } else {
-                        pinError = "Неверный PIN профиля"
-                    }
-                }) { Text("Подтвердить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPinDialog = false; pinInput = "" }) { Text("Отмена") }
-            }
+            onDismiss = { showProfileAccessDialog = false }
         )
     }
 
-    //  Диалог предупреждения об отсутствии PIN
     if (showPinNotSetDialog) {
         AlertDialog(
             onDismissRequest = { showPinNotSetDialog = false },
