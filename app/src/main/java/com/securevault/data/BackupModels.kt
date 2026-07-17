@@ -3,64 +3,23 @@ package com.securevault.data
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class PortableHistoryItem(
-    val plainOldPassword: String,
-    val date: Long,
-    val type: String,
-    val relatedService: String? = null,
-    val relatedEntryId: String? = null,
-    val hint: String? = null,
-    val passwordFingerprint: String? = null
-)
-
-data class BackupProfile(
-    val oldProfileId: Int,
-    val name: String,
-    val entries: List<BackupEntry>,
-    val passwordAccessMode: String? = null
-)
-
-data class BackupEntry(
-    val service: String,
-    val username: String,
-    val password: String,
-    val url: String?,
-    val notes: String?,
-    val textHint: String?,
-    val generationType: String,
-    val mnemonicPhraseHint: String?,
-    val mnemonicOptionsJson: String?,
-    val rotationEnabled: Boolean,
-    val rotationPeriodMonths: Int,
-    val nextRotationDate: Long?,
-    val isFavorite: Boolean,
-    val createdAt: Long,
-    val lastChanged: Long,
-    val passwordHistoryJson: String?,
-    val passwordFingerprint: String?,
-    val portableHistory: List<PortableHistoryItem>? = null,
-    val passwordAccessMode: String? = null
-)
-
 data class BackupData(
     val version: Int = 3,
-    val exportedAt: Long = System.currentTimeMillis(),
     val profiles: List<BackupProfile>
 ) {
     fun toJson(): String {
         val json = JSONObject()
         json.put("version", version)
-        json.put("exportedAt", exportedAt)
-
         val profilesArray = JSONArray()
-        for (profile in profiles) {
+        profiles.forEach { profile ->
             val profileJson = JSONObject()
-            profileJson.put("oldProfileId", profile.oldProfileId)
             profileJson.put("name", profile.name)
             profileJson.put("passwordAccessMode", profile.passwordAccessMode ?: JSONObject.NULL)
-
+            // Сохраняем profileAccessMode
+            profileJson.put("profileAccessMode", profile.profileAccessMode ?: JSONObject.NULL)
+            
             val entriesArray = JSONArray()
-            for (entry in profile.entries) {
+            profile.entries.forEach { entry ->
                 val entryJson = JSONObject()
                 entryJson.put("service", entry.service)
                 entryJson.put("username", entry.username)
@@ -68,34 +27,30 @@ data class BackupData(
                 entryJson.put("url", entry.url ?: JSONObject.NULL)
                 entryJson.put("notes", entry.notes ?: JSONObject.NULL)
                 entryJson.put("textHint", entry.textHint ?: JSONObject.NULL)
-                entryJson.put("generationType", entry.generationType)
-                entryJson.put("mnemonicPhraseHint", entry.mnemonicPhraseHint ?: JSONObject.NULL)
-                entryJson.put("mnemonicOptionsJson", entry.mnemonicOptionsJson ?: JSONObject.NULL)
                 entryJson.put("rotationEnabled", entry.rotationEnabled)
                 entryJson.put("rotationPeriodMonths", entry.rotationPeriodMonths)
                 entryJson.put("nextRotationDate", entry.nextRotationDate ?: JSONObject.NULL)
                 entryJson.put("isFavorite", entry.isFavorite)
                 entryJson.put("createdAt", entry.createdAt)
                 entryJson.put("lastChanged", entry.lastChanged)
-                entryJson.put("passwordHistoryJson", entry.passwordHistoryJson ?: JSONObject.NULL)
-                entryJson.put("passwordFingerprint", entry.passwordFingerprint ?: JSONObject.NULL)
+                entryJson.put("generationType", entry.generationType ?: JSONObject.NULL)
+                entryJson.put("mnemonicPhraseHint", entry.mnemonicPhraseHint ?: JSONObject.NULL)
+                entryJson.put("mnemonicOptionsJson", entry.mnemonicOptionsJson ?: JSONObject.NULL)
                 entryJson.put("passwordAccessMode", entry.passwordAccessMode ?: JSONObject.NULL)
-
-                if (entry.portableHistory != null) {
-                    val historyArray = JSONArray()
-                    for (item in entry.portableHistory) {
-                        val itemJson = JSONObject()
-                        itemJson.put("plainOldPassword", item.plainOldPassword)
-                        itemJson.put("date", item.date)
-                        itemJson.put("type", item.type)
-                        itemJson.put("relatedService", item.relatedService ?: JSONObject.NULL)
-                        itemJson.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
-                        itemJson.put("hint", item.hint ?: JSONObject.NULL)
-                        itemJson.put("passwordFingerprint", item.passwordFingerprint ?: JSONObject.NULL)
-                        historyArray.put(itemJson)
-                    }
-                    entryJson.put("portableHistory", historyArray)
+                
+                val historyArray = JSONArray()
+                entry.portableHistory?.forEach { item ->
+                    val itemJson = JSONObject()
+                    itemJson.put("plainOldPassword", item.plainOldPassword)
+                    itemJson.put("date", item.date)
+                    itemJson.put("type", item.type)
+                    itemJson.put("relatedService", item.relatedService ?: JSONObject.NULL)
+                    itemJson.put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
+                    itemJson.put("hint", item.hint ?: JSONObject.NULL)
+                    itemJson.put("passwordFingerprint", item.passwordFingerprint ?: JSONObject.NULL)
+                    historyArray.put(itemJson)
                 }
+                entryJson.put("portableHistory", historyArray)
                 entriesArray.put(entryJson)
             }
             profileJson.put("entries", entriesArray)
@@ -108,109 +63,113 @@ data class BackupData(
     companion object {
         fun fromJson(jsonString: String): BackupData {
             val json = JSONObject(jsonString)
-            val version = json.optInt("version", 3)
-            val exportedAt = json.optLong("exportedAt", System.currentTimeMillis())
-
+            val version = json.optInt("version", 1)
             val profilesArray = json.getJSONArray("profiles")
             val profiles = mutableListOf<BackupProfile>()
-
+            
             for (i in 0 until profilesArray.length()) {
                 val profileJson = profilesArray.getJSONObject(i)
-                val oldProfileId = profileJson.getInt("oldProfileId")
                 val name = profileJson.getString("name")
-                val passwordAccessMode = profileJson.optString("passwordAccessMode").takeIf { it != "null" && it.isNotEmpty() }
+                val passwordAccessMode = if (profileJson.has("passwordAccessMode") && !profileJson.isNull("passwordAccessMode")) {
+                    profileJson.getString("passwordAccessMode")
+                } else null
+                
+                // Читаем profileAccessMode
+                val profileAccessMode = if (profileJson.has("profileAccessMode") && !profileJson.isNull("profileAccessMode")) {
+                    profileJson.getString("profileAccessMode")
+                } else null
 
                 val entriesArray = profileJson.getJSONArray("entries")
                 val entries = mutableListOf<BackupEntry>()
-
+                
                 for (j in 0 until entriesArray.length()) {
                     val entryJson = entriesArray.getJSONObject(j)
-                    val entryPasswordAccessMode = entryJson.optString("passwordAccessMode").takeIf { it != "null" && it.isNotEmpty() }
-
-                    val portableHistory = if (entryJson.has("portableHistory")) {
-                        val historyArray = entryJson.getJSONArray("portableHistory")
-                        val items = mutableListOf<PortableHistoryItem>()
-                        for (k in 0 until historyArray.length()) {
-                            val itemJson = historyArray.getJSONObject(k)
-                            items.add(
-                                PortableHistoryItem(
-                                    plainOldPassword = itemJson.getString("plainOldPassword"),
-                                    date = itemJson.optLong("date", 0L),
-                                    type = itemJson.optString("type", "unknown"),
-                                    relatedService = itemJson.optString("relatedService").takeIf { it != "null" && it.isNotEmpty() },
-                                    relatedEntryId = itemJson.optString("relatedEntryId").takeIf { it != "null" && it.isNotEmpty() },
-                                    hint = itemJson.optString("hint").takeIf { it != "null" && it.isNotEmpty() },
-                                    passwordFingerprint = itemJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() }
-                                )
-                            )
+                    val portableHistoryArray = entryJson.optJSONArray("portableHistory")
+                    val portableHistory = mutableListOf<PortableHistoryItem>()
+                    
+                    if (portableHistoryArray != null) {
+                        for (k in 0 until portableHistoryArray.length()) {
+                            val itemJson = portableHistoryArray.getJSONObject(k)
+                            portableHistory.add(PortableHistoryItem(
+                                plainOldPassword = itemJson.getString("plainOldPassword"),
+                                date = itemJson.getLong("date"),
+                                type = itemJson.getString("type"),
+                                relatedService = if (itemJson.has("relatedService") && !itemJson.isNull("relatedService")) itemJson.getString("relatedService") else null,
+                                relatedEntryId = if (itemJson.has("relatedEntryId") && !itemJson.isNull("relatedEntryId")) itemJson.getString("relatedEntryId") else null,
+                                hint = if (itemJson.has("hint") && !itemJson.isNull("hint")) itemJson.getString("hint") else null,
+                                passwordFingerprint = if (itemJson.has("passwordFingerprint") && !itemJson.isNull("passwordFingerprint")) itemJson.getString("passwordFingerprint") else null
+                            ))
                         }
-                        items
-                    } else null
-
-                    entries.add(
-                        BackupEntry(
-                            service = entryJson.getString("service"),
-                            username = entryJson.getString("username"),
-                            password = entryJson.getString("password"),
-                            url = entryJson.optString("url").takeIf { it != "null" && it.isNotEmpty() },
-                            notes = entryJson.optString("notes").takeIf { it != "null" && it.isNotEmpty() },
-                            textHint = entryJson.optString("textHint").takeIf { it != "null" && it.isNotEmpty() },
-                            generationType = entryJson.optString("generationType", "random"),
-                            mnemonicPhraseHint = entryJson.optString("mnemonicPhraseHint").takeIf { it != "null" && it.isNotEmpty() },
-                            mnemonicOptionsJson = entryJson.optString("mnemonicOptionsJson").takeIf { it != "null" && it.isNotEmpty() },
-                            rotationEnabled = entryJson.optBoolean("rotationEnabled", false),
-                            rotationPeriodMonths = entryJson.optInt("rotationPeriodMonths", 6),
-                            nextRotationDate = entryJson.optLong("nextRotationDate").takeIf { it != 0L },
-                            isFavorite = entryJson.optBoolean("isFavorite", false),
-                            createdAt = entryJson.optLong("createdAt", System.currentTimeMillis()),
-                            lastChanged = entryJson.optLong("lastChanged", System.currentTimeMillis()),
-                            passwordHistoryJson = entryJson.optString("passwordHistoryJson").takeIf { it != "null" && it.isNotEmpty() },
-                            passwordFingerprint = entryJson.optString("passwordFingerprint").takeIf { it != "null" && it.isNotEmpty() },
-                            portableHistory = portableHistory,
-                            passwordAccessMode = entryPasswordAccessMode
-                        )
-                    )
+                    }
+                    
+                    entries.add(BackupEntry(
+                        service = entryJson.getString("service"),
+                        username = entryJson.getString("username"),
+                        password = entryJson.getString("password"),
+                        url = if (entryJson.has("url") && !entryJson.isNull("url")) entryJson.getString("url") else null,
+                        notes = if (entryJson.has("notes") && !entryJson.isNull("notes")) entryJson.getString("notes") else null,
+                        textHint = if (entryJson.has("textHint") && !entryJson.isNull("textHint")) entryJson.getString("textHint") else null,
+                        rotationEnabled = entryJson.getBoolean("rotationEnabled"),
+                        rotationPeriodMonths = entryJson.getInt("rotationPeriodMonths"),
+                        nextRotationDate = if (entryJson.has("nextRotationDate") && !entryJson.isNull("nextRotationDate")) entryJson.getLong("nextRotationDate") else null,
+                        isFavorite = entryJson.getBoolean("isFavorite"),
+                        createdAt = entryJson.getLong("createdAt"),
+                        lastChanged = entryJson.getLong("lastChanged"),
+                        generationType = if (entryJson.has("generationType") && !entryJson.isNull("generationType")) entryJson.getString("generationType") else null,
+                        mnemonicPhraseHint = if (entryJson.has("mnemonicPhraseHint") && !entryJson.isNull("mnemonicPhraseHint")) entryJson.getString("mnemonicPhraseHint") else null,
+                        mnemonicOptionsJson = if (entryJson.has("mnemonicOptionsJson") && !entryJson.isNull("mnemonicOptionsJson")) entryJson.getString("mnemonicOptionsJson") else null,
+                        passwordAccessMode = if (entryJson.has("passwordAccessMode") && !entryJson.isNull("passwordAccessMode")) entryJson.getString("passwordAccessMode") else null,
+                        portableHistory = portableHistory
+                    ))
                 }
-                profiles.add(BackupProfile(oldProfileId, name, entries, passwordAccessMode))
+                
+                profiles.add(BackupProfile(
+                    oldProfileId = i, // Временный ID для маппинга
+                    name = name,
+                    entries = entries,
+                    passwordAccessMode = passwordAccessMode,
+                    profileAccessMode = profileAccessMode 
+                ))
             }
-            return BackupData(version, exportedAt, profiles)
+            return BackupData(version = version, profiles = profiles)
         }
     }
 }
 
-data class EncryptedBackup(
-    val type: String = "securevault_backup_v3",
-    val version: Int = 3,
-    val kdf: String = "PBKDF2WithHmacSHA256",
-    val iterations: Int = 200000,
-    val salt: String,
-    val iv: String,
-    val ciphertext: String
-) {
-    fun toJson(): String {
-        val json = JSONObject()
-        json.put("type", type)
-        json.put("version", version)
-        json.put("kdf", kdf)
-        json.put("iterations", iterations)
-        json.put("salt", salt)
-        json.put("iv", iv)
-        json.put("ciphertext", ciphertext)
-        return json.toString()
-    }
+data class BackupProfile(
+    val oldProfileId: Int,
+    val name: String,
+    val entries: List<BackupEntry>,
+    val passwordAccessMode: String? = null,
+    val profileAccessMode: String? = null 
+)
 
-    companion object {
-        fun fromJson(jsonString: String): EncryptedBackup {
-            val json = JSONObject(jsonString)
-            return EncryptedBackup(
-                type = json.optString("type", "securevault_backup_v3"),
-                version = json.optInt("version", 3),
-                kdf = json.optString("kdf", "PBKDF2WithHmacSHA256"),
-                iterations = json.optInt("iterations", 200000),
-                salt = json.getString("salt"),
-                iv = json.getString("iv"),
-                ciphertext = json.getString("ciphertext")
-            )
-        }
-    }
-}
+data class BackupEntry(
+    val service: String,
+    val username: String,
+    val password: String,
+    val url: String?,
+    val notes: String?,
+    val textHint: String?,
+    val rotationEnabled: Boolean,
+    val rotationPeriodMonths: Int,
+    val nextRotationDate: Long?,
+    val isFavorite: Boolean,
+    val createdAt: Long,
+    val lastChanged: Long,
+    val generationType: String?,
+    val mnemonicPhraseHint: String?,
+    val mnemonicOptionsJson: String?,
+    val passwordAccessMode: String?,
+    val portableHistory: List<PortableHistoryItem>? = null
+)
+
+data class PortableHistoryItem(
+    val plainOldPassword: String,
+    val date: Long,
+    val type: String,
+    val relatedService: String?,
+    val relatedEntryId: String?,
+    val hint: String?,
+    val passwordFingerprint: String?
+)
