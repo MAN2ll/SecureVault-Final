@@ -235,7 +235,7 @@ object BackupManager {
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
-                        // Корректная передача всех параметров, включая passwordAccessMode как String
+                        // Корректная передача всех параметров с явным приведением типов
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
@@ -316,3 +316,19 @@ object BackupManager {
         return name
     }
 }
+
+// Вынесено на верхний уровень файла, чтобы быть видимым везде
+enum class ImportMode {
+    ADD_AS_NEW,
+    MERGE_IF_EXISTS,
+    SKIP_IF_EXISTS
+}
+
+data class ImportResult(
+    val success: Boolean,
+    val importedProfiles: Int,
+    val importedEntries: Int,
+    val profileMapping: Map<Int, Int>,
+    val errors: List<String>,
+    val skippedEntries: Int = 0
+)
