@@ -93,6 +93,7 @@ fun EntryEditorScreen(
     var showPassword by remember { mutableStateOf(false) }
     
     var showProfileAccessDialog by remember { mutableStateOf(false) }
+    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
@@ -133,7 +134,12 @@ fun EntryEditorScreen(
                 passwordChanged = false
                 showPassword = true
             }
+            is AccessResult.PinRequired -> {
+                currentAccessAllowBiometric = false
+                showProfileAccessDialog = true
+            }
             is AccessResult.BiometricOrPin -> {
+                currentAccessAllowBiometric = true
                 showProfileAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
@@ -407,11 +413,13 @@ fun EntryEditorScreen(
     if (showProfileAccessDialog && existingEntry != null) {
         val profile = profiles.find { it.id == effectiveProfileId }
         if (profile != null) {
+            val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+            
             ProfileAccessDialog(
                 profile = profile,
                 title = "Подтверждение доступа",
-                subtitle = "Введите PIN профиля или используйте отпечаток",
-                isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+                subtitle = dialogSubtitle,
+                allowBiometric = currentAccessAllowBiometric,
                 onConfirmed = {
                     password = existingEntry.password
                     passwordChanged = false
