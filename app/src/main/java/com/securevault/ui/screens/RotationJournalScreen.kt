@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
-import com.securevault.data.Profile
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
@@ -118,10 +117,16 @@ fun RotationJournalScreen(
                                         
                                         IconButton(
                                             onClick = {
+                                                //  Безопасная проверка вместо создания фиктивного Profile()
+                                                if (currentProfile == null) {
+                                                    showPinNotSetDialog = true
+                                                    return@IconButton
+                                                }
+                                                
                                                 historyItemToShow = entry to item
                                                 revealedHistoryPassword = null
                                                 
-                                                val result = PasswordAccessPolicy.resolve(entry, currentProfile ?: Profile())
+                                                val result = PasswordAccessPolicy.resolve(entry, currentProfile)
                                                 when (result) {
                                                     is AccessResult.Granted -> {
                                                         revealedHistoryPassword = try {
@@ -157,7 +162,7 @@ fun RotationJournalScreen(
         }
     }
 
-    //  Диалог доступа (полностью закрыт и корректен)
+    //  Диалог доступа
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
         val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
         
