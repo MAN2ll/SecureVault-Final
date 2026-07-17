@@ -10,7 +10,7 @@ enum class AccessMode(val value: String) {
     BIOMETRIC_OR_PIN("BIOMETRIC_OR_PIN")
 }
 
-// ✅ ИСПРАВЛЕНО: Добавлен PinRequired
+//  Добавлен PinRequired
 sealed class AccessResult {
     object Granted : AccessResult()
     object PinRequired : AccessResult()
@@ -43,7 +43,7 @@ object PasswordAccessPolicy {
             }
         }
 
-        // ✅ ИСПРАВЛЕНО: Строгое разделение режимов
+        // Строгое разделение режимов
         return when (mode) {
             AccessMode.NO_CONFIRMATION -> AccessResult.Granted
             AccessMode.PIN_REQUIRED -> AccessResult.PinRequired
