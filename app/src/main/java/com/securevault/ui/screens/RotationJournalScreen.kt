@@ -3,8 +3,6 @@
 package com.securevault.ui.screens
 
 import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,17 +18,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
 import com.securevault.ui.components.LockActionButton
+import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
@@ -44,10 +42,10 @@ fun RotationJournalScreen(
     onBack: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
-    profileViewModel: ProfileViewModel = hiltViewModel()
+    profileViewModel: ProfileViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
 
     LaunchedEffect(profileId) {
         if (profileId != null) {
@@ -60,6 +58,7 @@ fun RotationJournalScreen(
     val currentProfile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
     var historyItemToShow by remember { mutableStateOf<Pair<Entry, PasswordHistoryItem>?>(null) }
+    var showProfileAccessDialog by remember { mutableStateOf(false) }
     var showPinDialogForHistory by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
@@ -130,7 +129,6 @@ fun RotationJournalScreen(
                                                     entry = entry,
                                                     profile = currentProfile,
                                                     context = context,
-                                                    activity = activity,
                                                     onAccessGranted = {
                                                         revealedHistoryPassword = try {
                                                             item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
@@ -138,8 +136,8 @@ fun RotationJournalScreen(
                                                             "Ошибка расшифровки"
                                                         }
                                                     },
-                                                    onPinRequired = {
-                                                        showPinDialogForHistory = true
+                                                    onBiometricOrPinRequired = {
+                                                        showProfileAccessDialog = true
                                                     },
                                                     onPinNotSet = {
                                                         showPinNotSetDialog = true
@@ -158,6 +156,25 @@ fun RotationJournalScreen(
                 }
             }
         }
+    }
+
+    if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
+        val entry = historyItemToShow!!.first
+        ProfileAccessDialog(
+            profile = currentProfile,
+            title = "Подтверждение доступа",
+            subtitle = "Введите PIN профиля или используйте отпечаток",
+            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            onConfirmed = {
+                revealedHistoryPassword = try {
+                    historyItemToShow!!.second.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
+                } catch (e: Exception) {
+                    "Ошибка расшифровки"
+                }
+                showProfileAccessDialog = false
+            },
+            onDismiss = { showProfileAccessDialog = false }
+        )
     }
 
     if (showPinDialogForHistory && historyItemToShow != null && currentProfile != null) {
@@ -254,13 +271,12 @@ private fun requestHistoryAccess(
     entry: Entry,
     profile: Profile?,
     context: Context,
-    activity: FragmentActivity?,
     onAccessGranted: () -> Unit,
-    onPinRequired: () -> Unit,
+    onBiometricOrPinRequired: () -> Unit,
     onPinNotSet: () -> Unit
 ) {
     if (profile == null) {
-        onPinRequired()
+        onBiometricOrPinRequired()
         return
     }
     
@@ -268,39 +284,7 @@ private fun requestHistoryAccess(
     
     when (accessMode) {
         is AccessResult.Granted -> onAccessGranted()
-        is AccessResult.PinRequired -> onPinRequired()
-        is AccessResult.BiometricOrPin -> {
-            val biometricManager = BiometricManager.from(context)
-            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-            
-            if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                val executor = ContextCompat.getMainExecutor(context)
-                val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
-                        onAccessGranted()
-                    }
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
-                    }
-                    override fun onAuthenticationFailed() {
-                        super.onAuthenticationFailed()
-                        if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
-                    }
-                })
-
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Подтвердите личность")
-                    .setSubtitle("Для просмотра старого пароля")
-                    .setNegativeButtonText("Использовать PIN")
-                    .build()
-
-                biometricPrompt.authenticate(promptInfo)
-            } else {
-                if (profile.passwordHash.isNullOrBlank()) onPinNotSet() else onPinRequired()
-            }
-        }
+        is AccessResult.BiometricOrPin -> onBiometricOrPinRequired()
         is AccessResult.PinNotSet -> onPinNotSet()
     }
 }
