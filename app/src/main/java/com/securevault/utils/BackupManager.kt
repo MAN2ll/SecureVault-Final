@@ -101,7 +101,6 @@ object BackupManager {
                     }
                 }
 
-                // Переданы passwordHistoryJson и passwordFingerprint
                 BackupEntry(
                     service = entry.service,
                     username = entry.username,
@@ -235,13 +234,16 @@ object BackupManager {
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
-                        // Корректная передача всех параметров с явным приведением типов
+                        // ✅ ИСПРАВЛЕНО: Явное вычисление fingerprint для устранения Type mismatch
+                        val pwdFingerprint: String = backupEntry.passwordFingerprint 
+                            ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context)
+
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
                             password = backupEntry.password,
                             profileId = newProfileId,
-                            passwordFingerprint = backupEntry.passwordFingerprint ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context),
+                            passwordFingerprint = pwdFingerprint,
                             url = backupEntry.url,
                             notes = backupEntry.notes,
                             textHint = backupEntry.textHint,
@@ -317,7 +319,6 @@ object BackupManager {
     }
 }
 
-// Вынесено на верхний уровень файла, чтобы быть видимым везде
 enum class ImportMode {
     ADD_AS_NEW,
     MERGE_IF_EXISTS,
