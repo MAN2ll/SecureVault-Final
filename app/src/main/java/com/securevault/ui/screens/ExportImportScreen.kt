@@ -36,6 +36,8 @@ import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.securevault.data.EncryptedBackup 
+import com.securevault.utils.ImportResult
 
 data class OperationResult(val success: Boolean, val message: String)
 
