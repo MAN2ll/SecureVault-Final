@@ -15,14 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
-import com.securevault.security.ProfilePasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
@@ -60,9 +58,6 @@ fun RotationJournalScreen(
     var historyItemToShow by remember { mutableStateOf<Pair<Entry, PasswordHistoryItem>?>(null) }
     var showProfileAccessDialog by remember { mutableStateOf(false) }
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
-    var showPinDialogForHistory by remember { mutableStateOf(false) }
-    var pinInput by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf<String?>(null) }
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
@@ -126,29 +121,27 @@ fun RotationJournalScreen(
                                                 historyItemToShow = entry to item
                                                 revealedHistoryPassword = null
                                                 
-                                                requestHistoryAccess(
-                                                    entry = entry,
-                                                    profile = currentProfile,
-                                                    context = context,
-                                                    onAccessGranted = {
+                                                val result = PasswordAccessPolicy.resolve(entry, currentProfile ?: Profile())
+                                                when (result) {
+                                                    is AccessResult.Granted -> {
                                                         revealedHistoryPassword = try {
                                                             item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
                                                         } catch (e: Exception) {
                                                             "Ошибка расшифровки"
                                                         }
-                                                    },
-                                                    onBiometricOrPinRequired = {
-                                                        currentAccessAllowBiometric = true
-                                                        showProfileAccessDialog = true
-                                                    },
-                                                    onPinRequired = {
+                                                    }
+                                                    is AccessResult.PinRequired -> {
                                                         currentAccessAllowBiometric = false
                                                         showProfileAccessDialog = true
-                                                    },
-                                                    onPinNotSet = {
+                                                    }
+                                                    is AccessResult.BiometricOrPin -> {
+                                                        currentAccessAllowBiometric = true
+                                                        showProfileAccessDialog = true
+                                                    }
+                                                    is AccessResult.PinNotSet -> {
                                                         showPinNotSetDialog = true
                                                     }
-                                                )
+                                                }
                                             }
                                         ) {
                                             Icon(Icons.Default.Visibility, "Просмотреть старый пароль", tint = MaterialTheme.colorScheme.primary)
@@ -164,8 +157,8 @@ fun RotationJournalScreen(
         }
     }
 
+    //  Диалог доступа (полностью закрыт и корректен)
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
-        val entry = historyItemToShow!!.first
         val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
         
         ProfileAccessDialog(
@@ -185,47 +178,7 @@ fun RotationJournalScreen(
         )
     }
 
-    if (showPinDialogForHistory && historyItemToShow != null && currentProfile != null) {
-        AlertDialog(
-            onDismissRequest = { showPinDialogForHistory = false },
-            title = { Text("Введите PIN профиля") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = { pinInput = it; pinError = null },
-                        label = { Text("PIN профиля") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = pinError != null
-                    )
-                    if (pinError != null) Text(pinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (ProfilePasswordHasher.verify(pinInput, currentProfile.passwordHash, currentProfile.passwordSalt)) {
-                        val item = historyItemToShow!!.second
-                        revealedHistoryPassword = try {
-                            item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
-                        } catch (e: Exception) {
-                            "Ошибка расшифровки"
-                        }
-                        showPinDialogForHistory = false
-                        pinInput = ""
-                    } else {
-                        pinError = "Неверный PIN профиля"
-                    }
-                }) { Text("Подтвердить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPinDialogForHistory = false; pinInput = "" }) { Text("Отмена") }
-            }
-        )
-    }
-
+    //  Диалог просмотра старого пароля
     if (revealedHistoryPassword != null && historyItemToShow != null) {
         AlertDialog(
             onDismissRequest = { revealedHistoryPassword = null },
@@ -263,4 +216,19 @@ fun RotationJournalScreen(
         )
     }
     
-    if (show
+    //  Диалог ошибки отсутствия PIN
+    if (showPinNotSetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinNotSetDialog = false },
+            title = { Text("PIN профиля не задан") },
+            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
+            confirmButton = {
+                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
+            }
+        )
+    }
+}
+
+private fun formatDate(timestamp: Long): String {
+    return SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(timestamp))
+}
