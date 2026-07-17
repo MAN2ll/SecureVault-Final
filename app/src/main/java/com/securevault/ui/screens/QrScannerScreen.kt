@@ -30,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Profile
+import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
@@ -66,6 +67,7 @@ fun QrScannerScreen(
     var showPassword by remember { mutableStateOf(false) }
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     var showProfileAccessDialog by remember { mutableStateOf(false) }
+    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -91,7 +93,12 @@ fun QrScannerScreen(
                 showPassword = true
                 decryptedPassword = entry.password
             }
-            is AccessResult.BiometricOrPin, is AccessResult.PinRequired -> {
+            is AccessResult.PinRequired -> {
+                currentAccessAllowBiometric = false
+                showProfileAccessDialog = true
+            }
+            is AccessResult.BiometricOrPin -> {
+                currentAccessAllowBiometric = true
                 showProfileAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
@@ -106,9 +113,7 @@ fun QrScannerScreen(
                 title = { Text("Сканирование QR", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                    IconButton(onClick = onLock) {
-                        Icon(Icons.Default.Lock, "Заблокировать приложение")
-                    }
+                    LockActionButton(onLock = onLock)
                 }
             )
         }
@@ -240,11 +245,13 @@ fun QrScannerScreen(
     if (showProfileAccessDialog && scannedEntryId != null && currentProfile != null) {
         val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
+            val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+            
             ProfileAccessDialog(
                 profile = currentProfile,
                 title = "Подтверждение доступа",
-                subtitle = "Введите PIN профиля или используйте отпечаток",
-                isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+                subtitle = dialogSubtitle,
+                allowBiometric = currentAccessAllowBiometric,
                 onConfirmed = {
                     showPassword = true
                     decryptedPassword = entry.password
