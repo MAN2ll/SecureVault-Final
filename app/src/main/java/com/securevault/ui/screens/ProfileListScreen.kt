@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
 import com.securevault.ui.components.ProfileAccessDialog
+import com.securevault.utils.AccessResult
+import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
@@ -79,11 +81,19 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            if (profile.passwordHash.isBlank()) {
-                                vaultViewModel.setCurrentProfile(profile.id)
-                                onProfileSelected(profile.id)
-                            } else {
-                                selectedProfile = profile
+                            val accessResult = PasswordAccessPolicy.resolveProfileAccess(profile)
+                            when (accessResult) {
+                                is com.securevault.utils.AccessResult.Granted -> {
+                                    vaultViewModel.setCurrentProfile(profile.id)
+                                    onProfileSelected(profile.id)
+                                }
+                                is com.securevault.utils.AccessResult.PinRequired, 
+                                is com.securevault.utils.AccessResult.BiometricOrPin -> {
+                                    selectedProfile = profile
+                                }
+                                is com.securevault.utils.AccessResult.PinNotSet -> {
+                                    operationError = "PIN профиля не задан"
+                                }
                             }
                         }
                     ) {
@@ -122,11 +132,17 @@ fun ProfileListScreen(
     }
 
     if (selectedProfile != null) {
+        val accessResult = PasswordAccessPolicy.resolveProfileAccess(selectedProfile!!)
+        val allowBiometric = accessResult is com.securevault.utils.AccessResult.BiometricOrPin
+        
+        val dialogTitle = "Вход в профиль"
+        val dialogSubtitle = if (allowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+
         ProfileAccessDialog(
             profile = selectedProfile!!,
-            title = "Вход в профиль",
-            subtitle = "Введите PIN профиля или используйте отпечаток",
-            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            title = dialogTitle,
+            subtitle = dialogSubtitle,
+            allowBiometric = allowBiometric,
             onConfirmed = {
                 vaultViewModel.setCurrentProfile(selectedProfile!!.id)
                 onProfileSelected(selectedProfile!!.id)
