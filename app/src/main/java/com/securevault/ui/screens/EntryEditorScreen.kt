@@ -3,8 +3,6 @@
 package com.securevault.ui.screens
 
 import android.content.Context
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,11 +25,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.security.ProfilePasswordHasher
+import com.securevault.security.MasterPasswordHasher
+import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessMode
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
@@ -39,10 +36,10 @@ import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.utils.PasswordGenerator
 import com.securevault.utils.PasswordValidator
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,13 +47,13 @@ fun EntryEditorScreen(
     id: String?,
     profileId: Int? = null,
     onBack: () -> Unit,
-    onLock: () -> Unit, 
+    onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
-    profileViewModel: ProfileViewModel = hiltViewModel()
+    profileViewModel: ProfileViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val isNewEntry = id == null || id == "new"
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
 
     val allEntries by viewModel.allEntries.collectAsState()
     val existingEntry = remember(id, allEntries) {
@@ -95,9 +92,7 @@ fun EntryEditorScreen(
     var passwordChanged by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
     
-    var showAccessDialog by remember { mutableStateOf(false) }
-    var accessPinInput by remember { mutableStateOf("") }
-    var accessPinError by remember { mutableStateOf<String?>(null) }
+    var showProfileAccessDialog by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
@@ -138,39 +133,8 @@ fun EntryEditorScreen(
                 passwordChanged = false
                 showPassword = true
             }
-            is AccessResult.PinRequired -> {
-                showAccessDialog = true
-            }
             is AccessResult.BiometricOrPin -> {
-                val biometricManager = BiometricManager.from(context)
-                val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS && activity != null) {
-                    val executor = ContextCompat.getMainExecutor(context)
-                    val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            super.onAuthenticationSucceeded(result)
-                            password = existingEntry.password
-                            passwordChanged = false
-                            showPassword = true
-                        }
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            super.onAuthenticationError(errorCode, errString)
-                            showAccessDialog = true
-                        }
-                        override fun onAuthenticationFailed() {
-                            super.onAuthenticationFailed()
-                            showAccessDialog = true
-                        }
-                    })
-                    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                        .setTitle("Подтвердите личность")
-                        .setSubtitle("Для просмотра текущего пароля")
-                        .setNegativeButtonText("Использовать PIN")
-                        .build()
-                    biometricPrompt.authenticate(promptInfo)
-                } else {
-                    showAccessDialog = true
-                }
+                showProfileAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
                 showPinNotSetDialog = true
@@ -184,7 +148,9 @@ fun EntryEditorScreen(
                 title = { Text(if (isNewEntry) "Новая запись" else "Изменить", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                    LockActionButton(onLock = onLock)
+                    IconButton(onClick = onLock) {
+                        Icon(Icons.Default.Lock, "Заблокировать приложение")
+                    }
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             imageVector = if (isFavorite) Icons.Default.Star else Icons.Outlined.Star,
@@ -438,43 +404,23 @@ fun EntryEditorScreen(
         }
     }
 
-    if (showAccessDialog) {
-        AlertDialog(
-            onDismissRequest = { showAccessDialog = false },
-            title = { Text("Введите PIN профиля") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = accessPinInput,
-                        onValueChange = { accessPinInput = it; accessPinError = null },
-                        label = { Text("PIN профиля") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = accessPinError != null
-                    )
-                    if (accessPinError != null) Text(accessPinError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val profile = profiles.find { it.id == effectiveProfileId }
-                    if (profile != null && ProfilePasswordHasher.verify(accessPinInput, profile.passwordHash, profile.passwordSalt)) {
-                        password = existingEntry?.password ?: ""
-                        passwordChanged = false
-                        showPassword = true
-                        showAccessDialog = false
-                        accessPinInput = ""
-                    } else {
-                        accessPinError = "Неверный PIN профиля"
-                    }
-                }) { Text("Подтвердить") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAccessDialog = false; accessPinInput = "" }) { Text("Отмена") }
-            }
-        )
+    if (showProfileAccessDialog && existingEntry != null) {
+        val profile = profiles.find { it.id == effectiveProfileId }
+        if (profile != null) {
+            ProfileAccessDialog(
+                profile = profile,
+                title = "Подтверждение доступа",
+                subtitle = "Введите PIN профиля или используйте отпечаток",
+                isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+                onConfirmed = {
+                    password = existingEntry.password
+                    passwordChanged = false
+                    showPassword = true
+                    showProfileAccessDialog = false
+                },
+                onDismiss = { showProfileAccessDialog = false }
+            )
+        }
     }
 
     if (showPinNotSetDialog) {
