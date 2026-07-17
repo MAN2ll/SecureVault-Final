@@ -101,6 +101,7 @@ object BackupManager {
                     }
                 }
 
+                // Переданы passwordHistoryJson и passwordFingerprint
                 BackupEntry(
                     service = entry.service,
                     username = entry.username,
@@ -128,7 +129,7 @@ object BackupManager {
                 name = profile.name,
                 entries = backupEntries,
                 passwordAccessMode = profile.passwordAccessMode,
-                profileAccessMode = profile.profileAccessMode 
+                profileAccessMode = profile.profileAccessMode
             )
         }
         return BackupData(profiles = backupProfiles)
@@ -159,7 +160,6 @@ object BackupManager {
                     "" to ""
                 }
 
-                // Корректная обработка profileAccessMode
                 val finalPasswordAccessMode = if (newPin.isNullOrBlank()) {
                     AccessMode.NO_CONFIRMATION.value
                 } else {
@@ -235,12 +235,13 @@ object BackupManager {
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
+                        // Корректная передача всех параметров, включая passwordAccessMode как String
                         val newEntry = Entry.create(
                             service = backupEntry.service,
                             username = backupEntry.username,
                             password = backupEntry.password,
                             profileId = newProfileId,
-                            passwordFingerprint = PasswordValidator.buildPasswordFingerprint(backupEntry.password, context),
+                            passwordFingerprint = backupEntry.passwordFingerprint ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context),
                             url = backupEntry.url,
                             notes = backupEntry.notes,
                             textHint = backupEntry.textHint,
@@ -315,18 +316,3 @@ object BackupManager {
         return name
     }
 }
-
-enum class ImportMode {
-    ADD_AS_NEW,
-    MERGE_IF_EXISTS,
-    SKIP_IF_EXISTS
-}
-
-data class ImportResult(
-    val success: Boolean,
-    val importedProfiles: Int,
-    val importedEntries: Int,
-    val profileMapping: Map<Int, Int>,
-    val errors: List<String>,
-    val skippedEntries: Int = 0
-)
