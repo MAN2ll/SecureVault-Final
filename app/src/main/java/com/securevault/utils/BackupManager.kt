@@ -123,7 +123,13 @@ object BackupManager {
                     passwordAccessMode = entry.passwordAccessMode
                 )
             }
-            BackupProfile(profile.id, profile.name, backupEntries, profile.passwordAccessMode)
+            BackupProfile(
+                oldProfileId = profile.id,
+                name = profile.name,
+                entries = backupEntries,
+                passwordAccessMode = profile.passwordAccessMode,
+                profileAccessMode = profile.profileAccessMode 
+            )
         }
         return BackupData(profiles = backupProfiles)
     }
@@ -153,11 +159,17 @@ object BackupManager {
                     "" to ""
                 }
 
-                // ✅ ИСПРАВЛЕНО: Если PIN не задан, режим доступа становится NO_CONFIRMATION
-                val accessMode = if (newPin.isNullOrBlank()) {
+                // Корректная обработка profileAccessMode
+                val finalPasswordAccessMode = if (newPin.isNullOrBlank()) {
                     AccessMode.NO_CONFIRMATION.value
                 } else {
                     backupProfile.passwordAccessMode ?: AccessMode.PIN_REQUIRED.value
+                }
+                
+                val finalProfileAccessMode = if (newPin.isNullOrBlank()) {
+                    AccessMode.NO_CONFIRMATION.value
+                } else {
+                    backupProfile.profileAccessMode ?: AccessMode.PIN_REQUIRED.value
                 }
 
                 val newProfileId = when (mode) {
@@ -167,7 +179,8 @@ object BackupManager {
                             name = uniqueName,
                             passwordHash = pinHash,
                             passwordSalt = pinSalt,
-                            passwordAccessMode = accessMode
+                            passwordAccessMode = finalPasswordAccessMode,
+                            profileAccessMode = finalProfileAccessMode
                         )
                         repository.insertProfile(newProfile).toInt()
                     }
@@ -179,7 +192,8 @@ object BackupManager {
                                 name = backupProfile.name,
                                 passwordHash = pinHash,
                                 passwordSalt = pinSalt,
-                                passwordAccessMode = accessMode
+                                passwordAccessMode = finalPasswordAccessMode,
+                                profileAccessMode = finalProfileAccessMode
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
@@ -192,7 +206,8 @@ object BackupManager {
                                 name = backupProfile.name,
                                 passwordHash = pinHash,
                                 passwordSalt = pinSalt,
-                                passwordAccessMode = accessMode
+                                passwordAccessMode = finalPasswordAccessMode,
+                                profileAccessMode = finalProfileAccessMode
                             )
                             repository.insertProfile(newProfile).toInt()
                         }
