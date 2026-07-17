@@ -41,6 +41,7 @@ fun PasswordViewDialog(
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     
     var showProfileAccessDialog by remember { mutableStateOf(false) }
+    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
     fun requestAccess() {
@@ -49,7 +50,12 @@ fun PasswordViewDialog(
                 showPassword = true
                 decryptedPassword = entry.password
             }
+            is AccessResult.PinRequired -> {
+                currentAccessAllowBiometric = false
+                showProfileAccessDialog = true
+            }
             is AccessResult.BiometricOrPin -> {
+                currentAccessAllowBiometric = true
                 showProfileAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
@@ -122,11 +128,13 @@ fun PasswordViewDialog(
     )
 
     if (showProfileAccessDialog) {
+        val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+        
         ProfileAccessDialog(
             profile = profile,
             title = "Подтверждение доступа",
-            subtitle = "Введите PIN профиля или используйте отпечаток",
-            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            subtitle = dialogSubtitle,
+            allowBiometric = currentAccessAllowBiometric,
             onConfirmed = {
                 showPassword = true
                 decryptedPassword = entry.password
