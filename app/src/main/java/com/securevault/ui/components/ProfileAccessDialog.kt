@@ -25,21 +25,24 @@ fun ProfileAccessDialog(
     profile: Profile,
     title: String,
     subtitle: String,
-    allowBiometric: Boolean, //  управляем запуском биометрии
+    allowBiometric: Boolean,
     onConfirmed: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     
-    var showPinInput by remember { mutableStateOf(!allowBiometric) } //  Если биометрия запрещена, сразу показываем PIN
+    var showPinInput by remember { mutableStateOf(!allowBiometric) }
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (allowBiometric && activity != null) {
             val biometricManager = BiometricManager.from(context)
-            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+            
+            // ✅ ИСПРАВЛЕНО: Используем ТОЛЬКО BIOMETRIC_STRONG. 
+            // DEVICE_CREDENTIAL удалён, чтобы системный PIN телефона не подменял собой PIN профиля.
+            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             
             if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
                 val executor = ContextCompat.getMainExecutor(context)
