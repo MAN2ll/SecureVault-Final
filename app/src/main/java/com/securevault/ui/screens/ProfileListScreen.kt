@@ -20,19 +20,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
+import com.securevault.ui.components.ProfileAccessDialog
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
-import com.securevault.ui.components.LockActionButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileListScreen(
     onProfileSelected: (Int) -> Unit,
     onNavigateToSettings: () -> Unit,
-    onLock: () -> Unit, //  Добавлен параметр блокировки
+    onLock: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel(),
-    vaultViewModel: VaultViewModel = hiltViewModel()
+    vaultViewModel: VaultViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val profiles by viewModel.profiles.collectAsState()
 
@@ -41,11 +43,13 @@ fun ProfileListScreen(
     var operationError by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-         topBar = {
+        topBar = {
             TopAppBar(
                 title = { Text("Профили", fontWeight = FontWeight.Bold) },
                 actions = {
-                    LockActionButton(onLock = onLock) 
+                    IconButton(onClick = onLock) {
+                        Icon(Icons.Default.Lock, "Заблокировать приложение")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, "Настройки")
                     }
@@ -118,15 +122,17 @@ fun ProfileListScreen(
     }
 
     if (selectedProfile != null) {
-        UnlockProfileDialog(
+        ProfileAccessDialog(
             profile = selectedProfile!!,
-            onUnlocked = {
+            title = "Вход в профиль",
+            subtitle = "Введите PIN профиля или используйте отпечаток",
+            isBiometricEnabled = authViewModel.isBiometricLoginEnabled(),
+            onConfirmed = {
                 vaultViewModel.setCurrentProfile(selectedProfile!!.id)
                 onProfileSelected(selectedProfile!!.id)
                 selectedProfile = null
             },
-            onDismiss = { selectedProfile = null },
-            viewModel = viewModel
+            onDismiss = { selectedProfile = null }
         )
     }
 
@@ -229,55 +235,6 @@ private fun CreateProfileDialog(
                     onCreate(name, null)
                 }
             }) { Text("Создать") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun UnlockProfileDialog(
-    profile: Profile,
-    onUnlocked: () -> Unit,
-    onDismiss: () -> Unit,
-    viewModel: ProfileViewModel
-) {
-    var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Вход в профиль") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Введите PIN профиля для \"${profile.name}\"", fontSize = 13.sp)
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { pin = it; error = null },
-                    label = { Text("PIN профиля") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = error != null
-                )
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                if (pin.isBlank()) {
-                    error = "Введите PIN профиля"
-                    return@Button
-                }
-                if (viewModel.verifyPassword(profile, pin)) {
-                    onUnlocked()
-                } else {
-                    error = "Неверный PIN профиля"
-                }
-            }) { Text("Войти") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
