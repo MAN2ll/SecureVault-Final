@@ -234,8 +234,8 @@ object BackupManager {
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
-                        // ✅ ИСПРАВЛЕНО: Явное вычисление fingerprint для устранения Type mismatch
-                        val pwdFingerprint: String = backupEntry.passwordFingerprint 
+                        //  Явное вычисление fingerprint и безопасные значения по умолчанию для String
+                        val pwdFingerprint = backupEntry.passwordFingerprint 
                             ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context)
 
                         val newEntry = Entry.create(
@@ -250,10 +250,10 @@ object BackupManager {
                             isFavorite = backupEntry.isFavorite,
                             rotationEnabled = backupEntry.rotationEnabled,
                             rotationPeriodMonths = backupEntry.rotationPeriodMonths,
-                            generationType = backupEntry.generationType,
+                            generationType = backupEntry.generationType ?: "random", // ✅ ИСПРАВЛЕНО
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
                             mnemonicOptionsJson = backupEntry.mnemonicOptionsJson,
-                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value
+                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value // ✅ ИСПРАВЛЕНО
                         ).copy(
                             nextRotationDate = backupEntry.nextRotationDate,
                             createdAt = backupEntry.createdAt,
