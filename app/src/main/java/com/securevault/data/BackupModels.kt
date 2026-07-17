@@ -3,6 +3,35 @@ package com.securevault.data
 import org.json.JSONArray
 import org.json.JSONObject
 
+//  Добавлен недостающий класс EncryptedBackup
+data class EncryptedBackup(
+    val salt: String,
+    val iv: String,
+    val ciphertext: String,
+    val iterations: Int = 200000
+) {
+    fun toJson(): String {
+        val json = JSONObject()
+        json.put("salt", salt)
+        json.put("iv", iv)
+        json.put("ciphertext", ciphertext)
+        json.put("iterations", iterations)
+        return json.toString()
+    }
+
+    companion object {
+        fun fromJson(jsonString: String): EncryptedBackup {
+            val json = JSONObject(jsonString)
+            return EncryptedBackup(
+                salt = json.getString("salt"),
+                iv = json.getString("iv"),
+                ciphertext = json.getString("ciphertext"),
+                iterations = json.optInt("iterations", 200000)
+            )
+        }
+    }
+}
+
 data class BackupData(
     val version: Int = 3,
     val profiles: List<BackupProfile>
@@ -15,7 +44,6 @@ data class BackupData(
             val profileJson = JSONObject()
             profileJson.put("name", profile.name)
             profileJson.put("passwordAccessMode", profile.passwordAccessMode ?: JSONObject.NULL)
-            // Сохраняем profileAccessMode
             profileJson.put("profileAccessMode", profile.profileAccessMode ?: JSONObject.NULL)
             
             val entriesArray = JSONArray()
@@ -37,6 +65,8 @@ data class BackupData(
                 entryJson.put("mnemonicPhraseHint", entry.mnemonicPhraseHint ?: JSONObject.NULL)
                 entryJson.put("mnemonicOptionsJson", entry.mnemonicOptionsJson ?: JSONObject.NULL)
                 entryJson.put("passwordAccessMode", entry.passwordAccessMode ?: JSONObject.NULL)
+                entryJson.put("passwordHistoryJson", entry.passwordHistoryJson ?: JSONObject.NULL)
+                entryJson.put("passwordFingerprint", entry.passwordFingerprint ?: JSONObject.NULL)
                 
                 val historyArray = JSONArray()
                 entry.portableHistory?.forEach { item ->
@@ -74,7 +104,6 @@ data class BackupData(
                     profileJson.getString("passwordAccessMode")
                 } else null
                 
-                // Читаем profileAccessMode
                 val profileAccessMode = if (profileJson.has("profileAccessMode") && !profileJson.isNull("profileAccessMode")) {
                     profileJson.getString("profileAccessMode")
                 } else null
@@ -119,16 +148,18 @@ data class BackupData(
                         mnemonicPhraseHint = if (entryJson.has("mnemonicPhraseHint") && !entryJson.isNull("mnemonicPhraseHint")) entryJson.getString("mnemonicPhraseHint") else null,
                         mnemonicOptionsJson = if (entryJson.has("mnemonicOptionsJson") && !entryJson.isNull("mnemonicOptionsJson")) entryJson.getString("mnemonicOptionsJson") else null,
                         passwordAccessMode = if (entryJson.has("passwordAccessMode") && !entryJson.isNull("passwordAccessMode")) entryJson.getString("passwordAccessMode") else null,
+                        passwordHistoryJson = if (entryJson.has("passwordHistoryJson") && !entryJson.isNull("passwordHistoryJson")) entryJson.getString("passwordHistoryJson") else null,
+                        passwordFingerprint = if (entryJson.has("passwordFingerprint") && !entryJson.isNull("passwordFingerprint")) entryJson.getString("passwordFingerprint") else null,
                         portableHistory = portableHistory
                     ))
                 }
                 
                 profiles.add(BackupProfile(
-                    oldProfileId = i, // Временный ID для маппинга
+                    oldProfileId = i,
                     name = name,
                     entries = entries,
                     passwordAccessMode = passwordAccessMode,
-                    profileAccessMode = profileAccessMode 
+                    profileAccessMode = profileAccessMode
                 ))
             }
             return BackupData(version = version, profiles = profiles)
@@ -141,9 +172,10 @@ data class BackupProfile(
     val name: String,
     val entries: List<BackupEntry>,
     val passwordAccessMode: String? = null,
-    val profileAccessMode: String? = null 
+    val profileAccessMode: String? = null
 )
 
+// Добавлены passwordHistoryJson и passwordFingerprint
 data class BackupEntry(
     val service: String,
     val username: String,
@@ -161,6 +193,8 @@ data class BackupEntry(
     val mnemonicPhraseHint: String?,
     val mnemonicOptionsJson: String?,
     val passwordAccessMode: String?,
+    val passwordHistoryJson: String?,
+    val passwordFingerprint: String?,
     val portableHistory: List<PortableHistoryItem>? = null
 )
 
