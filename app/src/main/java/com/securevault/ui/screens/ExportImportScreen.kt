@@ -25,13 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.BackupData
-import com.securevault.data.EncryptedBackup 
+import com.securevault.data.EncryptedBackup
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.BackupManager
 import com.securevault.utils.ExportManager
 import com.securevault.utils.ImportMode
-import com.securevault.utils.ImportResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +39,12 @@ import kotlinx.coroutines.withContext
 
 data class OperationResult(val success: Boolean, val message: String)
 
+//Добавлено действие IMPORT_CSV
 enum class BackupMasterPasswordAction {
     CREATE_BACKUP,
     IMPORT_BACKUP,
-    EXPORT_CSV
+    EXPORT_CSV,
+    IMPORT_CSV
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -412,7 +413,15 @@ fun ExportImportScreen(
                             }
 
                             Spacer(Modifier.height(12.dp))
-                            Button(onClick = { csvImportLauncher.launch(arrayOf("text/csv", "*/*")) }, modifier = Modifier.fillMaxWidth(), enabled = profiles.isNotEmpty() && importTargetProfileId != 0) {
+                            // Теперь запрашивает мастер-пароль перед импортом CSV
+                            Button(
+                                onClick = {
+                                    pendingMasterPasswordAction = BackupMasterPasswordAction.IMPORT_CSV
+                                    showMasterPasswordDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = profiles.isNotEmpty() && importTargetProfileId != 0
+                            ) {
                                 Icon(Icons.Default.Download, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("Импортировать CSV")
@@ -471,6 +480,7 @@ fun ExportImportScreen(
                         BackupMasterPasswordAction.CREATE_BACKUP -> "Для создания полного backup введите мастер-пароль"
                         BackupMasterPasswordAction.IMPORT_BACKUP -> "Для импорта полного backup введите мастер-пароль"
                         BackupMasterPasswordAction.EXPORT_CSV -> "Для экспорта CSV с паролями введите мастер-пароль.\nПароли будут в открытом виде в файле."
+                        BackupMasterPasswordAction.IMPORT_CSV -> "Для импорта CSV введите мастер-пароль."
                         else -> "Введите мастер-пароль"
                     }, fontSize = 13.sp)
                     OutlinedTextField(
@@ -498,11 +508,15 @@ fun ExportImportScreen(
                         masterPasswordInput = ""
                         masterPasswordError = null
 
+                        //Добавлена обработка IMPORT_CSV
                         when (pendingMasterPasswordAction) {
                             BackupMasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
                             BackupMasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
                             BackupMasterPasswordAction.EXPORT_CSV -> {
                                 csvExportLauncher.launch(exportManager.generateExportFilename())
+                            }
+                            BackupMasterPasswordAction.IMPORT_CSV -> {
+                                csvImportLauncher.launch(arrayOf("text/csv", "*/*"))
                             }
                             else -> {}
                         }
