@@ -15,11 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
+import com.securevault.data.Profile
+import com.securevault.security.ProfilePasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
@@ -40,14 +43,12 @@ fun RotationJournalScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel() 
 ) {
     val context = LocalContext.current
 
     LaunchedEffect(profileId) {
-        if (profileId != null) {
-            viewModel.setCurrentProfile(profileId)
-        }
+        if (profileId != null) viewModel.setCurrentProfile(profileId)
     }
 
     val entries by viewModel.entries.collectAsState()
@@ -59,6 +60,13 @@ fun RotationJournalScreen(
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        authViewModel.clearSensitiveEvent.collect {
+            revealedHistoryPassword = null
+            showProfileAccessDialog = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -80,11 +88,7 @@ fun RotationJournalScreen(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(entries) { entry ->
                     val history = entry.getPasswordHistory()
                     if (history.isNotEmpty()) {
@@ -103,10 +107,7 @@ fun RotationJournalScreen(
                                 Spacer(Modifier.height(8.dp))
                                 
                                 history.forEach { item ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(text = formatDate(item.date), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                             Text(text = "Тип: ${item.type}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -114,41 +115,28 @@ fun RotationJournalScreen(
                                                 Text(text = "Источник: ${item.relatedService}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                                             }
                                         }
-                                        
-                                        IconButton(
-                                            onClick = {
-                                                //  Безопасная проверка вместо создания фиктивного Profile()
-                                                if (currentProfile == null) {
-                                                    showPinNotSetDialog = true
-                                                    return@IconButton
+                                        IconButton(onClick = {
+                                            historyItemToShow = entry to item
+                                            revealedHistoryPassword = null
+                                            
+                                            val result = PasswordAccessPolicy.resolve(entry, currentProfile ?: Profile(0, "", "", "")) // Fallback для типа
+                                            when (result) {
+                                                is AccessResult.Granted -> {
+                                                    revealedHistoryPassword = try { item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно" } catch (e: Exception) { "Ошибка расшифровки" }
                                                 }
-                                                
-                                                historyItemToShow = entry to item
-                                                revealedHistoryPassword = null
-                                                
-                                                val result = PasswordAccessPolicy.resolve(entry, currentProfile)
-                                                when (result) {
-                                                    is AccessResult.Granted -> {
-                                                        revealedHistoryPassword = try {
-                                                            item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
-                                                        } catch (e: Exception) {
-                                                            "Ошибка расшифровки"
-                                                        }
-                                                    }
-                                                    is AccessResult.PinRequired -> {
-                                                        currentAccessAllowBiometric = false
-                                                        showProfileAccessDialog = true
-                                                    }
-                                                    is AccessResult.BiometricOrPin -> {
-                                                        currentAccessAllowBiometric = true
-                                                        showProfileAccessDialog = true
-                                                    }
-                                                    is AccessResult.PinNotSet -> {
-                                                        showPinNotSetDialog = true
-                                                    }
+                                                is AccessResult.PinRequired -> {
+                                                    currentAccessAllowBiometric = false
+                                                    showProfileAccessDialog = true
+                                                }
+                                                is AccessResult.BiometricOrPin -> {
+                                                    currentAccessAllowBiometric = true
+                                                    showProfileAccessDialog = true
+                                                }
+                                                is AccessResult.PinNotSet -> {
+                                                    showPinNotSetDialog = true
                                                 }
                                             }
-                                        ) {
+                                        }) {
                                             Icon(Icons.Default.Visibility, "Просмотреть старый пароль", tint = MaterialTheme.colorScheme.primary)
                                         }
                                     }
@@ -162,28 +150,21 @@ fun RotationJournalScreen(
         }
     }
 
-    //  Диалог доступа
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
         val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
-        
         ProfileAccessDialog(
             profile = currentProfile,
             title = "Подтверждение доступа",
             subtitle = dialogSubtitle,
             allowBiometric = currentAccessAllowBiometric,
             onConfirmed = {
-                revealedHistoryPassword = try {
-                    historyItemToShow!!.second.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно"
-                } catch (e: Exception) {
-                    "Ошибка расшифровки"
-                }
+                revealedHistoryPassword = try { historyItemToShow!!.second.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно" } catch (e: Exception) { "Ошибка расшифровки" }
                 showProfileAccessDialog = false
             },
             onDismiss = { showProfileAccessDialog = false }
         )
     }
 
-    //  Диалог просмотра старого пароля
     if (revealedHistoryPassword != null && historyItemToShow != null) {
         AlertDialog(
             onDismissRequest = { revealedHistoryPassword = null },
@@ -192,44 +173,26 @@ fun RotationJournalScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Сервис: ${historyItemToShow!!.first.service}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = revealedHistoryPassword!!,
-                                fontSize = 16.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = revealedHistoryPassword!!, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             IconButton(onClick = {
-                                context.getSystemService(android.content.ClipboardManager::class.java)
-                                    .setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
+                                context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
                                 android.widget.Toast.makeText(context, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
-                            }) {
-                                Icon(Icons.Default.ContentCopy, "Копировать")
-                            }
+                            }) { Icon(Icons.Default.ContentCopy, "Копировать") }
                         }
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { revealedHistoryPassword = null }) { Text("Закрыть") }
-            }
+            confirmButton = { TextButton(onClick = { revealedHistoryPassword = null }) { Text("Закрыть") } }
         )
     }
     
-    //  Диалог ошибки отсутствия PIN
     if (showPinNotSetDialog) {
         AlertDialog(
             onDismissRequest = { showPinNotSetDialog = false },
             title = { Text("PIN профиля не задан") },
             text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = {
-                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
-            }
+            confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } }
         )
     }
 }
