@@ -38,6 +38,11 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
 
     init { updateBruteForceState() }
 
+    @Suppress("UNUSED_PARAMETER")
+    fun init(vararg args: Any?) {
+        updateBruteForceState()
+    }
+
     private fun checkInitialState(): AuthState {
         val hasMasterPassword = prefs.contains("master_hash")
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
@@ -71,7 +76,6 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         return if (storedHash != null && storedSalt != null && MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
             prefs.edit().putInt("failed_attempts", 0).apply()
             _authState.value = AuthState.Unlocked
-            //  Обновляем время взаимодействия при успешной разблокировке
             prefs.edit().putLong("last_interaction_time", System.currentTimeMillis()).apply()
             true
         } else {
