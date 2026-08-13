@@ -33,7 +33,7 @@ fun PasswordViewDialog(
     onEdit: () -> Unit,
     onQr: () -> Unit,
     onDelete: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel() 
 ) {
     val context = LocalContext.current
 
@@ -43,6 +43,13 @@ fun PasswordViewDialog(
     var showProfileAccessDialog by remember { mutableStateOf(false) }
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
+
+  Закрываем диалог при блокировке
+    LaunchedEffect(Unit) {
+        authViewModel.clearSensitiveEvent.collect {
+            onDismiss()
+        }
+    }
 
     fun requestAccess() {
         when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
@@ -105,31 +112,18 @@ fun PasswordViewDialog(
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onQr) {
-                        Icon(Icons.Default.QrCode, contentDescription = "Показать QR-код")
-                    }
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, contentDescription = "Изменить запись")
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Удалить запись", tint = MaterialTheme.colorScheme.error)
-                    }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onQr) { Icon(Icons.Default.QrCode, "Показать QR-код") }
+                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Изменить запись") }
+                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Удалить запись", tint = MaterialTheme.colorScheme.error) }
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Закрыть") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
     )
 
     if (showProfileAccessDialog) {
         val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
-        
         ProfileAccessDialog(
             profile = profile,
             title = "Подтверждение доступа",
@@ -149,9 +143,7 @@ fun PasswordViewDialog(
             onDismissRequest = { showPinNotSetDialog = false },
             title = { Text("PIN профиля не задан") },
             text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = {
-                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
-            }
+            confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } }
         )
     }
 }
