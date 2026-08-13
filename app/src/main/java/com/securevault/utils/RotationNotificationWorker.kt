@@ -10,8 +10,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.securevault.data.VaultRepository
 import dagger.hilt.EntryPoint
-import dagger.hilt.EntryPointAccessors
 import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
 
@@ -29,7 +29,7 @@ class RotationNotificationWorker(
         
         val now = System.currentTimeMillis()
         val entries = repository.allEntries.first()
-        val expiredEntries = entries.filter { it.rotationEnabled && (it.nextRotationDate ?: Long.MAX_VALUE) <= now }
+        val expiredEntries = entries.filter { entry -> entry.rotationEnabled && (entry.nextRotationDate ?: Long.MAX_VALUE) <= now }
 
         if (expiredEntries.isNotEmpty()) {
             showNotification(expiredEntries.size, expiredEntries.first().service)
@@ -71,7 +71,6 @@ class RotationNotificationWorker(
     }
 }
 
-//  Добавлены корректные импорты для Hilt EntryPoint
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface VaultRepositoryEntryPoint {
