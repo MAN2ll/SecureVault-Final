@@ -8,9 +8,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.securevault.R
 import com.securevault.data.VaultRepository
-import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.EntryPoint
+import dagger.hilt.EntryPointAccessors
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
 
 class RotationNotificationWorker(
@@ -49,7 +51,9 @@ class RotationNotificationWorker(
 
         try {
             NotificationManagerCompat.from(applicationContext).notify(1001, notification)
-        } catch (e: SecurityException) { /* Permission denied */ }
+        } catch (e: SecurityException) { 
+            // Разрешение на уведомления не выдано
+        }
     }
 
     private fun createChannel() {
@@ -58,15 +62,18 @@ class RotationNotificationWorker(
                 "securevault_rotation_channel",
                 "Ротация паролей",
                 NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "Уведомления о паролях, которым требуется ротация" }
+            ).apply { 
+                description = "Уведомления о паролях, которым требуется ротация" 
+            }
             val manager = applicationContext.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
     }
 }
 
-@dagger.hilt.EntryPoint
-@InstallIn(dagger.hilt.components.SingletonComponent::class)
+//  Добавлены корректные импорты для Hilt EntryPoint
+@EntryPoint
+@InstallIn(SingletonComponent::class)
 interface VaultRepositoryEntryPoint {
     val vaultRepository: VaultRepository
 }
