@@ -41,7 +41,7 @@ fun UnifiedPasswordGeneratorDialog(
                 when (selectedMode) {
                     0 -> RandomGeneratorContent(context, onGenerated)
                     1 -> TwoPartGeneratorContent(context, onGenerated)
-                    2 -> AnchorGeneratorContent(context, onGenerated)
+                    2 -> AnchorGeneratorContent(context, onGenerated, initialServiceName)
                     3 -> AmpgGeneratorContent(context, onGenerated, initialServiceName)
                 }
             }
@@ -68,27 +68,46 @@ private fun RandomGeneratorContent(context: android.content.Context, onGenerated
 private fun TwoPartGeneratorContent(context: android.content.Context, onGenerated: (String, String?, String) -> Unit) {
     var length by remember { mutableIntStateOf(16) }
     var pwd by remember { mutableStateOf("") }
-    LaunchedEffect(length) { pwd = PasswordGenerator.generateTwoPart(length, true, true, true, context).password }
+    var error by remember { mutableStateOf<String?>(null) }
     
-    val half = length / 2
-    Text("${pwd.substring(0, half)} / ${pwd.substring(half)}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    LaunchedEffect(length) {
+        val res = PasswordGenerator.generateTwoPart(length, true, true, true, context)
+        pwd = res?.password ?: ""
+        error = if (res == null) "Не удалось сгенерировать валидный пароль. Попробуйте другую длину." else null
+    }
+    
+    if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    if (pwd.isNotEmpty()) {
+        val half = length / 2
+        Text("${pwd.substring(0, half)} / ${pwd.substring(half)}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    }
     Row {
-        Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 16f..32f, modifier = Modifier.weight(1f))
-        Button(onClick = { onGenerated(pwd, null, "random_two_part") }) { Text("Выбрать") }
+        Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 16f..20f, steps = 2, modifier = Modifier.weight(1f))
+        Button(onClick = { if (pwd.isNotEmpty()) onGenerated(pwd, null, "random_two_part") }, enabled = pwd.isNotEmpty()) { Text("Выбрать") }
     }
 }
 
 @Composable
-private fun AnchorGeneratorContent(context: android.content.Context, onGenerated: (String, String?, String) -> Unit) {
+private fun AnchorGeneratorContent(context: android.content.Context, onGenerated: (String, String?, String) -> Unit, initialService: String) {
     var anchor by remember { mutableStateOf("") }
     var length by remember { mutableIntStateOf(16) }
     var pwd by remember { mutableStateOf("") }
+    var explanation by remember { mutableStateOf("") }
+    
     LaunchedEffect(anchor, length) {
-        pwd = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context)?.password ?: ""
+        val res = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context)
+        pwd = res?.password ?: ""
+        explanation = res?.explanation ?: ""
     }
     
     OutlinedTextField(value = anchor, onValueChange = { anchor = it }, label = { Text("Якорное слово") })
-    Text(pwd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    if (pwd.isNotEmpty()) {
+        Text(pwd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+        Text(explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else if (anchor.length >= 3) {
+        Text("Не удалось построить пароль с этим якорем. Выберите другое слово.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    }
+    
     Row {
         Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 12f..32f, modifier = Modifier.weight(1f))
         Button(onClick = { if (pwd.isNotEmpty()) onGenerated(pwd, anchor, "random_anchor") }, enabled = pwd.isNotEmpty()) { Text("Выбрать") }
@@ -109,13 +128,9 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length) {
         val y = year.toIntOrNull()
-        //  используем GenerationOptions вместо AmpgOptions
         val opts = MnemonicPasswordGenerator.GenerationOptions(
-            phrase = phrase1,
-            phrase2 = if (isTwoUsers) phrase2 else null,
-            serviceName = serviceName,
-            year = y,
-            targetLength = length,
+            phrase = phrase1, phrase2 = if (isTwoUsers) phrase2 else null,
+            serviceName = serviceName, year = y, targetLength = length,
             splitMode = if (isTwoUsers) MnemonicPasswordGenerator.SplitMode.TWO_USERS else MnemonicPasswordGenerator.SplitMode.SINGLE_USER
         )
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
@@ -131,12 +146,12 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
     if (isTwoUsers) OutlinedTextField(value = phrase2, onValueChange = { phrase2 = it }, label = { Text("Фраза 2") }, modifier = Modifier.fillMaxWidth())
     
     Row {
-        OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text("Сервис") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("Год") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text("Сервис (маркер)") }, modifier = Modifier.weight(1f))
+        OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("Год (маркер)") }, modifier = Modifier.weight(1f))
     }
 
-    if (variants.isEmpty() && phrase1.isNotEmpty()) {
-        Text("Фраза слишком простая. Добавьте ещё слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    if (variants.isEmpty() && phrase1.length >= 4) {
+        Text("Фраза слишком простая или маркеры создают конфликты повторов.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     }
 
     variants.forEachIndexed { index, res ->
@@ -144,6 +159,7 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(res.variantName, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                 Text(res.password, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(res.explanation, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
