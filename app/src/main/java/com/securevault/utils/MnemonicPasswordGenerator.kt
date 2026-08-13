@@ -3,20 +3,30 @@ package com.securevault.utils
 object MnemonicPasswordGenerator {
     enum class SplitMode { SINGLE_USER, TWO_USERS }
 
-    //  GenerationOptions (чтобы не ломать UI)
     data class GenerationOptions(
         val phrase: String,
         val phrase2: String? = null,
         val serviceName: String = "",
-        val year: Int? = null,
+        val username: String = "",
+        val profileId: Int? = null,
         val targetLength: Int = 16,
-        val splitMode: SplitMode = SplitMode.SINGLE_USER
+        val rotationMonth: Int? = null,
+        val rotationYear: Int? = null,
+        val variantOffset: Int = 0,
+        val splitMode: SplitMode = SplitMode.SINGLE_USER,
+        val year: Int? = null // Для маркеров года
     )
 
     data class GenerationResult(
-        val password: String, val mnemonicHint: String, val variantName: String,
-        val strength: PasswordGenerator.Strength, val part1: String?, val part2: String?,
-        val splitMode: SplitMode, val explanation: String
+        val password: String, 
+        val mnemonicHint: String, 
+        val variantName: String,
+        val strength: PasswordGenerator.Strength, 
+        val part1: String?, 
+        val part2: String?,
+        val splitMode: SplitMode, 
+        val explanation: String, 
+        val variantOffset: Int = 0 // Добавлено для совместимости с UI
     )
 
     private val leetMap = mapOf(
@@ -28,7 +38,7 @@ object MnemonicPasswordGenerator {
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val serviceMarker = if (options.serviceName.isNotEmpty()) options.serviceName.first().uppercaseChar().toString() else ""
-        val yearMarker = options.year?.toString()?.takeLast(2) ?: ""
+        val yearMarker = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
         
         val hasService = serviceMarker.isNotEmpty()
         val hasYear = yearMarker.isNotEmpty()
@@ -41,7 +51,7 @@ object MnemonicPasswordGenerator {
         if (words1.isEmpty()) return emptyList()
 
         val words2 = if (options.splitMode == SplitMode.TWO_USERS) {
-            val p2 = options.phrase2 ?: return emptyList()
+            val p2 = options.phrase2 ?: options.phrase // Fallback для совместимости
             p2.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
         } else emptyList()
 
@@ -109,7 +119,7 @@ object MnemonicPasswordGenerator {
                     variantName = "Вариант ${variantIndex + 1}", strength = calculateStrength(password),
                     part1 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(0, password.length / 2) else null,
                     part2 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(password.length / 2) else null,
-                    splitMode = options.splitMode, explanation = explanation
+                    splitMode = options.splitMode, explanation = explanation, variantOffset = variantIndex
                 ))
             }
         }
