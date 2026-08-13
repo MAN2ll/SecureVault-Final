@@ -4,8 +4,6 @@ package com.securevault.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,10 +20,10 @@ import com.securevault.utils.PasswordGenerator
 @Composable
 fun UnifiedPasswordGeneratorDialog(
     onDismiss: () -> Unit,
-    onGenerated: (String, String?, String) -> Unit, // password, hint, generationType
+    onGenerated: (String, String?, String) -> Unit,
     initialServiceName: String = ""
 ) {
-    var selectedMode by remember { mutableIntStateOf(0) } // 0: Random, 1: TwoPart, 2: Anchor, 3: AMPG
+    var selectedMode by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
 
     AlertDialog(
@@ -111,8 +109,9 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length) {
         val y = year.toIntOrNull()
-        val opts = MnemonicPasswordGenerator.AmpgOptions(
-            phrase1 = phrase1,
+        //  используем GenerationOptions вместо AmpgOptions
+        val opts = MnemonicPasswordGenerator.GenerationOptions(
+            phrase = phrase1,
             phrase2 = if (isTwoUsers) phrase2 else null,
             serviceName = serviceName,
             year = y,
