@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.ui.components.LockActionButton
 import com.securevault.viewmodel.AuthViewModel
+import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,9 +39,13 @@ fun VaultListScreen(
     onNavigateToProfiles: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel() 
+    profileViewModel: ProfileViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val entries by viewModel.entries.collectAsState()
+    val profiles by profileViewModel.profiles.collectAsState()
+    val currentProfile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
+    
     var searchQuery by remember { mutableStateOf("") }
     var showSearchField by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -48,7 +53,6 @@ fun VaultListScreen(
     var showViewDialog by remember { mutableStateOf<Entry?>(null) }
     var showQrDialog by remember { mutableStateOf<Entry?>(null) }
 
-    
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             showViewDialog = null
@@ -67,7 +71,7 @@ fun VaultListScreen(
             TopAppBar(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
-                    LockActionButton(onLock = onLock) //  Кнопка замка
+                    LockActionButton(onLock = onLock)
                     
                     IconButton(onClick = {
                         showSearchField = !showSearchField
@@ -128,22 +132,21 @@ fun VaultListScreen(
         }
     }
 
-    if (showViewDialog != null) {
-        // PasswordViewDialog сам закроется при получении clearSensitiveEvent
+    if (showViewDialog != null && currentProfile != null) {
         PasswordViewDialog(
             entry = showViewDialog!!,
-            profile = viewModel.currentProfile.value!!, // Убедитесь, что профиль передается корректно
+            profile = currentProfile,
             onDismiss = { showViewDialog = null },
             onEdit = { onNavigateToEntry(showViewDialog!!.id); showViewDialog = null },
             onQr = { showQrDialog = showViewDialog; showViewDialog = null },
-            onDelete = { /* Логика удаления */ showViewDialog = null }
+            onDelete = { showViewDialog = null }
         )
     }
 
-    if (showQrDialog != null) {
+    if (showQrDialog != null && currentProfile != null) {
         QrCodeDialog(
             entry = showQrDialog!!,
-            profile = viewModel.currentProfile.value!!,
+            profile = currentProfile,
             onDismiss = { showQrDialog = null }
         )
     }
