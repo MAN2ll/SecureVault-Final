@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
@@ -50,9 +53,10 @@ fun QrScannerScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel() // 
 ) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val profiles by profileViewModel.profiles.collectAsState()
@@ -70,20 +74,24 @@ fun QrScannerScreen(
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasCameraPermission = isGranted
-    }
 
     LaunchedEffect(Unit) {
-        when (PackageManager.PERMISSION_GRANTED) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) -> {
-                hasCameraPermission = true
-            }
-            else -> {
-                permissionLauncher.launch(Manifest.permission.CAMERA)
-            }
+        authViewModel.clearSensitiveEvent.collect {
+            showPassword = false
+            decryptedPassword = null
+            showProfileAccessDialog = false
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted -> hasCameraPermission = isGranted }
+
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            hasCameraPermission = true
+        } else {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -125,25 +133,17 @@ fun QrScannerScreen(
                     Spacer(Modifier.height(16.dp))
                     Text("Требуется разрешение на использование камеры", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                        Text("Предоставить разрешение")
-                    }
+                    Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) { Text("Предоставить разрешение") }
                 }
             } else if (scannedEntryId == null && errorMessage == null) {
                 CameraPreview(
                     onQrCodeScanned = { rawValue ->
-                        val currentProfileId = profileId
-                        if (currentProfileId == null) {
-                            errorMessage = "Недействительный QR-код"
-                            return@CameraPreview
-                        }
-                        
+                        val currentProfileId = profileId ?: return@CameraPreview
                         try {
                             val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, context)
                             if (result.isValid && result.entryId != null) {
                                 val entry = viewModel.findEntryById(result.entryId)
                                 val profile = profiles.find { it.id == entry?.profileId }
-                                
                                 if (entry != null && profile != null && entry.profileId == currentProfileId) {
                                     scannedEntryId = entry.id
                                 } else {
@@ -159,7 +159,6 @@ fun QrScannerScreen(
                     lifecycleOwner = lifecycleOwner,
                     cameraExecutor = cameraExecutor
                 )
-                
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                     Card(modifier = Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))) {
                         Text("Наведите камеру на QR-код", modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally), fontWeight = FontWeight.Medium)
@@ -173,13 +172,10 @@ fun QrScannerScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(24.dp))
-                    Button(onClick = { scannedEntryId = null; errorMessage = null }) {
-                        Text("Попробовать снова")
-                    }
+                    Button(onClick = { scannedEntryId = null; errorMessage = null }) { Text("Попробовать снова") }
                 }
             } else if (scannedEntryId != null && currentProfile != null) {
                 val entry = viewModel.findEntryById(scannedEntryId!!)
-                
                 if (entry != null) {
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
                         Card(modifier = Modifier.fillMaxWidth()) {
@@ -192,9 +188,7 @@ fun QrScannerScreen(
                                         Text("Устройство и профиль совпадают", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
-                                
                                 HorizontalDivider()
-
                                 InfoRow("Сервис", entry.service)
                                 InfoRow("Логин", entry.username)
                                 if (!entry.textHint.isNullOrBlank()) InfoRow("Подсказка", entry.textHint)
@@ -207,10 +201,7 @@ fun QrScannerScreen(
                                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text(
                                                 text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
-                                                fontSize = 14.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.weight(1f)
+                                                fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
                                             )
                                             if (!showPassword) {
                                                 IconButton(onClick = { requestAccess(entry, currentProfile) }) {
@@ -228,7 +219,6 @@ fun QrScannerScreen(
                                         }
                                     }
                                 }
-
                                 Button(onClick = { scannedEntryId = null; showPassword = false; decryptedPassword = null }, modifier = Modifier.fillMaxWidth()) {
                                     Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
@@ -246,7 +236,6 @@ fun QrScannerScreen(
         val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
             val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
-            
             ProfileAccessDialog(
                 profile = currentProfile,
                 title = "Подтверждение доступа",
@@ -267,9 +256,7 @@ fun QrScannerScreen(
             onDismissRequest = { showPinNotSetDialog = false },
             title = { Text("PIN профиля не задан") },
             text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = {
-                TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") }
-            }
+            confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } }
         )
     }
 }
@@ -284,69 +271,41 @@ private fun InfoRow(label: String, value: String) {
 
 @androidx.camera.core.ExperimentalGetImage
 @Composable
-private fun CameraPreview(
-    onQrCodeScanned: (String) -> Unit,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
-    cameraExecutor: ExecutorService
-) {
+private fun CameraPreview(onQrCodeScanned: (String) -> Unit, lifecycleOwner: androidx.lifecycle.LifecycleOwner, cameraExecutor: ExecutorService) {
     val context = LocalContext.current
-    
-    AndroidView(
-        factory = { ctx ->
-            val previewView = PreviewView(ctx)
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-            
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also {
-                        it.setAnalyzer(cameraExecutor) { imageProxy ->
-                            val mediaImage = imageProxy.image
-                            if (mediaImage != null) {
-                                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                                val scanner = BarcodeScanning.getClient()
-                                
-                                scanner.process(image)
-                                    .addOnSuccessListener { barcodes ->
-                                        for (barcode in barcodes) {
-                                            val rawValue = barcode.rawValue
-                                            if (!rawValue.isNullOrBlank()) {
-                                                onQrCodeScanned(rawValue)
-                                                break
-                                            }
-                                        }
-                                    }
-                                    .addOnCompleteListener {
-                                        imageProxy.close()
-                                    }
-                            } else {
-                                imageProxy.close()
+    AndroidView(factory = { ctx ->
+        val previewView = PreviewView(ctx)
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+            val imageAnalysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build().also {
+                it.setAnalyzer(cameraExecutor) { imageProxy ->
+                    val mediaImage = imageProxy.image
+                    if (mediaImage != null) {
+                        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                        val scanner = BarcodeScanning.getClient()
+                        scanner.process(image).addOnSuccessListener { barcodes ->
+                            for (barcode in barcodes) {
+                                val rawValue = barcode.rawValue
+                                if (!rawValue.isNullOrBlank()) {
+                                    onQrCodeScanned(rawValue)
+                                    break
+                                }
                             }
-                        }
+                        }.addOnCompleteListener { imageProxy.close() }
+                    } else {
+                        imageProxy.close()
                     }
-                
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageAnalysis
-                    )
-                } catch (e: Exception) {
-                    Log.e("CameraPreview", "Use case binding failed", e)
                 }
-            }, ContextCompat.getMainExecutor(ctx))
-            
-            previewView
-        },
-        modifier = Modifier.fillMaxSize()
-    )
+            }
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis)
+            } catch (e: Exception) {
+                Log.e("CameraPreview", "Use case binding failed", e)
+            }
+        }, ContextCompat.getMainExecutor(ctx))
+        previewView
+    }, modifier = Modifier.fillMaxSize())
 }
