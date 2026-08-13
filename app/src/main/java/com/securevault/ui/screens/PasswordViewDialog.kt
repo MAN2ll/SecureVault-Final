@@ -33,7 +33,7 @@ fun PasswordViewDialog(
     onEdit: () -> Unit,
     onQr: () -> Unit,
     onDelete: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel() 
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
 
@@ -44,7 +44,7 @@ fun PasswordViewDialog(
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
-  Закрываем диалог при блокировке
+    // ОЧИСТКА ЧУВСТВИТЕЛЬНЫХ ДАННЫХ: Закрываем диалог при блокировке
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             onDismiss()
