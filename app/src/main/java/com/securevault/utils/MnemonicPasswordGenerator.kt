@@ -3,8 +3,9 @@ package com.securevault.utils
 object MnemonicPasswordGenerator {
     enum class SplitMode { SINGLE_USER, TWO_USERS }
 
-    data class AmpgOptions(
-        val phrase1: String,
+    //  GenerationOptions (чтобы не ломать UI)
+    data class GenerationOptions(
+        val phrase: String,
         val phrase2: String? = null,
         val serviceName: String = "",
         val year: Int? = null,
@@ -24,7 +25,7 @@ object MnemonicPasswordGenerator {
         'б' to "6", 'b' to "6", 'л' to "!", 'l' to "!"
     )
 
-    fun generateVariants(options: AmpgOptions, count: Int = 3): List<GenerationResult> {
+    fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         val serviceMarker = if (options.serviceName.isNotEmpty()) options.serviceName.first().uppercaseChar().toString() else ""
         val yearMarker = options.year?.toString()?.takeLast(2) ?: ""
@@ -36,7 +37,7 @@ object MnemonicPasswordGenerator {
 
         if (baseLength < 4) return emptyList()
 
-        val words1 = options.phrase1.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
+        val words1 = options.phrase.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
         if (words1.isEmpty()) return emptyList()
 
         val words2 = if (options.splitMode == SplitMode.TWO_USERS) {
@@ -49,7 +50,7 @@ object MnemonicPasswordGenerator {
         for (variantIndex in 0 until count) {
             val usedChars = mutableSetOf<Char>()
             var password = ""
-            var explanation = "Фраза: ${options.phrase1}"
+            var explanation = "Фраза: ${options.phrase}"
             if (options.splitMode == SplitMode.TWO_USERS) explanation += " / ${options.phrase2}"
             explanation += "\n"
 
@@ -104,7 +105,7 @@ object MnemonicPasswordGenerator {
 
             if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
                 results.add(GenerationResult(
-                    password = password, mnemonicHint = options.phrase1.take(30),
+                    password = password, mnemonicHint = options.phrase.take(30),
                     variantName = "Вариант ${variantIndex + 1}", strength = calculateStrength(password),
                     part1 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(0, password.length / 2) else null,
                     part2 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(password.length / 2) else null,
