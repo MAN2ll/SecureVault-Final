@@ -2,8 +2,10 @@
 
 package com.securevault.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,8 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
@@ -30,7 +35,7 @@ fun BulkRotationDialog(
     entries: List<Entry>,
     onDismiss: () -> Unit,
     onBulkReplace: (List<BulkPasswordReplacement>) -> Unit,
-    viewModel: VaultViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
 
@@ -45,8 +50,9 @@ fun BulkRotationDialog(
     var useSpecial by remember { mutableStateOf(true) }
 
     var mnemonicPhrase by remember { mutableStateOf("") }
+    var includeLeet by remember { mutableStateOf(true) }
 
-    val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase) {
+    val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet) {
         if (selectedMode == BulkMode.RANDOM) {
             entries.mapIndexed { index, entry ->
                 val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
@@ -240,4 +246,55 @@ fun BulkRotationDialog(
             confirmButton = { TextButton(onClick = { errorMessage = null }) { Text("Понятно") } }
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MasterPasswordConfirmDialog(
+    title: String,
+    onConfirmed: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Для подтверждения действия введите мастер-пароль", fontSize = 13.sp)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Мастер-пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = error != null
+                )
+                if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                val storedHash = prefs.getString("master_hash", null)
+                val storedSalt = prefs.getString("master_salt", null)
+                val iterations = prefs.getInt("master_iterations", 100_000)
+
+                if (storedHash != null && storedSalt != null &&
+                    com.securevault.security.MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
+                    onConfirmed()
+                } else {
+                    error = "Неверный мастер-пароль"
+                }
+                password = ""
+            }) { Text("Подтвердить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
 }
