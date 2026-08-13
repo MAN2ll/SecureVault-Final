@@ -4,36 +4,19 @@ object MnemonicPasswordGenerator {
     enum class SplitMode { SINGLE_USER, TWO_USERS }
 
     data class GenerationOptions(
-        val phrase: String,
-        val phrase2: String? = null,
-        val serviceName: String = "",
-        val username: String = "",
-        val profileId: Int? = null,
-        val targetLength: Int = 16,
-        val rotationMonth: Int? = null,
-        val rotationYear: Int? = null,
-        val variantOffset: Int = 0,
-        val splitMode: SplitMode = SplitMode.SINGLE_USER,
-        val year: Int? = null // Для маркеров года
+        val phrase: String, val phrase2: String? = null, val serviceName: String = "",
+        val username: String = "", val profileId: Int? = null, val targetLength: Int = 16,
+        val rotationMonth: Int? = null, val rotationYear: Int? = null, val variantOffset: Int = 0,
+        val splitMode: SplitMode = SplitMode.SINGLE_USER, val year: Int? = null
     )
 
     data class GenerationResult(
-        val password: String, 
-        val mnemonicHint: String, 
-        val variantName: String,
-        val strength: PasswordGenerator.Strength, 
-        val part1: String?, 
-        val part2: String?,
-        val splitMode: SplitMode, 
-        val explanation: String, 
-        val variantOffset: Int = 0 // Добавлено для совместимости с UI
+        val password: String, val mnemonicHint: String, val variantName: String,
+        val strength: PasswordGenerator.Strength, val part1: String?, val part2: String?,
+        val splitMode: SplitMode, val explanation: String, val variantOffset: Int = 0
     )
 
-    private val leetMap = mapOf(
-        'а' to "@", 'a' to "@", 'о' to "0", 'o' to "0", 'т' to "7", 't' to "7",
-        'ч' to "4", 'с' to "$", 's' to "$", 'и' to "1", 'i' to "1", 'й' to "1",
-        'б' to "6", 'b' to "6", 'л' to "!", 'l' to "!"
-    )
+    private val leetMap = mapOf('а' to "@", 'a' to "@", 'о' to "0", 'o' to "0", 'т' to "7", 't' to "7", 'ч' to "4", 'с' to "$", 's' to "$", 'и' to "1", 'i' to "1", 'й' to "1", 'б' to "6", 'b' to "6", 'л' to "!", 'l' to "!")
 
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
@@ -42,27 +25,24 @@ object MnemonicPasswordGenerator {
         
         val hasService = serviceMarker.isNotEmpty()
         val hasYear = yearMarker.isNotEmpty()
-        val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0)
+        val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2 // %8 + #5 или #5
+        val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
         val baseLength = options.targetLength - overhead
 
         if (baseLength < 4) return emptyList()
 
         val words1 = options.phrase.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
-        if (words1.isEmpty()) return emptyList()
-
         val words2 = if (options.splitMode == SplitMode.TWO_USERS) {
-            val p2 = options.phrase2 ?: options.phrase // Fallback для совместимости
+            val p2 = options.phrase2 ?: options.phrase
             p2.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
         } else emptyList()
 
-        if (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty()) return emptyList()
+        if (words1.isEmpty() || (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty())) return emptyList()
 
         for (variantIndex in 0 until count) {
             val usedChars = mutableSetOf<Char>()
             var password = ""
-            var explanation = "Фраза: ${options.phrase}"
-            if (options.splitMode == SplitMode.TWO_USERS) explanation += " / ${options.phrase2}"
-            explanation += "\n"
+            var explanation = "Фраза: ${options.phrase}\n"
 
             if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
                 password += serviceMarker
@@ -71,52 +51,45 @@ object MnemonicPasswordGenerator {
             }
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5")
-                if (base == null) continue
+                val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
                 password += base.first
                 explanation += base.second
                 if (!usedChars.contains('#') && !usedChars.contains('5')) {
-                    password += "#5"
-                    usedChars.add('#'); usedChars.add('5')
+                    password += "#5"; usedChars.add('#'); usedChars.add('5')
                     explanation += "Резерв AMPG: #5\n"
                 }
             } else {
                 val halfLen = baseLength / 2
-                val base1 = buildBase(words1, halfLen, usedChars, variantIndex, "%8")
-                val base2 = buildBase(words2, baseLength - halfLen, usedChars, variantIndex, "#5")
-                if (base1 == null || base2 == null) continue
+                val base1 = buildBase(words1, halfLen, usedChars, variantIndex) ?: continue
+                val base2 = buildBase(words2, baseLength - halfLen, usedChars, variantIndex + 100) ?: continue
                 
                 password += base1.first
                 explanation += "Часть 1: ${base1.second}"
                 if (!usedChars.contains('%') && !usedChars.contains('8')) {
-                    password += "%8"
-                    usedChars.add('%'); usedChars.add('8')
+                    password += "%8"; usedChars.add('%'); usedChars.add('8')
                     explanation += "Резерв 1: %8\n"
                 }
                 
                 password += base2.first
                 explanation += "Часть 2: ${base2.second}"
                 if (!usedChars.contains('#') && !usedChars.contains('5')) {
-                    password += "#5"
-                    usedChars.add('#'); usedChars.add('5')
+                    password += "#5"; usedChars.add('#'); usedChars.add('5')
                     explanation += "Резерв 2: #5\n"
                 }
             }
 
             if (hasYear) {
-                val y1 = yearMarker.first()
-                val y2 = yearMarker.last()
+                val y1 = yearMarker.first(); val y2 = yearMarker.last()
                 if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
-                    password += yearMarker
-                    usedChars.add(y1); usedChars.add(y2)
+                    password += yearMarker; usedChars.add(y1); usedChars.add(y2)
                     explanation += "Год: $yearMarker\n"
                 }
             }
 
             if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
                 results.add(GenerationResult(
-                    password = password, mnemonicHint = options.phrase.take(30),
-                    variantName = "Вариант ${variantIndex + 1}", strength = calculateStrength(password),
+                    password = password, mnemonicHint = options.phrase.take(30), variantName = "Вариант ${variantIndex + 1}",
+                    strength = PasswordGenerator.Strength.VERY_STRONG,
                     part1 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(0, password.length / 2) else null,
                     part2 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(password.length / 2) else null,
                     splitMode = options.splitMode, explanation = explanation, variantOffset = variantIndex
@@ -126,7 +99,7 @@ object MnemonicPasswordGenerator {
         return results
     }
 
-    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantIndex: Int, reserve: String): Pair<String, String>? {
+    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
         val result = StringBuilder()
         val explanation = StringBuilder()
         val charsPerWord = targetLen / words.size
@@ -140,11 +113,8 @@ object MnemonicPasswordGenerator {
             var anchorFound = false
             for (c in translit) {
                 if (!usedChars.contains(c.lowercaseChar())) {
-                    result.append(c.uppercaseChar())
-                    usedChars.add(c.lowercaseChar())
-                    explanation.append("${c.uppercaseChar()} (якорь)")
-                    anchorFound = true
-                    break
+                    result.append(c.uppercaseChar()); usedChars.add(c.lowercaseChar())
+                    explanation.append("${c.uppercaseChar()}(якорь)"); anchorFound = true; break
                 }
             }
             if (!anchorFound) return null
@@ -162,20 +132,12 @@ object MnemonicPasswordGenerator {
                 }
                 
                 if (!usedChars.contains(chosen)) {
-                    result.append(chosen)
-                    usedChars.add(chosen)
-                    explanation.append(chosen)
+                    result.append(chosen); usedChars.add(chosen); explanation.append(chosen)
                 }
                 pos++
             }
             explanation.append(" ")
         }
-        
-        if (result.length > targetLen) {
-            val diff = result.length - targetLen
-            result.delete(result.length - diff, result.length)
-        }
-        
         return Pair(result.toString(), explanation.toString())
     }
 
@@ -190,16 +152,12 @@ object MnemonicPasswordGenerator {
     }
 
     private fun checkPart(part: String): Boolean {
-        return part.count { it.isUpperCase() } >= 2 &&
-               part.count { it.isLowerCase() } >= 2 &&
-               part.count { it.isDigit() } >= 2 &&
-               part.count { !it.isLetterOrDigit() } >= 2
+        return part.count { it.isUpperCase() } >= 2 && part.count { it.isLowerCase() } >= 2 &&
+               part.count { it.isDigit() } >= 2 && part.count { !it.isLetterOrDigit() } >= 2
     }
 
     private fun transliterate(text: String): String {
         val map = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
         return text.map { map[it] ?: it.toString() }.joinToString("")
     }
-
-    private fun calculateStrength(password: String): PasswordGenerator.Strength = PasswordGenerator.Strength.VERY_STRONG
 }
