@@ -68,15 +68,16 @@ private fun RandomGeneratorContent(context: android.content.Context, onGenerated
 private fun TwoPartGeneratorContent(context: android.content.Context, onGenerated: (String, String?, String) -> Unit) {
     var length by remember { mutableIntStateOf(16) }
     var pwd by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(length) {
         val res = PasswordGenerator.generateTwoPart(length, true, true, true, context)
         pwd = res?.password ?: ""
-        error = if (res == null) "Не удалось сгенерировать валидный пароль. Попробуйте другую длину." else null
+        errorMsg = if (res == null) "Не удалось сгенерировать валидный пароль. Попробуйте другую длину." else null
     }
     
-    if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    val currentError = errorMsg
+    if (currentError != null) Text(currentError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     if (pwd.isNotEmpty()) {
         val half = length / 2
         Text("${pwd.substring(0, half)} / ${pwd.substring(half)}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
