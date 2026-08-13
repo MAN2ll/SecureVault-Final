@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.securevault.data.Entry
 import com.securevault.data.VaultRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -25,11 +26,15 @@ class RotationNotificationWorker(
         if (!prefs.getBoolean("notifications_rotation_enabled", false)) return Result.success()
 
         val entryPoint = EntryPointAccessors.fromApplication(applicationContext, VaultRepositoryEntryPoint::class.java)
-        val repository = entryPoint.vaultRepository()
+        val repository = entryPoint.vaultRepository 
         
         val now = System.currentTimeMillis()
         val entries = repository.allEntries.first()
-        val expiredEntries = entries.filter { entry -> entry.rotationEnabled && (entry.nextRotationDate ?: Long.MAX_VALUE) <= now }
+        
+        // явное указание типа entry: Entry
+        val expiredEntries = entries.filter { entry: Entry -> 
+            entry.rotationEnabled && (entry.nextRotationDate ?: Long.MAX_VALUE) <= now 
+        }
 
         if (expiredEntries.isNotEmpty()) {
             showNotification(expiredEntries.size, expiredEntries.first().service)
