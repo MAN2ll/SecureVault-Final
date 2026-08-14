@@ -26,7 +26,7 @@ object MnemonicPasswordGenerator {
         val yearMarker = if (options.addYearMarker) (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: "" else ""
         
         val hasService = serviceMarker.isNotEmpty()
-        val hasYear = yearMarker.isNotEmpty() && yearMarker.first() != yearMarker.last() // Запрет 2022 -> 22
+        val hasYear = yearMarker.isNotEmpty() && yearMarker.first() != yearMarker.last()
         
         val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2
         val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
@@ -87,7 +87,7 @@ object MnemonicPasswordGenerator {
                     password += yearMarker; usedChars.add(y1); usedChars.add(y2)
                     explanation += "Год: $yearMarker\n"
                 } else {
-                    continue // Не удалось добавить год без повторов, пробуем следующий variantOffset
+                    continue
                 }
             }
 
@@ -141,7 +141,7 @@ object MnemonicPasswordGenerator {
                 
                 if (!usedChars.contains(chosen)) {
                     result.append(chosen); usedChars.add(chosen); explanation.append(chosen)
-                    if (leetKey == "ch") pos++ // Пропускаем 'h'
+                    if (leetKey == "ch") pos++
                 }
                 pos++
             }
