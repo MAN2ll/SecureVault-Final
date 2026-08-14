@@ -31,7 +31,6 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
-    // Таблица транслитерации
     private val translitMap = mapOf(
         'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
         'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i",
@@ -42,7 +41,7 @@ object MnemonicPasswordGenerator {
         'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // Таблица замен с НЕСКОЛЬКИМИ вариантами для каждой буквы
+    // Таблица замен с НЕСКОЛЬКИМИ вариантами
     private val leetMap = mapOf(
         "a" to listOf("@", "4"),
         "o" to listOf("0", "9"),
@@ -54,7 +53,6 @@ object MnemonicPasswordGenerator {
         "b" to listOf("6", "8")
     )
 
-    // Список слабых фраз
     private val weakPhrases = setOf(
         "мама мыла раму", "ма мыла раму", "я люблю тебя",
         "мой пароль", "пароль от сайта", "qwerty", "password"
@@ -63,12 +61,10 @@ object MnemonicPasswordGenerator {
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         
-        // Проверка на слабую фразу
         if (options.phrase.lowercase().trim() in weakPhrases) {
-            return emptyList() // Вернём пустой список, UI покажет сообщение
+            return emptyList()
         }
         
-        // Маркеры
         val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.first().uppercaseChar().toString()
         } else ""
@@ -81,14 +77,12 @@ object MnemonicPasswordGenerator {
         val hasService = serviceMarker.isNotEmpty()
         val hasYear = yearMarker.isNotEmpty()
         
-        // Резервы
         val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2
         val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
         val baseLength = options.targetLength - overhead
 
         if (baseLength < 4) return emptyList()
 
-        // Разбиение на слова
         val words1 = options.phrase.lowercase()
             .replace(Regex("[^а-яёa-z\\s]"), "")
             .split(Regex("\\s+"))
@@ -105,14 +99,12 @@ object MnemonicPasswordGenerator {
         if (words1.isEmpty()) return emptyList()
         if (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty()) return emptyList()
 
-        // Генерация 3 вариантов с РАЗНЫМИ стратегиями
         for (variantIndex in 0 until count) {
             val usedChars = mutableSetOf<Char>()
             var password = ""
             var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                // SINGLE_USER: строим весь пароль целиком
                 if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
                     password += serviceMarker
                     usedChars.add(serviceMarker.first().lowercaseChar())
@@ -157,11 +149,9 @@ object MnemonicPasswordGenerator {
                     ))
                 }
             } else {
-                // TWO_USERS: строим ДВЕ ПОЛОВИНЫ ОТДЕЛЬНО
                 val part1Len = options.targetLength / 2
                 val part2Len = options.targetLength - part1Len
                 
-                // Часть 1: serviceMarker + base1 + %8
                 var part1 = ""
                 if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
                     part1 += serviceMarker
@@ -169,7 +159,7 @@ object MnemonicPasswordGenerator {
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
                 
-                val base1Len = part1Len - (if (hasService) 1 else 0) - 2 // 2 для %8
+                val base1Len = part1Len - (if (hasService) 1 else 0) - 2
                 val base1 = buildBase(words1, base1Len, usedChars, variantIndex, "%8") ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
@@ -181,7 +171,6 @@ object MnemonicPasswordGenerator {
                     explanation += "Резерв 1: %8\n"
                 }
                 
-                // Часть 2: base2 + #5 + yearMarker
                 var part2 = ""
                 val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
                 val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100, "#5") ?: continue
@@ -257,7 +246,6 @@ object MnemonicPasswordGenerator {
             val translit = transliterateWord(word)
             if (translit.isEmpty()) return null
 
-            // Находим якорь
             var anchorFound = false
             for (c in translit) {
                 if (!usedChars.contains(c.lowercaseChar())) {
@@ -270,7 +258,6 @@ object MnemonicPasswordGenerator {
             }
             if (!anchorFound) return null
 
-            // Обрабатываем остальные символы
             var pos = 1
             val targetLength = if (wIndex == words.lastIndex) targetLen 
                               else (wIndex + 1) * charsPerWord + minOf(wIndex + 1, remainder)
@@ -279,65 +266,52 @@ object MnemonicPasswordGenerator {
                 val c = translit[pos]
                 val lowerC = c.lowercaseChar()
                 
-                // Проверяем двухбуквенные последовательности
                 val twoChar = if (pos + 1 < translit.length) "${lowerC}${translit[pos + 1].lowercaseChar()}" else ""
                 
                 var chosen: Char? = null
                 var skipChars = 0
                 
-                // Определяем leet-ключ
                 val leetKey = if (twoChar.length == 2 && leetMap.containsKey(twoChar)) twoChar
                              else lowerC.toString()
                 
                 val replacements = leetMap[leetKey]
                 
-                // СТРАТЕГИЯ ВЫБОРА ЗАМЕНЫ В ЗАВИСИМОСТИ ОТ variantOffset
+                // СТРАТЕГИЯ ВЫБОРА ЗАМЕНЫ
                 when (variantOffset) {
-                    0 -> { // Минимальные замены: только при конфликте
+                    0 -> { // Минимальные замены
                         if (usedChars.contains(lowerC)) {
-                            // Конфликт — используем замену
-                            if (replacements != null && replacements.isNotEmpty()) {
-                                chosen = replacements[0].first()
-                                skipChars = if (leetKey.length == 2) 1 else 0
-                            }
+                            chosen = replacements?.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
                         } else {
-                            // Нет конфликта — используем оригинал
                             chosen = lowerC
                         }
                     }
-                    1 -> { // Средние замены: заменяем гласные
+                    1 -> { // Средние замены (гласные)
                         val isVowel = lowerC in "aeiou"
-                        if (isVowel && replacements != null && replacements.isNotEmpty()) {
-                            chosen = replacements[0].first()
-                            skipChars = if (leetKey.length == 2) 1 else 0
-                        } else if (usedChars.contains(lowerC) && replacements != null && replacements.isNotEmpty()) {
-                            chosen = replacements[0].first()
-                            skipChars = if (leetKey.length == 2) 1 else 0
+                        if (isVowel && replacements != null) {
+                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
+                        } else if (usedChars.contains(lowerC) && replacements != null) {
+                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
                         } else if (!usedChars.contains(lowerC)) {
                             chosen = lowerC
                         }
                     }
-                    2 -> { // Максимальные замены: заменяем всё возможное
-                        if (replacements != null && replacements.isNotEmpty()) {
-                            // Используем вторую замену, если есть, иначе первую
-                            val repIndex = if (replacements.size > 1) 1 else 0
-                            chosen = replacements[repIndex].first()
-                            skipChars = if (leetKey.length == 2) 1 else 0
+                    2 -> { // Максимальные замены
+                        if (replacements != null) {
+                            val options = if (replacements.size > 1) listOf(replacements[1], replacements[0]) else replacements
+                            chosen = options.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
                         } else if (!usedChars.contains(lowerC)) {
                             chosen = lowerC
                         }
                     }
                 }
                 
-                // Проверяем, что выбранный символ не создаёт конфликт
                 if (chosen != null && usedChars.contains(chosen.lowercaseChar())) {
-                    // Пробуем другую замену
                     if (replacements != null && replacements.size > 1) {
                         val altRep = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }
                         if (altRep != null) {
                             chosen = altRep.first()
                         } else {
-                            chosen = null // Не удалось найти подходящую замену
+                            chosen = null
                         }
                     } else {
                         chosen = null
