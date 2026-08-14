@@ -41,7 +41,7 @@ object MnemonicPasswordGenerator {
         'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // Таблица замен с НЕСКОЛЬКИМИ вариантами для каждой буквы
+    // Таблица замен с НЕСКОЛЬКИМИ вариантами
     private val leetMap = mapOf(
         "a" to listOf("@", "4"),
         "o" to listOf("0", "9"),
@@ -61,6 +61,7 @@ object MnemonicPasswordGenerator {
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         
+        // Проверка на слабую фразу
         if (options.phrase.lowercase().trim() in weakPhrases) {
             return emptyList()
         }
@@ -99,6 +100,7 @@ object MnemonicPasswordGenerator {
         if (words1.isEmpty()) return emptyList()
         if (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty()) return emptyList()
 
+        // Генерация 3 вариантов с РАЗНЫМИ стратегиями
         for (variantIndex in 0 until count) {
             val usedChars = mutableSetOf<Char>()
             var password = ""
@@ -149,6 +151,7 @@ object MnemonicPasswordGenerator {
                     ))
                 }
             } else {
+                // TWO_USERS: строим ДВЕ ПОЛОВИНЫ ОТДЕЛЬНО
                 val part1Len = options.targetLength / 2
                 val part2Len = options.targetLength - part1Len
                 
@@ -221,147 +224,4 @@ object MnemonicPasswordGenerator {
         return results
     }
 
-    private fun getStrategyName(variantIndex: Int): String {
-        return when (variantIndex) {
-            0 -> "Минимальные замены (максимально читаемый)"
-            1 -> "Средние замены (баланс)"
-            2 -> "Максимальные замены (больше спецсимволов)"
-            else -> "Стандартный"
-        }
-    }
-
-    private fun buildBase(
-        words: List<String>,
-        targetLen: Int,
-        usedChars: MutableSet<Char>,
-        variantOffset: Int,
-        reserve: String
-    ): Pair<String, String>? {
-        val result = StringBuilder()
-        val explanation = StringBuilder()
-        val charsPerWord = targetLen / words.size
-        var remainder = targetLen % words.size
-
-        for ((wIndex, word) in words.withIndex()) {
-            val translit = transliterateWord(word)
-            if (translit.isEmpty()) return null
-
-            var anchorFound = false
-            for (c in translit) {
-                if (!usedChars.contains(c.lowercaseChar())) {
-                    result.append(c.uppercaseChar())
-                    usedChars.add(c.lowercaseChar())
-                    explanation.append("${c.uppercaseChar()}(якорь)")
-                    anchorFound = true
-                    break
-                }
-            }
-            if (!anchorFound) return null
-
-            var pos = 1
-            val targetLength = if (wIndex == words.lastIndex) targetLen 
-                              else (wIndex + 1) * charsPerWord + minOf(wIndex + 1, remainder)
-            
-            while (result.length < targetLength && pos < translit.length) {
-                val c = translit[pos]
-                val lowerC = c.lowercaseChar()
-                
-                val twoChar = if (pos + 1 < translit.length) "${lowerC}${translit[pos + 1].lowercaseChar()}" else ""
-                
-                var chosen: Char? = null
-                var skipChars = 0
-                
-                val leetKey = if (twoChar.length == 2 && leetMap.containsKey(twoChar)) twoChar
-                             else lowerC.toString()
-                
-                val replacements = leetMap[leetKey]
-                
-                // СТРАТЕГИЯ ВЫБОРА ЗАМЕНЫ
-                when (variantOffset) {
-                    0 -> { // Минимальные замены
-                        if (usedChars.contains(lowerC)) {
-                            chosen = replacements?.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
-                        } else {
-                            chosen = lowerC
-                        }
-                    }
-                    1 -> { // Средние замены (гласные)
-                        val isVowel = lowerC in "aeiou"
-                        if (isVowel && replacements != null) {
-                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
-                        } else if (usedChars.contains(lowerC) && replacements != null) {
-                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
-                        } else if (!usedChars.contains(lowerC)) {
-                            chosen = lowerC
-                        }
-                    }
-                    2 -> { // Максимальные замены
-                        if (replacements != null) {
-                            val options = if (replacements.size > 1) listOf(replacements[1], replacements[0]) else replacements
-                            chosen = options.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
-                        } else if (!usedChars.contains(lowerC)) {
-                            chosen = lowerC
-                        }
-                    }
-                }
-                
-                if (chosen != null && usedChars.contains(chosen.lowercaseChar())) {
-                    if (replacements != null && replacements.size > 1) {
-                        val altRep = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }
-                        if (altRep != null) {
-                            chosen = altRep.first()
-                        } else {
-                            chosen = null
-                        }
-                    } else {
-                        chosen = null
-                    }
-                }
-                
-                if (chosen != null) {
-                    result.append(chosen)
-                    usedChars.add(chosen.lowercaseChar())
-                    explanation.append(chosen)
-                    pos += skipChars + 1
-                } else {
-                    pos++
-                }
-            }
-            explanation.append(" ")
-        }
-        
-        return Pair(result.toString(), explanation.toString())
-    }
-
-    private fun transliterateWord(word: String): String {
-        val result = StringBuilder()
-        var i = 0
-        while (i < word.length) {
-            val c = word[i]
-            val translit = translitMap[c]
-            if (translit != null) {
-                result.append(translit)
-            }
-            i++
-        }
-        return result.toString()
-    }
-
-    private fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
-        val lower = password.lowercase()
-        if (lower.length != lower.toSet().size) return false
-        
-        if (splitMode == SplitMode.TWO_USERS) {
-            val half = password.length / 2
-            return checkPart(password.substring(0, half)) && checkPart(password.substring(half))
-        }
-        return checkPart(password)
-    }
-
-    private fun checkPart(part: String): Boolean {
-        return part.count { it.isUpperCase() } >= 2 &&
-               part.count { it.isLowerCase() } >= 2 &&
-               part.count { it.isDigit() } >= 2 &&
-               part.count { !it.isLetterOrDigit() } >= 2
-    }
-}
+    private fun getStrategyName(variantIndex: Int
