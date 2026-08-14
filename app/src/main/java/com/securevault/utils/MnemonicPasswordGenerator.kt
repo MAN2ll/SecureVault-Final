@@ -41,7 +41,7 @@ object MnemonicPasswordGenerator {
         'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // Таблица замен с НЕСКОЛЬКИМИ вариантами
+    // Таблица замен с НЕСКОЛЬКИМИ вариантами для каждой буквы
     private val leetMap = mapOf(
         "a" to listOf("@", "4"),
         "o" to listOf("0", "9"),
