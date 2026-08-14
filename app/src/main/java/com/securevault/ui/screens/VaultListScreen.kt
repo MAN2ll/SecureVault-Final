@@ -17,11 +17,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.securevault.data.Entry
 import com.securevault.ui.components.LockActionButton
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,9 +51,9 @@ fun VaultListScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showSearchField by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    
-    var showViewDialog by remember { mutableStateOf<Entry?>(null) }
-    var showQrDialog by remember { mutableStateOf<Entry?>(null) }
+    var showViewDialog by remember { mutableStateOf<com.securevault.data.Entry?>(null) }
+    var showQrDialog by remember { mutableStateOf<com.securevault.data.Entry?>(null) }
+    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
 
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
@@ -61,9 +63,7 @@ fun VaultListScreen(
     }
 
     val filteredEntries = remember(entries, searchQuery) {
-        if (searchQuery.isBlank()) entries else entries.filter {
-            it.service.contains(searchQuery, ignoreCase = true) || it.username.contains(searchQuery, ignoreCase = true)
-        }
+        if (searchQuery.isBlank()) entries else entries.filter { it.service.contains(searchQuery, ignoreCase = true) || it.username.contains(searchQuery, ignoreCase = true) }
     }
 
     Scaffold(
@@ -72,16 +72,8 @@ fun VaultListScreen(
                 title = { Text("SecureVault", fontWeight = FontWeight.Bold) },
                 actions = {
                     LockActionButton(onLock = onLock)
-                    
-                    IconButton(onClick = {
-                        showSearchField = !showSearchField
-                        if (!showSearchField) searchQuery = ""
-                    }) {
-                        Icon(if (showSearchField) Icons.Default.Close else Icons.Default.Search, null)
-                    }
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, null)
-                    }
+                    IconButton(onClick = { showSearchField = !showSearchField; if (!showSearchField) searchQuery = "" }) { Icon(if (showSearchField) Icons.Default.Close else Icons.Default.Search, null) }
+                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(text = { Text("Новая запись") }, onClick = { showMenu = false; onNavigateToNewEntry() }, leadingIcon = { Icon(Icons.Default.Add, null) })
                         DropdownMenuItem(text = { Text("Ротация паролей") }, onClick = { showMenu = false; onNavigateToRotation() }, leadingIcon = { Icon(Icons.Default.Schedule, null) })
@@ -95,23 +87,12 @@ fun VaultListScreen(
                 }
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onNavigateToNewEntry) {
-                Icon(Icons.Default.Add, "Добавить запись")
-            }
-        }
+        floatingActionButton = { FloatingActionButton(onClick = onNavigateToNewEntry) { Icon(Icons.Default.Add, "Добавить запись") } }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (showSearchField) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = { Text("Поиск") },
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    singleLine = true
-                )
+                OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("Поиск") }, modifier = Modifier.fillMaxWidth().padding(16.dp), singleLine = true)
             }
-            
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(filteredEntries, key = { it.id }) { entry ->
                     Card(modifier = Modifier.fillMaxWidth().clickable { showViewDialog = entry }) {
@@ -121,6 +102,7 @@ fun VaultListScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Создан: ${dateFormat.format(java.util.Date(entry.createdAt))}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                             }
                             if (entry.rotationEnabled && entry.nextRotationDate != null && entry.nextRotationDate <= System.currentTimeMillis()) {
                                 Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
@@ -133,21 +115,9 @@ fun VaultListScreen(
     }
 
     if (showViewDialog != null && currentProfile != null) {
-        PasswordViewDialog(
-            entry = showViewDialog!!,
-            profile = currentProfile,
-            onDismiss = { showViewDialog = null },
-            onEdit = { onNavigateToEntry(showViewDialog!!.id); showViewDialog = null },
-            onQr = { showQrDialog = showViewDialog; showViewDialog = null },
-            onDelete = { showViewDialog = null }
-        )
+        PasswordViewDialog(entry = showViewDialog!!, profile = currentProfile, onDismiss = { showViewDialog = null }, onEdit = { onNavigateToEntry(showViewDialog!!.id); showViewDialog = null }, onQr = { showQrDialog = showViewDialog; showViewDialog = null }, onDelete = { showViewDialog = null })
     }
-
     if (showQrDialog != null && currentProfile != null) {
-        QrCodeDialog(
-            entry = showQrDialog!!,
-            profile = currentProfile,
-            onDismiss = { showQrDialog = null }
-        )
+        QrCodeDialog(entry = showQrDialog!!, profile = currentProfile, onDismiss = { showQrDialog = null })
     }
 }
