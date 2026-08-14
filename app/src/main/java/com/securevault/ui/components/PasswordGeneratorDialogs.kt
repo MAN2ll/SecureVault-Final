@@ -117,7 +117,7 @@ private fun AnchorGeneratorContent(context: android.content.Context, onGenerated
 
     if (pwd.isNotEmpty()) {
         Text(pwd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-        Text(explanation.replace("\n", "\n"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else if (anchor.length >= 3) {
         Text("Не удалось построить пароль с этим якорем. Выберите другое слово.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     }
