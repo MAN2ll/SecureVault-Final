@@ -13,6 +13,7 @@ import com.securevault.utils.BackupManager
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.ImportMode
 import com.securevault.utils.ImportResult
+import com.securevault.utils.JsonUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,10 +37,33 @@ class VaultViewModel @Inject constructor(
     private val _currentProfileId = MutableStateFlow<Int?>(null)
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
-    val entries = repository.allEntries
+    val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    val profiles = repository.allProfiles
+    val entries: StateFlow<List<Entry>> = combine(
+        allEntries, currentProfileId
+    ) { entries, profileId ->
+        if (profileId != null) {
+            entries.filter { it.profileId == profileId }
+        } else {
+            entries
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val rotationEntries: StateFlow<List<Entry>> = combine(
+        allEntries, currentProfileId
+    ) { entries, profileId ->
+        val filtered = if (profileId != null) {
+            entries.filter { it.profileId == profileId }
+        } else {
+            entries
+        }
+        filtered.filter { it.rotationEnabled && 
+            it.nextRotationDate != null && 
+            it.nextRotationDate <= System.currentTimeMillis() }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val profiles: StateFlow<List<Profile>> = repository.allProfiles
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val currentProfile: StateFlow<Profile?> = combine(
@@ -63,81 +87,238 @@ class VaultViewModel @Inject constructor(
     }
 
     fun findEntryById(entryId: String): Entry? {
-        return entries.value.find { it.id == entryId }
+        return allEntries.value.find { it.id == entryId }
     }
 
-    fun addEntry(entry: Entry) {
+    fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
-            repository.insertEntry(entry)
+            try {
+                repository.insertEntry(entry)
+                onResult(PasswordOperationResult.Success("Запись добавлена"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun updateEntry(entry: Entry) {
+    fun updateEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
-            repository.updateEntry(entry)
+            try {
+                repository.updateEntry(entry)
+                onResult(PasswordOperationResult.Success("Запись обновлена"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun deleteEntry(entryId: String) {
+    fun deleteEntry(entryId: String, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
-            repository.deleteEntry(entryId)
+            try {
+                repository.deleteEntry(entryId)
+                onResult(PasswordOperationResult.Success("Запись удалена"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun toggleFavorite(entryId: String) {
+    fun addToPasswordHistory(
+        entry: Entry,
+        oldEncryptedPassword: String?,
+        type: String,
+        relatedService: String? = null,
+        onResult: (PasswordOperationResult) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val current = entries.value.find { it.id == entryId } ?: return@launch
-            repository.updateEntry(current.copy(isFavorite = !current.isFavorite))
-        }
-    }
-
-    fun addPasswordToHistory(entry: Entry, oldEncryptedPassword: String?, type: String, relatedService: String? = null) {
-        viewModelScope.launch {
-            val history = entry.getPasswordHistory().toMutableList()
-            history.add(
-                PasswordHistoryItem(
-                    date = System.currentTimeMillis(),
-                    encryptedOldPassword = oldEncryptedPassword,
-                    type = type,
-                    relatedService = relatedService
+            try {
+                val history = entry.getPasswordHistory().toMutableList()
+                history.add(
+                    PasswordHistoryItem(
+                        date = System.currentTimeMillis(),
+                        encryptedOldPassword = oldEncryptedPassword,
+                        type = type,
+                        relatedService = relatedService
+                    )
                 )
-            )
-            val updated = entry.copy(
-                passwordHistoryJson = com.securevault.utils.JsonUtils.toJson(history),
-                lastChanged = System.currentTimeMillis()
-            )
-            repository.updateEntry(updated)
+                val updated = entry.copy(
+                    passwordHistoryJson = JsonUtils.toJson(history),
+                    lastChanged = System.currentTimeMillis()
+                )
+                repository.updateEntry(updated)
+                onResult(PasswordOperationResult.Success())
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun addProfile(profile: Profile) {
+    fun replacePassword(
+        entry: Entry,
+        newPassword: String,
+        generationType: String,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
         viewModelScope.launch {
-            repository.insertProfile(profile)
+            try {
+                val oldEncrypted = entry.password
+                val newEncrypted = withContext(Dispatchers.Default) {
+                    CryptoUtils.encrypt(newPassword)
+                }
+                
+                val history = entry.getPasswordHistory().toMutableList()
+                history.add(
+                    PasswordHistoryItem(
+                        date = System.currentTimeMillis(),
+                        encryptedOldPassword = oldEncrypted,
+                        type = generationType,
+                        relatedService = null
+                    )
+                )
+                
+                val updated = entry.copy(
+                    password = newEncrypted,
+                    passwordHistoryJson = JsonUtils.toJson(history),
+                    lastChanged = System.currentTimeMillis()
+                )
+                repository.updateEntry(updated)
+                onResult(PasswordOperationResult.Success("Пароль заменён"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun updateProfile(profile: Profile) {
+    fun applyManagedShuffle(
+        entries: List<Entry>,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
         viewModelScope.launch {
-            repository.updateProfile(profile)
+            try {
+                for (entry in entries) {
+                    val oldEncrypted = entry.password
+                    val newEncrypted = withContext(Dispatchers.Default) {
+                        CryptoUtils.encrypt(CryptoUtils.decrypt(oldEncrypted))
+                    }
+                    
+                    val history = entry.getPasswordHistory().toMutableList()
+                    history.add(
+                        PasswordHistoryItem(
+                            date = System.currentTimeMillis(),
+                            encryptedOldPassword = oldEncrypted,
+                            type = "shuffle",
+                            relatedService = null
+                        )
+                    )
+                    
+                    val updated = entry.copy(
+                        password = newEncrypted,
+                        passwordHistoryJson = JsonUtils.toJson(history),
+                        lastChanged = System.currentTimeMillis()
+                    )
+                    repository.updateEntry(updated)
+                }
+                onResult(PasswordOperationResult.Success("Пароли обновлены"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun deleteProfile(profileId: Int) {
+    fun bulkReplacePasswords(
+        replacements: List<BulkPasswordReplacement>,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
         viewModelScope.launch {
-            repository.deleteProfile(profileId)
+            try {
+                val currentEntries = allEntries.value
+                for (replacement in replacements) {
+                    val entry = currentEntries.find { it.id == replacement.entryId } ?: continue
+                    val oldEncrypted = entry.password
+                    
+                    val newEncrypted = withContext(Dispatchers.Default) {
+                        CryptoUtils.encrypt(replacement.newPassword)
+                    }
+                    
+                    val history = entry.getPasswordHistory().toMutableList()
+                    history.add(
+                        PasswordHistoryItem(
+                            date = System.currentTimeMillis(),
+                            encryptedOldPassword = oldEncrypted,
+                            type = replacement.generationType,
+                            relatedService = null
+                        )
+                    )
+                    
+                    val updated = entry.copy(
+                        password = newEncrypted,
+                        passwordHistoryJson = JsonUtils.toJson(history),
+                        lastChanged = System.currentTimeMillis(),
+                        textHint = replacement.textHint ?: entry.textHint,
+                        mnemonicPhraseHint = replacement.mnemonicPhraseHint ?: entry.mnemonicPhraseHint,
+                        mnemonicOptionsJson = replacement.mnemonicOptionsJson ?: entry.mnemonicOptionsJson
+                    )
+                    repository.updateEntry(updated)
+                }
+                onResult(PasswordOperationResult.Success("Пароли заменены"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
-    fun setProfilePin(profileId: Int, pin: String) {
+    fun addProfile(profile: Profile, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
-            val profile = profiles.value.find { it.id == profileId } ?: return@launch
-            val hashResult = ProfilePasswordHasher.hash(pin)
-            val updated = profile.copy(
-                pinHash = hashResult.hash,
-                pinSalt = hashResult.salt,
-                pinIterations = hashResult.iterations
-            )
-            repository.updateProfile(updated)
+            try {
+                repository.insertProfile(profile)
+                onResult(PasswordOperationResult.Success("Профиль добавлен"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    fun updateProfile(profile: Profile, onResult: (PasswordOperationResult) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repository.updateProfile(profile)
+                onResult(PasswordOperationResult.Success())
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    fun deleteProfile(profileId: Int, onResult: (PasswordOperationResult) -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.deleteProfile(profileId)
+                onResult(PasswordOperationResult.Success("Профиль удалён"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    fun setProfilePin(
+        profileId: Int,
+        pin: String,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val profile = profiles.value.find { it.id == profileId } ?: return@launch
+                val hashResult = ProfilePasswordHasher.hash(pin)
+                val updated = profile.copy(
+                    pinHash = hashResult.hash,
+                    pinSalt = hashResult.salt,
+                    pinIterations = hashResult.iterations
+                )
+                repository.updateProfile(updated)
+                onResult(PasswordOperationResult.Success("PIN установлен"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
         }
     }
 
@@ -147,40 +328,6 @@ class VaultViewModel @Inject constructor(
         val salt = profile.pinSalt ?: return false
         val iterations = profile.pinIterations
         return ProfilePasswordHasher.verify(pin, hash, salt, iterations)
-    }
-
-    fun bulkReplacePasswords(replacements: List<BulkPasswordReplacement>) {
-        viewModelScope.launch {
-            val currentEntries = entries.value
-            for (replacement in replacements) {
-                val entry = currentEntries.find { it.id == replacement.entryId } ?: continue
-                val oldEncrypted = entry.password
-                
-                val newEncrypted = withContext(Dispatchers.Default) {
-                    CryptoUtils.encrypt(replacement.newPassword)
-                }
-                
-                val history = entry.getPasswordHistory().toMutableList()
-                history.add(
-                    PasswordHistoryItem(
-                        date = System.currentTimeMillis(),
-                        encryptedOldPassword = oldEncrypted,
-                        type = replacement.generationType,
-                        relatedService = null
-                    )
-                )
-                
-                val updated = entry.copy(
-                    password = newEncrypted,
-                    passwordHistoryJson = com.securevault.utils.JsonUtils.toJson(history),
-                    lastChanged = System.currentTimeMillis(),
-                    textHint = replacement.textHint ?: entry.textHint,
-                    mnemonicPhraseHint = replacement.mnemonicPhraseHint ?: entry.mnemonicPhraseHint,
-                    mnemonicOptionsJson = replacement.mnemonicOptionsJson ?: entry.mnemonicOptionsJson
-                )
-                repository.updateEntry(updated)
-            }
-        }
     }
 
     suspend fun exportAllProfiles(): BackupData {
