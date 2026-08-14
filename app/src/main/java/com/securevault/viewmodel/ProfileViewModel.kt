@@ -21,11 +21,7 @@ class ProfileViewModel @Inject constructor(
 ) : AndroidViewModel(application) {
 
     val profiles: StateFlow<List<Profile>> = repository.allProfiles
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun insertProfile(name: String, pin: String?, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
@@ -51,7 +47,7 @@ class ProfileViewModel @Inject constructor(
                     profileAccessMode = accessMode
                 )
                 repository.insertProfile(profile)
-                onResult(PasswordOperationResult.Success)
+                onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
@@ -62,20 +58,12 @@ class ProfileViewModel @Inject constructor(
         return ProfilePasswordHasher.verify(pin, profile.passwordHash, profile.passwordSalt)
     }
 
-    fun hasEntriesInProfile(profileId: Int, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val entries = repository.getByProfileId(profileId)
-            onResult(entries.isNotEmpty())
-        }
-    }
-
     fun updateProfile(profile: Profile) {
         viewModelScope.launch {
             repository.updateProfile(profile)
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: Обновляем и passwordAccessMode, и profileAccessMode
     fun setProfilePin(profile: Profile, newPin: String, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
@@ -88,7 +76,7 @@ class ProfileViewModel @Inject constructor(
                     passwordAccessMode = AccessMode.PIN_REQUIRED.value,
                     profileAccessMode = AccessMode.PIN_REQUIRED.value
                 ))
-                onResult(PasswordOperationResult.Success)
+                onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
@@ -104,7 +92,7 @@ class ProfileViewModel @Inject constructor(
                     passwordAccessMode = AccessMode.NO_CONFIRMATION.value,
                     profileAccessMode = AccessMode.NO_CONFIRMATION.value
                 ))
-                onResult(PasswordOperationResult.Success)
+                onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
@@ -120,7 +108,7 @@ class ProfileViewModel @Inject constructor(
                 }
                 
                 repository.updateProfile(profile.copy(profileAccessMode = mode.value))
-                onResult(PasswordOperationResult.Success)
+                onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
@@ -138,7 +126,7 @@ class ProfileViewModel @Inject constructor(
                     return@launch
                 }
                 repository.deleteProfile(profileId)
-                onResult(PasswordOperationResult.Success)
+                onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
