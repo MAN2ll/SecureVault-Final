@@ -407,11 +407,6 @@ class VaultViewModel @Inject constructor(
         return BackupManager.importBackup(repository, backupData, mode, newPin, appContext)
     }
 
-    fun scheduleRotationCheck(context: Context) {
-        val constraints = Constraints.Builder()
-            .setRequiresBatteryNotLow(true)
-            .build()
-
         val workRequest = PeriodicWorkRequestBuilder<RotationCheckWorker>(
             1, TimeUnit.DAYS
         )
