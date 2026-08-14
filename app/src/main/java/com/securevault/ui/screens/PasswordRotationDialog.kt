@@ -14,21 +14,25 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.securevault.data.Entry
 import com.securevault.utils.MnemonicPasswordGenerator
-import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordRotationDialog(
-    onDismiss: () -> Unit,
-    onGenerated: (String, String?, String) -> Unit,
-    initialServiceName: String = ""
+    currentEntryId: String,
+    serviceName: String,
+    currentHint: String?,
+    generationType: String,
+    rotationMonth: Int?,
+    rotationYear: Int?,
+    allProfileEntries: List<Entry>,
+    onPasswordReplaced: (entryId: String, newHint: String?, newGenerationType: String, newMnemonicPhraseHint: String?, newMnemonicOptionsJson: String?) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var phrase1 by remember { mutableStateOf("") }
+    var phrase1 by remember { mutableStateOf(currentHint ?: "") }
     var phrase2 by remember { mutableStateOf("") }
     var isTwoUsers by remember { mutableStateOf(false) }
-    var serviceName by remember { mutableStateOf(initialServiceName) }
-    var year by remember { mutableStateOf("") }
     var length by remember { mutableIntStateOf(16) }
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
@@ -39,13 +43,12 @@ fun PasswordRotationDialog(
 
     val context = LocalContext.current
 
-    LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length, addService, addYear) {
-        val y = year.toIntOrNull()
+    LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, length, addService, addYear) {
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1,
             phrase2 = if (isTwoUsers) phrase2 else null,
             serviceName = serviceName,
-            year = y,
+            year = rotationYear,
             targetLength = length,
             splitMode = if (isTwoUsers) MnemonicPasswordGenerator.SplitMode.TWO_USERS else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
             addServiceMarker = addService,
@@ -62,7 +65,7 @@ fun PasswordRotationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ротация паролей (AMPG)", fontWeight = FontWeight.Bold) },
+        title = { Text("Ротация пароля (AMPG)", fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
@@ -132,10 +135,13 @@ fun PasswordRotationDialog(
             Button(
                 onClick = {
                     if (selectedIdx >= 0) {
-                        onGenerated(
-                            variants[selectedIdx].password,
-                            variants[selectedIdx].mnemonicHint,
-                            "mnemonic"
+                        val res = variants[selectedIdx]
+                        onPasswordReplaced(
+                            currentEntryId,
+                            res.mnemonicHint,
+                            "mnemonic",
+                            res.mnemonicHint,
+                            """{"targetLength":$length,"algorithmName":"AMPG v2"}"""
                         )
                     }
                 },
