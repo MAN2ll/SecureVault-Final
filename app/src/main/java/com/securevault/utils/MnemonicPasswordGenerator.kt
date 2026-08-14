@@ -87,7 +87,7 @@ object MnemonicPasswordGenerator {
                     password += yearMarker; usedChars.add(y1); usedChars.add(y2)
                     explanation += "Год: $yearMarker\n"
                 } else {
-                    continue
+                    continue // Не удалось добавить год без повторов, пробуем следующий variantOffset
                 }
             }
 
@@ -134,6 +134,7 @@ object MnemonicPasswordGenerator {
                 val replacement = leetMap[leetKey]
                 
                 if (replacement != null) {
+                    // ✅ variantOffset сдвигает выбор замены, гарантируя разные варианты!
                     val repIndex = (variantOffset + pos) % replacement.length
                     val repChar = replacement[repIndex]
                     if (!usedChars.contains(repChar)) chosen = repChar
@@ -141,7 +142,7 @@ object MnemonicPasswordGenerator {
                 
                 if (!usedChars.contains(chosen)) {
                     result.append(chosen); usedChars.add(chosen); explanation.append(chosen)
-                    if (leetKey == "ch") pos++
+                    if (leetKey == "ch") pos++ // Пропускаем 'h'
                 }
                 pos++
             }
