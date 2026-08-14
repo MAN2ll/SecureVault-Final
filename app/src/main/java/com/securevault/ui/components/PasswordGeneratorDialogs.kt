@@ -94,14 +94,26 @@ private fun AnchorGeneratorContent(context: android.content.Context, onGenerated
     var length by remember { mutableIntStateOf(16) }
     var pwd by remember { mutableStateOf("") }
     var explanation by remember { mutableStateOf("") }
+    var addService by remember { mutableStateOf(false) }
+    var addYear by remember { mutableStateOf(false) }
+    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     
-    LaunchedEffect(anchor, length) {
-        val res = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context)
+    LaunchedEffect(anchor, length, addService, addYear) {
+        val res = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context, addService, initialService, addYear, currentYear)
         pwd = res?.password ?: ""
         explanation = res?.explanation ?: ""
     }
     
     OutlinedTextField(value = anchor, onValueChange = { anchor = it }, label = { Text("Якорное слово") })
+    Row {
+        Checkbox(checked = addService, onCheckedChange = { addService = it })
+        Text("Добавить сервис ($initialService) в начало", modifier = Modifier.padding(top = 8.dp))
+    }
+    Row {
+        Checkbox(checked = addYear, onCheckedChange = { addYear = it })
+        Text("Добавить год ($currentYear) в конец", modifier = Modifier.padding(top = 8.dp))
+    }
+
     if (pwd.isNotEmpty()) {
         Text(pwd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
         Text(explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -123,16 +135,19 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
     var serviceName by remember { mutableStateOf(initialService) }
     var year by remember { mutableStateOf("") }
     var length by remember { mutableIntStateOf(16) }
+    var addService by remember { mutableStateOf(false) }
+    var addYear by remember { mutableStateOf(false) }
     
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedIdx by remember { mutableIntStateOf(-1) }
 
-    LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length) {
+    LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length, addService, addYear) {
         val y = year.toIntOrNull()
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1, phrase2 = if (isTwoUsers) phrase2 else null,
             serviceName = serviceName, year = y, targetLength = length,
-            splitMode = if (isTwoUsers) MnemonicPasswordGenerator.SplitMode.TWO_USERS else MnemonicPasswordGenerator.SplitMode.SINGLE_USER
+            splitMode = if (isTwoUsers) MnemonicPasswordGenerator.SplitMode.TWO_USERS else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
+            addServiceMarker = addService, addYearMarker = addYear
         )
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
@@ -147,8 +162,10 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
     if (isTwoUsers) OutlinedTextField(value = phrase2, onValueChange = { phrase2 = it }, label = { Text("Фраза 2") }, modifier = Modifier.fillMaxWidth())
     
     Row {
-        OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text("Сервис (маркер)") }, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = year, onValueChange = { year = it }, label = { Text("Год (маркер)") }, modifier = Modifier.weight(1f))
+        Checkbox(checked = addService, onCheckedChange = { addService = it })
+        Text("Сервис", modifier = Modifier.padding(top = 8.dp))
+        Checkbox(checked = addYear, onCheckedChange = { addYear = it })
+        Text("Год", modifier = Modifier.padding(top = 8.dp))
     }
 
     if (variants.isEmpty() && phrase1.length >= 4) {
