@@ -53,4 +53,313 @@ object MnemonicPasswordGenerator {
     )
 
     private val weakPhrases = setOf(
-        "мама мы
+        "мама мыла раму", "ма мыла раму", "я люблю тебя",
+        "мой пароль", "пароль от сайта", "qwerty", "password"
+    )
+
+    fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
+        val results = mutableListOf<GenerationResult>()
+        
+        if (options.phrase.lowercase().trim() in weakPhrases) {
+            return emptyList()
+        }
+        
+        val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
+            options.serviceName.first().uppercaseChar().toString()
+        } else ""
+        
+        val yearMarker = if (options.addYearMarker) {
+            val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
+            if (y.length == 2 && y[0] != y[1]) y else ""
+        } else ""
+        
+        val hasService = serviceMarker.isNotEmpty()
+        val hasYear = yearMarker.isNotEmpty()
+        
+        val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2
+        val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
+        val baseLength = options.targetLength - overhead
+
+        if (baseLength < 4) return emptyList()
+
+        val words1 = options.phrase.lowercase()
+            .replace(Regex("[^а-яёa-z\\s]"), "")
+            .split(Regex("\\s+"))
+            .filter { it.length >= 2 }
+            
+        val words2 = if (options.splitMode == SplitMode.TWO_USERS) {
+            val p2 = options.phrase2 ?: ""
+            p2.lowercase()
+                .replace(Regex("[^а-яёa-z\\s]"), "")
+                .split(Regex("\\s+"))
+                .filter { it.length >= 2 }
+        } else emptyList()
+
+        if (words1.isEmpty()) return emptyList()
+        if (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty()) return emptyList()
+
+        for (variantIndex in 0 until count) {
+            val usedChars = mutableSetOf<Char>()
+            var password = ""
+            var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
+
+            if (options.splitMode == SplitMode.SINGLE_USER) {
+                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
+                    password += serviceMarker
+                    usedChars.add(serviceMarker.first().lowercaseChar())
+                    explanation += "Сервис: $serviceMarker\n"
+                }
+
+                val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5") ?: continue
+                password += base.first
+                explanation += base.second
+                
+                if (!usedChars.contains('#') && !usedChars.contains('5')) {
+                    password += "#5"
+                    usedChars.add('#')
+                    usedChars.add('5')
+                    explanation += "Резерв AMPG: #5\n"
+                }
+
+                if (hasYear) {
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
+                        password += yearMarker
+                        usedChars.add(y1)
+                        usedChars.add(y2)
+                        explanation += "Год: $yearMarker\n"
+                    } else {
+                        continue
+                    }
+                }
+
+                if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
+                    results.add(GenerationResult(
+                        password = password,
+                        mnemonicHint = options.phrase.take(30),
+                        variantName = "Вариант ${variantIndex + 1}",
+                        strength = PasswordGenerator.Strength.VERY_STRONG,
+                        part1 = null,
+                        part2 = null,
+                        splitMode = options.splitMode,
+                        explanation = explanation,
+                        variantOffset = variantIndex
+                    ))
+                }
+            } else {
+                val part1Len = options.targetLength / 2
+                val part2Len = options.targetLength - part1Len
+                
+                var part1 = ""
+                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
+                    part1 += serviceMarker
+                    usedChars.add(serviceMarker.first().lowercaseChar())
+                    explanation += "Сервис: $serviceMarker (часть 1)\n"
+                }
+                
+                val base1Len = part1Len - (if (hasService) 1 else 0) - 2
+                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, "%8") ?: continue
+                part1 += base1.first
+                explanation += "Часть 1 основа: ${base1.second}\n"
+                
+                if (!usedChars.contains('%') && !usedChars.contains('8')) {
+                    part1 += "%8"
+                    usedChars.add('%')
+                    usedChars.add('8')
+                    explanation += "Резерв 1: %8\n"
+                }
+                
+                var part2 = ""
+                val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100, "#5") ?: continue
+                part2 += base2.first
+                explanation += "Часть 2 основа: ${base2.second}\n"
+                
+                if (!usedChars.contains('#') && !usedChars.contains('5')) {
+                    part2 += "#5"
+                    usedChars.add('#')
+                    usedChars.add('5')
+                    explanation += "Резерв 2: #5\n"
+                }
+                
+                if (hasYear) {
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
+                        part2 += yearMarker
+                        usedChars.add(y1)
+                        usedChars.add(y2)
+                        explanation += "Год: $yearMarker (часть 2)\n"
+                    } else {
+                        continue
+                    }
+                }
+                
+                password = part1 + part2
+                
+                if (password.length == options.targetLength && 
+                    part1.length == part1Len && 
+                    part2.length == part2Len &&
+                    isValidVariant(password, options.splitMode)) {
+                    results.add(GenerationResult(
+                        password = password,
+                        mnemonicHint = options.phrase.take(30),
+                        variantName = "Вариант ${variantIndex + 1}",
+                        strength = PasswordGenerator.Strength.VERY_STRONG,
+                        part1 = part1,
+                        part2 = part2,
+                        splitMode = options.splitMode,
+                        explanation = explanation,
+                        variantOffset = variantIndex
+                    ))
+                }
+            }
+        }
+        
+        return results
+    }
+
+    private fun getStrategyName(variantIndex: Int): String {
+        return when (variantIndex) {
+            0 -> "Минимальные замены (максимально читаемый)"
+            1 -> "Средние замены (баланс)"
+            2 -> "Максимальные замены (больше спецсимволов)"
+            else -> "Стандартный"
+        }
+    }
+
+    private fun buildBase(
+        words: List<String>,
+        targetLen: Int,
+        usedChars: MutableSet<Char>,
+        variantOffset: Int,
+        reserve: String
+    ): Pair<String, String>? {
+        val result = StringBuilder()
+        val explanation = StringBuilder()
+        val charsPerWord = targetLen / words.size
+        var remainder = targetLen % words.size
+
+        for ((wIndex, word) in words.withIndex()) {
+            val translit = transliterateWord(word)
+            if (translit.isEmpty()) return null
+
+            var anchorFound = false
+            for (c in translit) {
+                if (!usedChars.contains(c.lowercaseChar())) {
+                    result.append(c.uppercaseChar())
+                    usedChars.add(c.lowercaseChar())
+                    explanation.append("${c.uppercaseChar()}(якорь)")
+                    anchorFound = true
+                    break
+                }
+            }
+            if (!anchorFound) return null
+
+            var pos = 1
+            val targetLength = if (wIndex == words.lastIndex) targetLen 
+                              else (wIndex + 1) * charsPerWord + minOf(wIndex + 1, remainder)
+            
+            while (result.length < targetLength && pos < translit.length) {
+                val c = translit[pos]
+                val lowerC = c.lowercaseChar()
+                
+                val twoChar = if (pos + 1 < translit.length) "${lowerC}${translit[pos + 1].lowercaseChar()}" else ""
+                
+                var chosen: Char? = null
+                var skipChars = 0
+                
+                val leetKey = if (twoChar.length == 2 && leetMap.containsKey(twoChar)) twoChar
+                             else lowerC.toString()
+                
+                val replacements = leetMap[leetKey]
+                
+                when (variantOffset) {
+                    0 -> { 
+                        if (usedChars.contains(lowerC)) {
+                            chosen = replacements?.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
+                        } else {
+                            chosen = lowerC
+                        }
+                    }
+                    1 -> { 
+                        val isVowel = lowerC in "aeiou"
+                        if (isVowel && replacements != null) {
+                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
+                        } else if (usedChars.contains(lowerC) && replacements != null) {
+                            chosen = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
+                        } else if (!usedChars.contains(lowerC)) {
+                            chosen = lowerC
+                        }
+                    }
+                    2 -> { 
+                        if (replacements != null) {
+                            val options = if (replacements.size > 1) listOf(replacements[1], replacements[0]) else replacements
+                            chosen = options.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }?.first()
+                        } else if (!usedChars.contains(lowerC)) {
+                            chosen = lowerC
+                        }
+                    }
+                }
+                
+                if (chosen != null && usedChars.contains(chosen.lowercaseChar())) {
+                    if (replacements != null && replacements.size > 1) {
+                        val altRep = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }
+                        if (altRep != null) {
+                            chosen = altRep.first()
+                        } else {
+                            chosen = null
+                        }
+                    } else {
+                        chosen = null
+                    }
+                }
+                
+                if (chosen != null) {
+                    result.append(chosen)
+                    usedChars.add(chosen.lowercaseChar())
+                    explanation.append(chosen)
+                    pos += skipChars + 1
+                } else {
+                    pos++
+                }
+            }
+            explanation.append(" ")
+        }
+        
+        return Pair(result.toString(), explanation.toString())
+    }
+
+    private fun transliterateWord(word: String): String {
+        val result = StringBuilder()
+        var i = 0
+        while (i < word.length) {
+            val c = word[i]
+            val translit = translitMap[c]
+            if (translit != null) {
+                result.append(translit)
+            }
+            i++
+        }
+        return result.toString()
+    }
+
+    private fun isValidVariant(password: String, splitMode: SplitMode): Boolean {
+        val lower = password.lowercase()
+        if (lower.length != lower.toSet().size) return false
+        
+        if (splitMode == SplitMode.TWO_USERS) {
+            val half = password.length / 2
+            return checkPart(password.substring(0, half)) && checkPart(password.substring(half))
+        }
+        return checkPart(password)
+    }
+
+    private fun checkPart(part: String): Boolean {
+        return part.count { it.isUpperCase() } >= 2 &&
+               part.count { it.isLowerCase() } >= 2 &&
+               part.count { it.isDigit() } >= 2 &&
+               part.count { !it.isLetterOrDigit() } >= 2
+    }
+}
