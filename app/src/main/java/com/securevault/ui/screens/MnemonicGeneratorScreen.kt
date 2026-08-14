@@ -2,7 +2,6 @@
 
 package com.securevault.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -22,8 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.ui.components.LockActionButton
-import com.securevault.utils.MnemonicPasswordGenerator
-import com.securevault.utils.PasswordGenerator
+import com.securevault.ui.components.UnifiedPasswordGeneratorDialog
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,7 +30,8 @@ fun MnemonicGeneratorScreen(
     profileId: Int?,
     onBack: () -> Unit,
     onLock: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     LaunchedEffect(profileId) {
         if (profileId != null) viewModel.setCurrentProfile(profileId)
@@ -43,66 +42,7 @@ fun MnemonicGeneratorScreen(
     val currentProfileId by viewModel.currentProfileId.collectAsState()
     val effectiveProfileId = profileId ?: currentProfileId
 
-    var phrase by remember { mutableStateOf("") }
-    var serviceName by remember { mutableStateOf("") }
-    var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
-    var targetLength by remember { mutableIntStateOf(16) }
-    
-    var variantPages by remember { mutableStateOf<List<List<MnemonicPasswordGenerator.GenerationResult>>>(emptyList()) }
-    var currentPageIndex by remember { mutableIntStateOf(0) }
-    var nextOffset by remember { mutableIntStateOf(0) }
-    var isGenerating by remember { mutableStateOf(false) }
-    var noMoreVariants by remember { mutableStateOf(false) }
-    var selectedVariantIndex by remember { mutableIntStateOf(-1) }
-    var showExplanation by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
-
-    fun loadNextPage() {
-        if (isGenerating || noMoreVariants) return
-        isGenerating = true
-        
-        val options = MnemonicPasswordGenerator.GenerationOptions(
-            phrase = phrase,
-            serviceName = serviceName,
-            username = "", 
-            profileId = effectiveProfileId,
-            targetLength = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
-                when { targetLength <= 16 -> 16; targetLength <= 18 -> 18; else -> 20 }
-            } else { targetLength },
-            rotationMonth = null,
-            rotationYear = null,
-            variantOffset = nextOffset,
-            splitMode = splitMode
-        )
-        
-        val newVariants = MnemonicPasswordGenerator.generateVariants(options, count = 3)
-        
-        if (newVariants.isNotEmpty()) {
-            variantPages = variantPages + listOf(newVariants)
-            currentPageIndex = variantPages.size - 1
-            nextOffset = options.variantOffset + 300
-            noMoreVariants = newVariants.size < 3
-        } else {
-            noMoreVariants = true
-        }
-        isGenerating = false
-        selectedVariantIndex = -1
-    }
-
-    fun loadPreviousPage() {
-        if (currentPageIndex > 0) {
-            currentPageIndex--
-            selectedVariantIndex = -1
-        }
-    }
-
-    LaunchedEffect(phrase, serviceName, splitMode, targetLength) {
-        variantPages = emptyList()
-        currentPageIndex = 0
-        nextOffset = 0
-        noMoreVariants = false
-        selectedVariantIndex = -1
-        if (phrase.isNotBlank()) loadNextPage()
-    }
+    var showGeneratorDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -116,132 +56,113 @@ fun MnemonicGeneratorScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Режим генерации", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Мнемонический генератор паролей", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER, onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER })
-                        Text("Обычный пароль", Modifier.padding(start = 8.dp))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS, onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS })
-                        Column(Modifier.padding(start = 8.dp)) {
-                            Text("Для двух пользователей")
-                            Text("Один пароль на две равные части", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-
-            OutlinedTextField(value = phrase, onValueChange = { phrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: моя кошка любит молоко") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = serviceName, onValueChange = { serviceName = it }, label = { Text("Сервис (влияет на генерацию)") }, placeholder = { Text("например: Gmail") }, modifier = Modifier.fillMaxWidth())
-            
-            if (splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Длина: $targetLength", modifier = Modifier.weight(1f))
-                    Slider(value = targetLength.toFloat(), onValueChange = { targetLength = it.toInt() }, valueRange = 12f..24f, steps = 12, modifier = Modifier.weight(2f))
-                }
-            } else {
-                Text("Длина пароля:", fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(16, 18, 20).forEach { length ->
-                        FilterChip(selected = targetLength == length, onClick = { targetLength = length }, label = { Text("$length") })
-                    }
-                }
-            }
-
-            if (variantPages.isNotEmpty()) {
-                val currentPage = variantPages[currentPageIndex]
-                Text("Варианты ${currentPageIndex * 3 + 1}–${currentPageIndex * 3 + currentPage.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                
-                currentPage.forEachIndexed { index, result ->
-                    val isSelected = selectedVariantIndex == index
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
-                        onClick = { selectedVariantIndex = index }
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Вариант ${currentPageIndex * 3 + index + 1}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                                IconButton(onClick = {
-                                    clipboardManager.setText(AnnotatedString(result.password))
-                                    Toast.makeText(context, "Скопировано!", Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = "Копировать пароль", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(result.password, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(4.dp))
-                            if (result.splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
-                                Text("Режим: один пароль на две равные части", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
-                                Text("Часть 1: ${result.part1?.length ?: 0} символов", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Часть 2: ${result.part2?.length ?: 0} символов", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("Подсказка: ${result.mnemonicHint}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(8.dp))
-                            Text(result.strength.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = when (result.strength) {
-                                PasswordGenerator.Strength.VERY_STRONG -> Color(0xFF4CAF50)
-                                PasswordGenerator.Strength.STRONG -> MaterialTheme.colorScheme.primary
-                                PasswordGenerator.Strength.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                PasswordGenerator.Strength.WEAK -> MaterialTheme.colorScheme.error
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            })
-                            
-                            TextButton(onClick = { showExplanation = result }, modifier = Modifier.align(Alignment.End)) {
-                                Text("Как собран пароль", fontSize = 11.sp)
-                            }
-                        }
-                    }
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { loadPreviousPage() }, enabled = currentPageIndex > 0 && !isGenerating) {
-                        Icon(Icons.Default.ArrowBack, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Предыдущие")
-                    }
-                    
-                    if (isGenerating) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    } else {
-                        TextButton(onClick = { loadNextPage() }, enabled = !noMoreVariants && !isGenerating) {
-                            Text("Следующие")
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForward, null, Modifier.size(16.dp))
-                        }
-                    }
-                }
-                
-                if (noMoreVariants && !isGenerating) {
                     Text(
-                        "Новых подходящих вариантов не найдено. Попробуйте изменить фразу, увеличить длину или ослабить ограничения.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp)
+                        "AMPG создаёт запоминаемые пароли из фразы. " +
+                        "Каждый пароль уникален и восстанавливаем из исходной фразы.",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { showGeneratorDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Casino, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Сгенерировать пароль", fontSize = 16.sp)
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Как это работает", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    InfoItem("1. Введите фразу", "Например: 'это был обычный август'")
+                    InfoItem("2. Выберите режим", "Один пользователь или два пользователя")
+                    InfoItem("3. Получите 3 варианта", "Все варианты валидны и объяснимы")
+                    InfoItem("4. Выберите пароль", "Нажмите на вариант для копирования")
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    Text("Пример", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Фраза: это был обычный август\n" +
+                        "Вариант 1: E70BylO4nAvgu\$#5\n" +
+                        "Вариант 2: E70By!O4nAvgu\$#5\n" +
+                        "Вариант 3: Et0By!O4nAvgu\$#5",
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Безопасность", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text(
+                            "Пароли не содержат повторов символов. " +
+                            "Каждый пароль проходит проверку сложности.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
         }
     }
 
-    if (showExplanation != null) {
-        AlertDialog(
-            onDismissRequest = { showExplanation = null },
-            title = { Text("Как собран пароль") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text(showExplanation!!.explanation, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                }
+    if (showGeneratorDialog) {
+        UnifiedPasswordGeneratorDialog(
+            onDismiss = { showGeneratorDialog = false },
+            onGenerated = { pwd, hint, type ->
+                clipboardManager.setText(AnnotatedString(pwd))
+                showGeneratorDialog = false
             },
-            confirmButton = {
-                TextButton(onClick = { showExplanation = null }) { Text("Понятно") }
-            }
+            initialServiceName = ""
+        )
+    }
+}
+
+@Composable
+private fun InfoItem(title: String, description: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = title,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+            modifier = Modifier.width(140.dp)
+        )
+        Text(
+            text = description,
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
         )
     }
 }
