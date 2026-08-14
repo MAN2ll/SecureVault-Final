@@ -58,9 +58,11 @@ class VaultViewModel @Inject constructor(
         } else {
             entries
         }
-        filtered.filter { it.rotationEnabled && 
+        filtered.filter { 
+            it.rotationEnabled && 
             it.nextRotationDate != null && 
-            it.nextRotationDate <= System.currentTimeMillis() }
+            it.nextRotationDate <= System.currentTimeMillis() 
+        }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val profiles: StateFlow<List<Profile>> = repository.allProfiles
@@ -193,38 +195,66 @@ class VaultViewModel @Inject constructor(
     }
 
     fun applyManagedShuffle(
-        entries: List<Entry>,
+        assignments: Map<String, String?>,
         onResult: (PasswordOperationResult) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                for (entry in entries) {
-                    val oldEncrypted = entry.encryptedPassword
-                    val decrypted = withContext(Dispatchers.Default) {
-                        CryptoUtils.decrypt(oldEncrypted)
-                    }
-                    val newEncrypted = withContext(Dispatchers.Default) {
-                        CryptoUtils.encrypt(decrypted)
+                val currentEntries = allEntries.value
+                var successCount = 0
+                var errorCount = 0
+                
+                for ((targetEntryId, sourceEntryId) in assignments) {
+                    val targetEntry = currentEntries.find { it.id == targetEntryId }
+                    if (targetEntry == null) {
+                        errorCount++
+                        continue
                     }
                     
-                    val history = entry.getPasswordHistory().toMutableList()
+                    if (sourceEntryId == null) {
+                        continue
+                    }
+                    
+                    val sourceEntry = currentEntries.find { it.id == sourceEntryId }
+                    if (sourceEntry == null) {
+                        errorCount++
+                        continue
+                    }
+                    
+                    val newEncrypted = sourceEntry.encryptedPassword
+                    val oldEncrypted = targetEntry.encryptedPassword
+                    
+                    val history = targetEntry.getPasswordHistory().toMutableList()
                     history.add(
                         PasswordHistoryItem(
                             date = System.currentTimeMillis(),
                             encryptedOldPassword = oldEncrypted,
                             type = "shuffle",
-                            relatedService = null
+                            relatedService = sourceEntry.service
                         )
                     )
                     
-                    val updated = entry.copy(
+                    val updated = targetEntry.copy(
                         encryptedPassword = newEncrypted,
                         passwordHistoryJson = JsonUtils.toJson(history),
-                        lastChanged = System.currentTimeMillis()
+                        lastChanged = System.currentTimeMillis(),
+                        nextRotationDate = if (targetEntry.rotationEnabled) {
+                            System.currentTimeMillis() + (targetEntry.rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                        } else null,
+                        generationType = sourceEntry.generationType,
+                        mnemonicPhraseHint = sourceEntry.mnemonicPhraseHint,
+                        mnemonicOptionsJson = sourceEntry.mnemonicOptionsJson
                     )
+                    
                     repository.update(updated)
+                    successCount++
                 }
-                onResult(PasswordOperationResult.Success("Пароли обновлены"))
+                
+                if (errorCount == 0) {
+                    onResult(PasswordOperationResult.Success("Перекрёстная ротация выполнена: $successCount записей"))
+                } else {
+                    onResult(PasswordOperationResult.Error("Выполнено: $successCount, ошибок: $errorCount"))
+                }
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
@@ -346,6 +376,11 @@ class VaultViewModel @Inject constructor(
     ): ImportResult {
         return BackupManager.importBackup(repository, backupData, mode, newPin, appContext)
     }
+}
+
+sealed class PasswordOperationResult {
+    data class Success(val message: String = "") : PasswordOperationResult()
+    data class Error(val message: String) : PasswordOperationResult()
 }
 
 data class BulkPasswordReplacement(
