@@ -33,15 +33,14 @@ object PasswordGenerator {
         var attempts = 0
         
         while (attempts < 500) {
-            val part1 = buildValidHalf(halfLen, useUpper, useDigits, useSpecial, emptySet())
+            val part1 = buildValidHalf(halfLen, useUpper, useDigits, useSpecial, mutableSetOf())
             if (part1 == null) { attempts++; continue }
             
-            val usedInPart1 = part1.map { it.lowercaseChar() }.toSet()
+            val usedInPart1 = part1.map { it.lowercaseChar() }.toMutableSet()
             val part2 = buildValidHalf(length - halfLen, useUpper, useDigits, useSpecial, usedInPart1)
             
             if (part2 != null) {
                 val full = part1 + part2
-                // Финальная проверка на глобальную уникальность и сложность
                 val lower = full.lowercase()
                 if (lower.length == lower.toSet().size && isValidPassword(full)) {
                     return GenerationResult(full, calculateStrength(full), "Пароль разделен на две части. Каждая часть содержит минимум 2 заглавные, 2 строчные, 2 цифры и 2 спецсимвола. Повторов во всем пароле нет.")
@@ -52,43 +51,53 @@ object PasswordGenerator {
         return null
     }
 
-    private fun buildValidHalf(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, forbiddenChars: Set<Char>): String? {
-        val upperPool = ('A'..'Z').filter { !forbiddenChars.contains(it.lowercaseChar()) }.toMutableList()
-        val lowerPool = ('a'..'z').filter { !forbiddenChars.contains(it) }.toMutableList()
-        val digitPool = ('0'..'9').filter { !forbiddenChars.contains(it) }.toMutableList()
-        val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?').filter { !forbiddenChars.contains(it) }.toMutableList()
+    private fun buildValidHalf(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, usedChars: MutableSet<Char>): String? {
+        val upperPool = ('A'..'Z').toMutableList()
+        val lowerPool = ('a'..'z').toMutableList()
+        val digitPool = ('0'..'9').toMutableList()
+        val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?').toMutableList()
 
-        if (upperPool.size < 2 || lowerPool.size < 2 || digitPool.size < 2 || specialPool.size < 2) return null
-
-        var attempts = 0
-        while (attempts < 100) {
-            val chosen = mutableSetOf<Char>()
-            chosen.add(upperPool[secureRandom.nextInt(upperPool.size)])
-            chosen.add(upperPool[secureRandom.nextInt(upperPool.size)])
-            chosen.add(getUnique(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(getUnique(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(getUnique(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(getUnique(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(getUnique(specialPool, chosen))
-            chosen.add(getUnique(specialPool, chosen))
-
-            val all = mutableListOf<Char>().apply {
-                if (useUpper) addAll(upperPool)
-                addAll(lowerPool); addAll(digitPool); addAll(specialPool)
-            }
-            
-            while (chosen.size < length) {
-                val c = all[secureRandom.nextInt(all.size)]
-                if (!chosen.map { it.lowercaseChar() }.contains(c.lowercaseChar())) chosen.add(c)
-            }
-            return chosen.shuffled(secureRandom).joinToString("")
+        val chosen = mutableSetOf<Char>()
+        
+        // Гарантированный выбор уникальных символов каждого типа
+        repeat(2) {
+            val c = pickUnique(upperPool, usedChars, chosen) ?: return null
+            chosen.add(c); usedChars.add(c.lowercaseChar())
         }
-        return null
+        repeat(2) {
+            val c = pickUnique(lowerPool, usedChars, chosen) ?: return null
+            chosen.add(c); usedChars.add(c.lowercaseChar())
+        }
+        repeat(2) {
+            val c = pickUnique(digitPool, usedChars, chosen) ?: return null
+            chosen.add(c); usedChars.add(c.lowercaseChar())
+        }
+        repeat(2) {
+            val c = pickUnique(specialPool, usedChars, chosen) ?: return null
+            chosen.add(c); usedChars.add(c.lowercaseChar())
+        }
+
+        val all = mutableListOf<Char>().apply {
+            if (useUpper) addAll(upperPool)
+            addAll(lowerPool); addAll(digitPool); addAll(specialPool)
+        }
+        
+        var attempts = 0
+        while (chosen.size < length && attempts < 100) {
+            val c = all[secureRandom.nextInt(all.size)]
+            if (!usedChars.contains(c.lowercaseChar())) {
+                chosen.add(c)
+                usedChars.add(c.lowercaseChar())
+            }
+            attempts++
+        }
+        
+        return if (chosen.size == length) chosen.shuffled(secureRandom).joinToString("") else null
     }
 
-    private fun getUnique(pool: List<Char>, used: Set<Char>): Char {
-        val available = pool.filter { !used.contains(it.lowercaseChar()) }
-        return if (available.isNotEmpty()) available[secureRandom.nextInt(available.size)] else pool[secureRandom.nextInt(pool.size)]
+    private fun pickUnique(pool: MutableList<Char>, usedChars: Set<Char>, chosen: Set<Char>): Char? {
+        val available = pool.filter { !usedChars.contains(it.lowercaseChar()) && !chosen.contains(it) }
+        return if (available.isNotEmpty()) available[secureRandom.nextInt(available.size)] else null
     }
 
     fun generateWithAnchor(anchorWord: String, length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, context: Context, addService: Boolean = false, serviceName: String = "", addYear: Boolean = false, year: Int? = null): GenerationResult? {
