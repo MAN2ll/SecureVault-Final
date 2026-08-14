@@ -31,7 +31,7 @@ object MnemonicPasswordGenerator {
         val variantOffset: Int = 0
     )
 
-    // Таблица транслитерации (включая двухбуквенные последовательности)
+    // Таблица транслитерации
     private val translitMap = mapOf(
         'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d",
         'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i",
@@ -42,16 +42,33 @@ object MnemonicPasswordGenerator {
         'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // Таблица замен (включая двухбуквенные последовательности)
+    // Таблица замен с НЕСКОЛЬКИМИ вариантами для каждой буквы
     private val leetMap = mapOf(
-        "a" to "@", "o" to "0", "t" to "7", "ch" to "4",
-        "s" to "$", "i" to "1", "b" to "6", "l" to "!"
+        "a" to listOf("@", "4"),
+        "o" to listOf("0", "9"),
+        "t" to listOf("7"),
+        "ch" to listOf("4"),
+        "s" to listOf("$", "5"),
+        "i" to listOf("1", "!"),
+        "l" to listOf("!", "1"),
+        "b" to listOf("6", "8")
+    )
+
+    // Список слабых фраз
+    private val weakPhrases = setOf(
+        "мама мыла раму", "ма мыла раму", "я люблю тебя",
+        "мой пароль", "пароль от сайта", "qwerty", "password"
     )
 
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         
-        // Маркеры сервиса и года
+        // Проверка на слабую фразу
+        if (options.phrase.lowercase().trim() in weakPhrases) {
+            return emptyList() // Вернём пустой список, UI покажет сообщение
+        }
+        
+        // Маркеры
         val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.first().uppercaseChar().toString()
         } else ""
@@ -88,89 +105,140 @@ object MnemonicPasswordGenerator {
         if (words1.isEmpty()) return emptyList()
         if (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty()) return emptyList()
 
-        // Генерация вариантов
+        // Генерация 3 вариантов с РАЗНЫМИ стратегиями
         for (variantIndex in 0 until count) {
             val usedChars = mutableSetOf<Char>()
             var password = ""
-            var explanation = "Фраза: ${options.phrase}\n"
-
-            // Добавляем маркер сервиса
-            if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
-                password += serviceMarker
-                usedChars.add(serviceMarker.first().lowercaseChar())
-                explanation += "Сервис: $serviceMarker\n"
-            }
+            var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
+                // SINGLE_USER: строим весь пароль целиком
+                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
+                    password += serviceMarker
+                    usedChars.add(serviceMarker.first().lowercaseChar())
+                    explanation += "Сервис: $serviceMarker\n"
+                }
+
                 val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5") ?: continue
                 password += base.first
                 explanation += base.second
                 
-                // Добавляем резерв
                 if (!usedChars.contains('#') && !usedChars.contains('5')) {
                     password += "#5"
                     usedChars.add('#')
                     usedChars.add('5')
                     explanation += "Резерв AMPG: #5\n"
                 }
+
+                if (hasYear) {
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
+                        password += yearMarker
+                        usedChars.add(y1)
+                        usedChars.add(y2)
+                        explanation += "Год: $yearMarker\n"
+                    } else {
+                        continue
+                    }
+                }
+
+                if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
+                    results.add(GenerationResult(
+                        password = password,
+                        mnemonicHint = options.phrase.take(30),
+                        variantName = "Вариант ${variantIndex + 1}",
+                        strength = PasswordGenerator.Strength.VERY_STRONG,
+                        part1 = null,
+                        part2 = null,
+                        splitMode = options.splitMode,
+                        explanation = explanation,
+                        variantOffset = variantIndex
+                    ))
+                }
             } else {
-                // TWO_USERS: две половины
-                val halfLen = baseLength / 2
-                val base1 = buildBase(words1, halfLen, usedChars, variantIndex, "%8") ?: continue
-                val base2 = buildBase(words2, baseLength - halfLen, usedChars, variantIndex + 100, "#5") ?: continue
+                // TWO_USERS: строим ДВЕ ПОЛОВИНЫ ОТДЕЛЬНО
+                val part1Len = options.targetLength / 2
+                val part2Len = options.targetLength - part1Len
                 
-                password += base1.first
-                explanation += "Часть 1: ${base1.second}\n"
+                // Часть 1: serviceMarker + base1 + %8
+                var part1 = ""
+                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
+                    part1 += serviceMarker
+                    usedChars.add(serviceMarker.first().lowercaseChar())
+                    explanation += "Сервис: $serviceMarker (часть 1)\n"
+                }
+                
+                val base1Len = part1Len - (if (hasService) 1 else 0) - 2 // 2 для %8
+                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, "%8") ?: continue
+                part1 += base1.first
+                explanation += "Часть 1 основа: ${base1.second}\n"
                 
                 if (!usedChars.contains('%') && !usedChars.contains('8')) {
-                    password += "%8"
+                    part1 += "%8"
                     usedChars.add('%')
                     usedChars.add('8')
                     explanation += "Резерв 1: %8\n"
                 }
                 
-                password += base2.first
-                explanation += "Часть 2: ${base2.second}\n"
+                // Часть 2: base2 + #5 + yearMarker
+                var part2 = ""
+                val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100, "#5") ?: continue
+                part2 += base2.first
+                explanation += "Часть 2 основа: ${base2.second}\n"
                 
                 if (!usedChars.contains('#') && !usedChars.contains('5')) {
-                    password += "#5"
+                    part2 += "#5"
                     usedChars.add('#')
                     usedChars.add('5')
                     explanation += "Резерв 2: #5\n"
                 }
-            }
-
-            // Добавляем маркер года
-            if (hasYear) {
-                val y1 = yearMarker[0]
-                val y2 = yearMarker[1]
-                if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
-                    password += yearMarker
-                    usedChars.add(y1)
-                    usedChars.add(y2)
-                    explanation += "Год: $yearMarker\n"
-                } else {
-                    continue // Не удалось добавить год без повторов
+                
+                if (hasYear) {
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
+                        part2 += yearMarker
+                        usedChars.add(y1)
+                        usedChars.add(y2)
+                        explanation += "Год: $yearMarker (часть 2)\n"
+                    } else {
+                        continue
+                    }
                 }
-            }
-
-            // Проверка валидности
-            if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
-                results.add(GenerationResult(
-                    password = password,
-                    mnemonicHint = options.phrase.take(30),
-                    variantName = "Вариант ${variantIndex + 1}",
-                    strength = PasswordGenerator.Strength.VERY_STRONG,
-                    part1 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(0, password.length / 2) else null,
-                    part2 = if (options.splitMode == SplitMode.TWO_USERS) password.substring(password.length / 2) else null,
-                    splitMode = options.splitMode,
-                    explanation = explanation,
-                    variantOffset = variantIndex
-                ))
+                
+                password = part1 + part2
+                
+                if (password.length == options.targetLength && 
+                    part1.length == part1Len && 
+                    part2.length == part2Len &&
+                    isValidVariant(password, options.splitMode)) {
+                    results.add(GenerationResult(
+                        password = password,
+                        mnemonicHint = options.phrase.take(30),
+                        variantName = "Вариант ${variantIndex + 1}",
+                        strength = PasswordGenerator.Strength.VERY_STRONG,
+                        part1 = part1,
+                        part2 = part2,
+                        splitMode = options.splitMode,
+                        explanation = explanation,
+                        variantOffset = variantIndex
+                    ))
+                }
             }
         }
         
         return results
+    }
+
+    private fun getStrategyName(variantIndex: Int): String {
+        return when (variantIndex) {
+            0 -> "Минимальные замены (максимально читаемый)"
+            1 -> "Средние замены (баланс)"
+            2 -> "Максимальные замены (больше спецсимволов)"
+            else -> "Стандартный"
+        }
     }
 
     private fun buildBase(
@@ -186,13 +254,10 @@ object MnemonicPasswordGenerator {
         var remainder = targetLen % words.size
 
         for ((wIndex, word) in words.withIndex()) {
-            val len = charsPerWord + (if (wIndex < remainder) 1 else 0)
-            
-            // Транслитерация слова
             val translit = transliterateWord(word)
             if (translit.isEmpty()) return null
 
-            // Находим якорь (первую свободную букву)
+            // Находим якорь
             var anchorFound = false
             for (c in translit) {
                 if (!usedChars.contains(c.lowercaseChar())) {
@@ -214,43 +279,68 @@ object MnemonicPasswordGenerator {
                 val c = translit[pos]
                 val lowerC = c.lowercaseChar()
                 
-                // Проверяем двухбуквенную последовательность (ch, sh, sch)
+                // Проверяем двухбуквенные последовательности
                 val twoChar = if (pos + 1 < translit.length) "${lowerC}${translit[pos + 1].lowercaseChar()}" else ""
-                val threeChar = if (pos + 2 < translit.length) "${twoChar}${translit[pos + 2].lowercaseChar()}" else ""
                 
                 var chosen: Char? = null
                 var skipChars = 0
                 
-                // Применяем замены с учётом variantOffset
-                val replacement = when {
-                    threeChar.length == 3 && leetMap.containsKey(threeChar) -> {
-                        leetMap[threeChar]
+                // Определяем leet-ключ
+                val leetKey = if (twoChar.length == 2 && leetMap.containsKey(twoChar)) twoChar
+                             else lowerC.toString()
+                
+                val replacements = leetMap[leetKey]
+                
+                // СТРАТЕГИЯ ВЫБОРА ЗАМЕНЫ В ЗАВИСИМОСТИ ОТ variantOffset
+                when (variantOffset) {
+                    0 -> { // Минимальные замены: только при конфликте
+                        if (usedChars.contains(lowerC)) {
+                            // Конфликт — используем замену
+                            if (replacements != null && replacements.isNotEmpty()) {
+                                chosen = replacements[0].first()
+                                skipChars = if (leetKey.length == 2) 1 else 0
+                            }
+                        } else {
+                            // Нет конфликта — используем оригинал
+                            chosen = lowerC
+                        }
                     }
-                    twoChar.length == 2 && leetMap.containsKey(twoChar) -> {
-                        leetMap[twoChar]
+                    1 -> { // Средние замены: заменяем гласные
+                        val isVowel = lowerC in "aeiou"
+                        if (isVowel && replacements != null && replacements.isNotEmpty()) {
+                            chosen = replacements[0].first()
+                            skipChars = if (leetKey.length == 2) 1 else 0
+                        } else if (usedChars.contains(lowerC) && replacements != null && replacements.isNotEmpty()) {
+                            chosen = replacements[0].first()
+                            skipChars = if (leetKey.length == 2) 1 else 0
+                        } else if (!usedChars.contains(lowerC)) {
+                            chosen = lowerC
+                        }
                     }
-                    leetMap.containsKey(lowerC.toString()) -> {
-                        leetMap[lowerC.toString()]
+                    2 -> { // Максимальные замены: заменяем всё возможное
+                        if (replacements != null && replacements.isNotEmpty()) {
+                            // Используем вторую замену, если есть, иначе первую
+                            val repIndex = if (replacements.size > 1) 1 else 0
+                            chosen = replacements[repIndex].first()
+                            skipChars = if (leetKey.length == 2) 1 else 0
+                        } else if (!usedChars.contains(lowerC)) {
+                            chosen = lowerC
+                        }
                     }
-                    else -> null
                 }
                 
-                if (replacement != null) {
-                    // variantOffset определяет, какую замену использовать
-                    val repIndex = (variantOffset + pos) % replacement.length
-                    val repChar = replacement[repIndex]
-                    if (!usedChars.contains(repChar)) {
-                        chosen = repChar
-                        skipChars = if (twoChar.length == 2 && leetMap.containsKey(twoChar)) 1
-                                   else if (threeChar.length == 3 && leetMap.containsKey(threeChar)) 2
-                                   else 0
-                    }
-                }
-                
-                // Если замена не подошла, берём оригинальный символ
-                if (chosen == null) {
-                    if (!usedChars.contains(lowerC)) {
-                        chosen = lowerC
+                // Проверяем, что выбранный символ не создаёт конфликт
+                if (chosen != null && usedChars.contains(chosen.lowercaseChar())) {
+                    // Пробуем другую замену
+                    if (replacements != null && replacements.size > 1) {
+                        val altRep = replacements.firstOrNull { !usedChars.contains(it.first().lowercaseChar()) }
+                        if (altRep != null) {
+                            chosen = altRep.first()
+                        } else {
+                            chosen = null // Не удалось найти подходящую замену
+                        }
+                    } else {
+                        chosen = null
                     }
                 }
                 
