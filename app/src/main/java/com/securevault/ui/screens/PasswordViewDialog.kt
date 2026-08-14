@@ -23,6 +23,9 @@ import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.PasswordAccessPolicy
 import com.securevault.viewmodel.AuthViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,38 +39,24 @@ fun PasswordViewDialog(
     authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
     var showPassword by remember { mutableStateOf(false) }
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
-    
     var showProfileAccessDialog by remember { mutableStateOf(false) }
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
-    // ОЧИСТКА ЧУВСТВИТЕЛЬНЫХ ДАННЫХ: Закрываем диалог при блокировке
     LaunchedEffect(Unit) {
-        authViewModel.clearSensitiveEvent.collect {
-            onDismiss()
-        }
+        authViewModel.clearSensitiveEvent.collect { onDismiss() }
     }
 
     fun requestAccess() {
         when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
-            is AccessResult.Granted -> {
-                showPassword = true
-                decryptedPassword = entry.password
-            }
-            is AccessResult.PinRequired -> {
-                currentAccessAllowBiometric = false
-                showProfileAccessDialog = true
-            }
-            is AccessResult.BiometricOrPin -> {
-                currentAccessAllowBiometric = true
-                showProfileAccessDialog = true
-            }
-            is AccessResult.PinNotSet -> {
-                showPinNotSetDialog = true
-            }
+            is AccessResult.Granted -> { showPassword = true; decryptedPassword = entry.password }
+            is AccessResult.PinRequired -> { currentAccessAllowBiometric = false; showProfileAccessDialog = true }
+            is AccessResult.BiometricOrPin -> { currentAccessAllowBiometric = true; showProfileAccessDialog = true }
+            is AccessResult.PinNotSet -> { showPinNotSetDialog = true }
         }
     }
 
@@ -82,6 +71,7 @@ fun PasswordViewDialog(
                 if (!entry.notes.isNullOrBlank()) InfoRow("Заметки", entry.notes)
                 if (!entry.textHint.isNullOrBlank()) InfoRow("Подсказка", entry.textHint)
                 if (!entry.mnemonicPhraseHint.isNullOrBlank()) InfoRow("Мнемоника", entry.mnemonicPhraseHint)
+                InfoRow("Создан", dateFormat.format(Date(entry.createdAt)))
 
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -90,28 +80,19 @@ fun PasswordViewDialog(
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
-                                fontSize = 14.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f)
+                                fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
                             )
                             if (!showPassword) {
-                                IconButton(onClick = { requestAccess() }) {
-                                    Icon(Icons.Default.Visibility, "Показать пароль", tint = MaterialTheme.colorScheme.primary)
-                                }
+                                IconButton(onClick = { requestAccess() }) { Icon(Icons.Default.Visibility, "Показать пароль", tint = MaterialTheme.colorScheme.primary) }
                             } else {
                                 IconButton(onClick = {
-                                    context.getSystemService(android.content.ClipboardManager::class.java)
-                                        .setPrimaryClip(android.content.ClipData.newPlainText("password", decryptedPassword))
+                                    context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("password", decryptedPassword))
                                     Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary)
-                                }
+                                }) { Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary) }
                             }
                         }
                     }
                 }
-
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onQr) { Icon(Icons.Default.QrCode, "Показать QR-код") }
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Изменить запись") }
@@ -124,27 +105,10 @@ fun PasswordViewDialog(
 
     if (showProfileAccessDialog) {
         val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
-        ProfileAccessDialog(
-            profile = profile,
-            title = "Подтверждение доступа",
-            subtitle = dialogSubtitle,
-            allowBiometric = currentAccessAllowBiometric,
-            onConfirmed = {
-                showPassword = true
-                decryptedPassword = entry.password
-                showProfileAccessDialog = false
-            },
-            onDismiss = { showProfileAccessDialog = false }
-        )
+        ProfileAccessDialog(profile = profile, title = "Подтверждение доступа", subtitle = dialogSubtitle, allowBiometric = currentAccessAllowBiometric, onConfirmed = { showPassword = true; decryptedPassword = entry.password; showProfileAccessDialog = false }, onDismiss = { showProfileAccessDialog = false })
     }
-
     if (showPinNotSetDialog) {
-        AlertDialog(
-            onDismissRequest = { showPinNotSetDialog = false },
-            title = { Text("PIN профиля не задан") },
-            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } }
-        )
+        AlertDialog(onDismissRequest = { showPinNotSetDialog = false }, title = { Text("PIN профиля не задан") }, text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") }, confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } })
     }
 }
 
