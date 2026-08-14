@@ -134,7 +134,7 @@ object MnemonicPasswordGenerator {
                 val replacement = leetMap[leetKey]
                 
                 if (replacement != null) {
-                    // ✅ variantOffset сдвигает выбор замены, гарантируя разные варианты!
+                    // variantOffset сдвигает выбор замены, гарантируя разные варианты!
                     val repIndex = (variantOffset + pos) % replacement.length
                     val repChar = replacement[repIndex]
                     if (!usedChars.contains(repChar)) chosen = repChar
