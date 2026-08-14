@@ -8,6 +8,14 @@ object PasswordGenerator {
     data class GenerationResult(val password: String, val strength: Strength, val explanation: String = "")
 
     private val secureRandom = SecureRandom()
+    
+    private val translitMap = mapOf(
+        'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 
+        'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 
+        'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 
+        'ф' to "f", 'х' to "h", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 
+        'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya"
+    )
 
     fun generate(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, context: Context): GenerationResult {
         var attempts = 0
@@ -41,8 +49,7 @@ object PasswordGenerator {
     }
 
     private fun buildValidHalf(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String? {
-        val pool = mutableListOf<Char>()
-        if (useUpper) pool.addAll(('A'..'Z'))
+        val upperPool = ('A'..'Z').toList()
         val lowerPool = ('a'..'z').toList()
         val digitPool = ('0'..'9').toList()
         val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?')
@@ -50,20 +57,21 @@ object PasswordGenerator {
         var attempts = 0
         while (attempts < 100) {
             val chosen = mutableSetOf<Char>()
-            chosen.add(upperRandom(pool))
-            chosen.add(upperRandom(pool))
-            chosen.add(lowerRandom(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(lowerRandom(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(digitRandom(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(digitRandom(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
-            chosen.add(specialRandom(specialPool, chosen))
-            chosen.add(specialRandom(specialPool, chosen))
+            chosen.add(upperPool[secureRandom.nextInt(upperPool.size)])
+            chosen.add(upperPool[secureRandom.nextInt(upperPool.size)])
+            chosen.add(getUnique(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
+            chosen.add(getUnique(lowerPool, chosen.map { it.lowercaseChar() }.toSet()))
+            chosen.add(getUnique(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
+            chosen.add(getUnique(digitPool, chosen.map { it.lowercaseChar() }.toSet()))
+            chosen.add(getUnique(specialPool, chosen))
+            chosen.add(getUnique(specialPool, chosen))
 
+            val all = mutableListOf<Char>().apply {
+                if (useUpper) addAll(upperPool)
+                addAll(lowerPool); addAll(digitPool); addAll(specialPool)
+            }
+            
             while (chosen.size < length) {
-                val all = mutableListOf<Char>().apply {
-                    if (useUpper) addAll(('A'..'Z'))
-                    addAll(('a'..'z')); addAll(('0'..'9')); addAll(specialPool)
-                }
                 val c = all[secureRandom.nextInt(all.size)]
                 if (!chosen.map { it.lowercaseChar() }.contains(c.lowercaseChar())) chosen.add(c)
             }
@@ -72,17 +80,8 @@ object PasswordGenerator {
         return null
     }
 
-    private fun upperRandom(pool: List<Char>) = pool[secureRandom.nextInt(pool.size)]
-    private fun lowerRandom(pool: List<Char>, used: Set<Char>): Char {
-        val available = pool.filter { !used.contains(it) }
-        return if (available.isNotEmpty()) available[secureRandom.nextInt(available.size)] else pool[secureRandom.nextInt(pool.size)]
-    }
-    private fun digitRandom(pool: List<Char>, used: Set<Char>): Char {
-        val available = pool.filter { !used.contains(it) }
-        return if (available.isNotEmpty()) available[secureRandom.nextInt(available.size)] else pool[secureRandom.nextInt(pool.size)]
-    }
-    private fun specialRandom(pool: List<Char>, used: Set<Char>): Char {
-        val available = pool.filter { !used.contains(it) }
+    private fun getUnique(pool: List<Char>, used: Set<Char>): Char {
+        val available = pool.filter { !used.contains(it.lowercaseChar()) }
         return if (available.isNotEmpty()) available[secureRandom.nextInt(available.size)] else pool[secureRandom.nextInt(pool.size)]
     }
 
@@ -94,10 +93,8 @@ object PasswordGenerator {
         val anchorBlock = StringBuilder()
         val explanation = StringBuilder("Якорь: '$anchorWord' -> ")
 
-        val transliterated = anchorWord.lowercase().replace(Regex("[^а-яёa-z]"), "") { 
-            val map = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
-            map[it.value] ?: it.value 
-        }
+        // : Корректная транслитерация и очистка
+        val transliterated = anchorWord.lowercase().map { translitMap[it] ?: it.toString() }.joinToString("").replace(Regex("[^a-z]"), "")
 
         if (transliterated.isEmpty()) return null
 
@@ -132,7 +129,7 @@ object PasswordGenerator {
             val lower = full.lowercase()
             
             if (lower.length == lower.toSet().size && isValidPassword(full)) {
-                return GenerationResult(full, calculateStrength(full), "${explanation.toString()}. Остальная часть дополнена криптостойким случайным набором символов.")
+                return GenerationResult(full, calculateStrength(full), "${explanation.toString()}. Остальные символы добавлены случайно.")
             }
             attempts++
         }
