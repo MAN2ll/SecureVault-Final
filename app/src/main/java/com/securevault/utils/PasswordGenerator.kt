@@ -33,14 +33,18 @@ object PasswordGenerator {
         var attempts = 0
         
         while (attempts < 500) {
-            val part1 = buildValidHalf(halfLen, useUpper, useDigits, useSpecial)
-            val part2 = buildValidHalf(length - halfLen, useUpper, useDigits, useSpecial)
+            val part1 = buildValidHalf(halfLen, useUpper, useDigits, useSpecial, emptySet())
+            if (part1 == null) { attempts++; continue }
             
-            if (part1 != null && part2 != null) {
+            val usedInPart1 = part1.map { it.lowercaseChar() }.toSet()
+            val part2 = buildValidHalf(length - halfLen, useUpper, useDigits, useSpecial, usedInPart1)
+            
+            if (part2 != null) {
                 val full = part1 + part2
+                // Финальная проверка на глобальную уникальность и сложность
                 val lower = full.lowercase()
                 if (lower.length == lower.toSet().size && isValidPassword(full)) {
-                    return GenerationResult(full, calculateStrength(full), "Пароль разделен на две части по $halfLen символов. Каждая часть содержит минимум 2 заглавные, 2 строчные, 2 цифры и 2 спецсимвола.")
+                    return GenerationResult(full, calculateStrength(full), "Пароль разделен на две части. Каждая часть содержит минимум 2 заглавные, 2 строчные, 2 цифры и 2 спецсимвола. Повторов во всем пароле нет.")
                 }
             }
             attempts++
@@ -48,11 +52,13 @@ object PasswordGenerator {
         return null
     }
 
-    private fun buildValidHalf(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean): String? {
-        val upperPool = ('A'..'Z').toList()
-        val lowerPool = ('a'..'z').toList()
-        val digitPool = ('0'..'9').toList()
-        val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?')
+    private fun buildValidHalf(length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, forbiddenChars: Set<Char>): String? {
+        val upperPool = ('A'..'Z').filter { !forbiddenChars.contains(it.lowercaseChar()) }.toMutableList()
+        val lowerPool = ('a'..'z').filter { !forbiddenChars.contains(it) }.toMutableList()
+        val digitPool = ('0'..'9').filter { !forbiddenChars.contains(it) }.toMutableList()
+        val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?').filter { !forbiddenChars.contains(it) }.toMutableList()
+
+        if (upperPool.size < 2 || lowerPool.size < 2 || digitPool.size < 2 || specialPool.size < 2) return null
 
         var attempts = 0
         while (attempts < 100) {
@@ -88,22 +94,24 @@ object PasswordGenerator {
     fun generateWithAnchor(anchorWord: String, length: Int, useUpper: Boolean, useDigits: Boolean, useSpecial: Boolean, context: Context, addService: Boolean = false, serviceName: String = "", addYear: Boolean = false, year: Int? = null): GenerationResult? {
         if (anchorWord.isBlank() || anchorWord.length >= length) return null
         
-        val leetMap = mapOf('а' to "@", 'a' to "@", 'о' to "0", 'o' to "0", 'т' to "7", 't' to "7", 'ч' to "4", 'с' to "$", 's' to "$", 'и' to "1", 'i' to "1", 'й' to "1", 'б' to "6", 'b' to "6", 'л' to "!", 'l' to "!")
+        val leetMap = mapOf("a" to "@", "o" to "0", "t" to "7", "ch" to "4", "s" to "$", "i" to "1", "b" to "6", "l" to "!")
         val usedChars = mutableSetOf<Char>()
         val anchorBlock = StringBuilder()
-        val explanation = StringBuilder("Якорь: '$anchorWord' -> ")
+        val explanation = StringBuilder("Якорное слово: $anchorWord\nЯкорный блок: ")
 
-        // : Корректная транслитерация и очистка
         val transliterated = anchorWord.lowercase().map { translitMap[it] ?: it.toString() }.joinToString("").replace(Regex("[^a-z]"), "")
-
         if (transliterated.isEmpty()) return null
 
-        for ((i, c) in transliterated.withIndex()) {
+        var pos = 0
+        while (pos < transliterated.length && anchorBlock.length < length) {
+            val c = transliterated[pos]
             val lowerC = c.lowercaseChar()
-            val replacement = leetMap[lowerC]
-            var chosen = if (i == 0) c.uppercaseChar() else lowerC
             
-            if (replacement != null && i > 0) {
+            var chosen = if (pos == 0) c.uppercaseChar() else lowerC
+            val leetKey = if (lowerC == 'c' && pos + 1 < transliterated.length && transliterated[pos + 1] == 'h') "ch" else lowerC.toString()
+            val replacement = leetMap[leetKey]
+            
+            if (replacement != null && pos > 0) {
                 val repChar = replacement.first()
                 if (!usedChars.contains(repChar)) chosen = repChar
             }
@@ -111,9 +119,16 @@ object PasswordGenerator {
             if (!usedChars.contains(chosen.lowercaseChar())) {
                 anchorBlock.append(chosen)
                 usedChars.add(chosen.lowercaseChar())
-                explanation.append(chosen)
+                
+                if (pos == 0) explanation.append("$chosen — первая буква\n")
+                else if (replacement != null && chosen != lowerC) explanation.append("$lowerC -> $chosen\n")
+                else explanation.append("$chosen — сохранённая уникальная буква\n")
             }
+            
+            pos += if (leetKey == "ch") 2 else 1
         }
+
+        if (anchorBlock.isEmpty()) return null
 
         val overhead = (if (addService && serviceName.isNotEmpty()) 1 else 0) + (if (addYear && year != null) 2 else 0)
         val randomLen = length - anchorBlock.length - overhead
@@ -129,7 +144,7 @@ object PasswordGenerator {
             val lower = full.lowercase()
             
             if (lower.length == lower.toSet().size && isValidPassword(full)) {
-                return GenerationResult(full, calculateStrength(full), "${explanation.toString()}. Остальные символы добавлены случайно.")
+                return GenerationResult(full, calculateStrength(full), "${explanation.toString()}Остальные символы добавлены случайно.")
             }
             attempts++
         }
