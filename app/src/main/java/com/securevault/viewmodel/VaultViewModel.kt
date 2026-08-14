@@ -391,4 +391,5 @@ data class PasswordShuffleAssignment(
     val entryId: String,
     val newPassword: String,
     val generationType: String,
-    val targetProfileId: Int? =
+    val targetProfileId: Int? = null
+)
