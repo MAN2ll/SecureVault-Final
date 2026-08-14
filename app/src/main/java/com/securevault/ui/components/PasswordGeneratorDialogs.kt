@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,7 +97,7 @@ private fun AnchorGeneratorContent(context: android.content.Context, onGenerated
     var explanation by remember { mutableStateOf("") }
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
-    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
     
     LaunchedEffect(anchor, length, addService, addYear) {
         val res = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context, addService, initialService, addYear, currentYear)
@@ -105,18 +106,18 @@ private fun AnchorGeneratorContent(context: android.content.Context, onGenerated
     }
     
     OutlinedTextField(value = anchor, onValueChange = { anchor = it }, label = { Text("Якорное слово") })
-    Row {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = addService, onCheckedChange = { addService = it })
-        Text("Добавить сервис ($initialService) в начало", modifier = Modifier.padding(top = 8.dp))
+        Text("Добавить сервис ($initialService) в начало", fontSize = 12.sp)
     }
-    Row {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = addYear, onCheckedChange = { addYear = it })
-        Text("Добавить год ($currentYear) в конец", modifier = Modifier.padding(top = 8.dp))
+        Text("Добавить год ($currentYear) в конец", fontSize = 12.sp)
     }
 
     if (pwd.isNotEmpty()) {
         Text(pwd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-        Text(explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(explanation.replace("\n", "\n"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else if (anchor.length >= 3) {
         Text("Не удалось построить пароль с этим якорем. Выберите другое слово.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     }
@@ -158,18 +159,18 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
         Text("Два пользователя")
     }
     
-    OutlinedTextField(value = phrase1, onValueChange = { phrase1 = it }, label = { Text(if (isTwoUsers) "Фраза 1" else "Фраза") }, modifier = Modifier.fillMaxWidth())
-    if (isTwoUsers) OutlinedTextField(value = phrase2, onValueChange = { phrase2 = it }, label = { Text("Фраза 2") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = phrase1, onValueChange = { phrase1 = it }, label = { Text(if (isTwoUsers) "Фраза 1-й половины" else "Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
+    if (isTwoUsers) OutlinedTextField(value = phrase2, onValueChange = { phrase2 = it }, label = { Text("Фраза 2-й половины") }, modifier = Modifier.fillMaxWidth())
     
-    Row {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = addService, onCheckedChange = { addService = it })
-        Text("Сервис", modifier = Modifier.padding(top = 8.dp))
+        Text("Сервис", fontSize = 12.sp, modifier = Modifier.padding(end = 16.dp))
         Checkbox(checked = addYear, onCheckedChange = { addYear = it })
-        Text("Год", modifier = Modifier.padding(top = 8.dp))
+        Text("Год", fontSize = 12.sp)
     }
 
     if (variants.isEmpty() && phrase1.length >= 4) {
-        Text("Фраза слишком простая или маркеры создают конфликты повторов.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        Text(if (isTwoUsers) "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть." else "Фраза слишком простая. Добавьте ещё 2–3 личных слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     }
 
     variants.forEachIndexed { index, res ->
