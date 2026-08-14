@@ -7,7 +7,8 @@ object MnemonicPasswordGenerator {
         val phrase: String, val phrase2: String? = null, val serviceName: String = "",
         val username: String = "", val profileId: Int? = null, val targetLength: Int = 16,
         val rotationMonth: Int? = null, val rotationYear: Int? = null, val variantOffset: Int = 0,
-        val splitMode: SplitMode = SplitMode.SINGLE_USER, val year: Int? = null
+        val splitMode: SplitMode = SplitMode.SINGLE_USER, val year: Int? = null,
+        val addServiceMarker: Boolean = false, val addYearMarker: Boolean = false
     )
 
     data class GenerationResult(
@@ -16,16 +17,18 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode, val explanation: String, val variantOffset: Int = 0
     )
 
-    private val leetMap = mapOf('а' to "@", 'a' to "@", 'о' to "0", 'o' to "0", 'т' to "7", 't' to "7", 'ч' to "4", 'с' to "$", 's' to "$", 'и' to "1", 'i' to "1", 'й' to "1", 'б' to "6", 'b' to "6", 'л' to "!", 'l' to "!")
+    private val leetMap = mapOf("a" to "@", "o" to "0", "t" to "7", "ch" to "4", "s" to "$", "i" to "1", "b" to "6", "l" to "!")
+    private val translitMap = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
 
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
-        val serviceMarker = if (options.serviceName.isNotEmpty()) options.serviceName.first().uppercaseChar().toString() else ""
-        val yearMarker = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
+        val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) options.serviceName.first().uppercaseChar().toString() else ""
+        val yearMarker = if (options.addYearMarker) (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: "" else ""
         
         val hasService = serviceMarker.isNotEmpty()
-        val hasYear = yearMarker.isNotEmpty()
-        val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2 // %8 + #5 или #5
+        val hasYear = yearMarker.isNotEmpty() && yearMarker.first() != yearMarker.last() // Запрет 2022 -> 22
+        
+        val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2
         val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
         val baseLength = options.targetLength - overhead
 
@@ -51,7 +54,7 @@ object MnemonicPasswordGenerator {
             }
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
+                val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5") ?: continue
                 password += base.first
                 explanation += base.second
                 if (!usedChars.contains('#') && !usedChars.contains('5')) {
@@ -60,8 +63,8 @@ object MnemonicPasswordGenerator {
                 }
             } else {
                 val halfLen = baseLength / 2
-                val base1 = buildBase(words1, halfLen, usedChars, variantIndex) ?: continue
-                val base2 = buildBase(words2, baseLength - halfLen, usedChars, variantIndex + 100) ?: continue
+                val base1 = buildBase(words1, halfLen, usedChars, variantIndex, "%8") ?: continue
+                val base2 = buildBase(words2, baseLength - halfLen, usedChars, variantIndex + 100, "#5") ?: continue
                 
                 password += base1.first
                 explanation += "Часть 1: ${base1.second}"
@@ -83,6 +86,8 @@ object MnemonicPasswordGenerator {
                 if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
                     password += yearMarker; usedChars.add(y1); usedChars.add(y2)
                     explanation += "Год: $yearMarker\n"
+                } else {
+                    continue // Не удалось добавить год без повторов, пробуем следующий variantOffset
                 }
             }
 
@@ -99,7 +104,7 @@ object MnemonicPasswordGenerator {
         return results
     }
 
-    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
+    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int, reserve: String): Pair<String, String>? {
         val result = StringBuilder()
         val explanation = StringBuilder()
         val charsPerWord = targetLen / words.size
@@ -107,7 +112,7 @@ object MnemonicPasswordGenerator {
 
         for ((wIndex, word) in words.withIndex()) {
             val len = charsPerWord + (if (wIndex < remainder) 1 else 0)
-            val translit = transliterate(word)
+            val translit = word.map { translitMap[it] ?: it.toString() }.joinToString("")
             if (translit.isEmpty()) return null
 
             var anchorFound = false
@@ -123,16 +128,20 @@ object MnemonicPasswordGenerator {
             while (result.length < (if (wIndex == words.lastIndex) targetLen else (wIndex + 1) * charsPerWord + minOf(wIndex + 1, remainder)) && pos < translit.length) {
                 val c = translit[pos]
                 val lowerC = c.lowercaseChar()
-                val replacement = leetMap[lowerC]
                 
                 var chosen = lowerC
+                val leetKey = if (lowerC == 'c' && pos + 1 < translit.length && translit[pos + 1] == 'h') "ch" else lowerC.toString()
+                val replacement = leetMap[leetKey]
+                
                 if (replacement != null) {
-                    val repChar = replacement.first()
+                    val repIndex = (variantOffset + pos) % replacement.length
+                    val repChar = replacement[repIndex]
                     if (!usedChars.contains(repChar)) chosen = repChar
                 }
                 
                 if (!usedChars.contains(chosen)) {
                     result.append(chosen); usedChars.add(chosen); explanation.append(chosen)
+                    if (leetKey == "ch") pos++ // Пропускаем 'h'
                 }
                 pos++
             }
@@ -154,10 +163,5 @@ object MnemonicPasswordGenerator {
     private fun checkPart(part: String): Boolean {
         return part.count { it.isUpperCase() } >= 2 && part.count { it.isLowerCase() } >= 2 &&
                part.count { it.isDigit() } >= 2 && part.count { !it.isLetterOrDigit() } >= 2
-    }
-
-    private fun transliterate(text: String): String {
-        val map = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
-        return text.map { map[it] ?: it.toString() }.joinToString("")
     }
 }
