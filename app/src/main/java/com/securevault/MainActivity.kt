@@ -40,8 +40,6 @@ class MainActivity : FragmentActivity() {
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             scheduleNotifications()
-        } else {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         
         startInactivityMonitor()
@@ -95,8 +93,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun scheduleNotifications() {
-        val workRequest = PeriodicWorkRequestBuilder<RotationNotificationWorker>(1, TimeUnit.DAYS)
-            .build()
+        val workRequest = PeriodicWorkRequestBuilder<RotationNotificationWorker>(1, TimeUnit.DAYS).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "securevault_rotation_notifications",
             ExistingPeriodicWorkPolicy.UPDATE,
