@@ -97,22 +97,52 @@ private fun AnchorGeneratorContent(context: android.content.Context, onGenerated
     var explanation by remember { mutableStateOf("") }
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
+    var serviceError by remember { mutableStateOf<String?>(null) }
+    var yearError by remember { mutableStateOf<String?>(null) }
     val currentYear = Calendar.getInstance().get(Calendar.YEAR)
     
     LaunchedEffect(anchor, length, addService, addYear) {
         val res = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, context, addService, initialService, addYear, currentYear)
         pwd = res?.password ?: ""
         explanation = res?.explanation ?: ""
+        
+        // Проверка маркеров
+        serviceError = null
+        yearError = null
+        
+        if (addService && initialService.isNotEmpty()) {
+            val serviceChar = initialService.first().uppercaseChar()
+            if (pwd.contains(serviceChar, ignoreCase = true)) {
+                serviceError = "Символ сервиса '$serviceChar' уже используется в пароле"
+            }
+        }
+        
+        if (addYear) {
+            val yearStr = currentYear.toString().takeLast(2)
+            if (yearStr[0] == yearStr[1]) {
+                yearError = "Год $currentYear нельзя добавить: цифры повторяются"
+            } else if (pwd.contains(yearStr[0]) || pwd.contains(yearStr[1])) {
+                yearError = "Цифры года уже используются в пароле"
+            }
+        }
     }
     
     OutlinedTextField(value = anchor, onValueChange = { anchor = it }, label = { Text("Якорное слово") })
+    
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = addService, onCheckedChange = { addService = it })
-        Text("Добавить сервис ($initialService) в начало", fontSize = 12.sp)
+        Checkbox(checked = addService, onCheckedChange = { addService = it }, enabled = initialService.isNotEmpty())
+        Column {
+            Text("Добавить сервис ($initialService) в начало", fontSize = 12.sp)
+            if (serviceError != null) Text(serviceError!!, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+        }
     }
+    
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = addYear, onCheckedChange = { addYear = it })
-        Text("Добавить год ($currentYear) в конец", fontSize = 12.sp)
+        Column {
+            Text("Добавить год ($currentYear) в конец", fontSize = 12.sp)
+            if (yearError != null) Text(yearError!!, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+        }
     }
 
     if (pwd.isNotEmpty()) {
@@ -141,6 +171,7 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
     
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedIdx by remember { mutableIntStateOf(-1) }
+    var isWeakPhrase by remember { mutableStateOf(false) }
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length, addService, addYear) {
         val y = year.toIntOrNull()
@@ -152,6 +183,12 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
         )
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
+        
+        // Проверка на слабую фразу
+        isWeakPhrase = phrase1.lowercase().trim() in setOf(
+            "мама мыла раму", "ма мыла раму", "я люблю тебя",
+            "мой пароль", "пароль от сайта", "qwerty", "password"
+        )
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -169,8 +206,10 @@ private fun AmpgGeneratorContent(context: android.content.Context, onGenerated: 
         Text("Год", fontSize = 12.sp)
     }
 
-    if (variants.isEmpty() && phrase1.length >= 4) {
-        Text(if (isTwoUsers) "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть." else "Фраза слишком простая. Добавьте ещё 2–3 личных слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    if (isWeakPhrase) {
+        Text("Фраза слишком простая. Добавьте ещё 2–3 личных слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+    } else if (variants.isEmpty() && phrase1.length >= 4) {
+        Text(if (isTwoUsers) "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть." else "Не удалось сгенерировать валидные варианты.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
     }
 
     variants.forEachIndexed { index, res ->
