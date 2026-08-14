@@ -3,12 +3,12 @@ package com.securevault.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.securevault.data.BackupData
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
 import com.securevault.data.VaultRepository
 import com.securevault.security.ProfilePasswordHasher
-import com.securevault.utils.BackupData
 import com.securevault.utils.BackupManager
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.ImportMode
@@ -93,7 +93,7 @@ class VaultViewModel @Inject constructor(
     fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
-                repository.insertEntry(entry)
+                repository.insert(entry)
                 onResult(PasswordOperationResult.Success("Запись добавлена"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -104,7 +104,7 @@ class VaultViewModel @Inject constructor(
     fun updateEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
-                repository.updateEntry(entry)
+                repository.update(entry)
                 onResult(PasswordOperationResult.Success("Запись обновлена"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -115,7 +115,10 @@ class VaultViewModel @Inject constructor(
     fun deleteEntry(entryId: String, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
-                repository.deleteEntry(entryId)
+                val entry = allEntries.value.find { it.id == entryId }
+                if (entry != null) {
+                    repository.delete(entry)
+                }
                 onResult(PasswordOperationResult.Success("Запись удалена"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -145,7 +148,7 @@ class VaultViewModel @Inject constructor(
                     passwordHistoryJson = JsonUtils.toJson(history),
                     lastChanged = System.currentTimeMillis()
                 )
-                repository.updateEntry(updated)
+                repository.update(updated)
                 onResult(PasswordOperationResult.Success())
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -161,7 +164,7 @@ class VaultViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val oldEncrypted = entry.password
+                val oldEncrypted = entry.encryptedPassword
                 val newEncrypted = withContext(Dispatchers.Default) {
                     CryptoUtils.encrypt(newPassword)
                 }
@@ -177,11 +180,11 @@ class VaultViewModel @Inject constructor(
                 )
                 
                 val updated = entry.copy(
-                    password = newEncrypted,
+                    encryptedPassword = newEncrypted,
                     passwordHistoryJson = JsonUtils.toJson(history),
                     lastChanged = System.currentTimeMillis()
                 )
-                repository.updateEntry(updated)
+                repository.update(updated)
                 onResult(PasswordOperationResult.Success("Пароль заменён"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
@@ -196,9 +199,12 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 for (entry in entries) {
-                    val oldEncrypted = entry.password
+                    val oldEncrypted = entry.encryptedPassword
+                    val decrypted = withContext(Dispatchers.Default) {
+                        CryptoUtils.decrypt(oldEncrypted)
+                    }
                     val newEncrypted = withContext(Dispatchers.Default) {
-                        CryptoUtils.encrypt(CryptoUtils.decrypt(oldEncrypted))
+                        CryptoUtils.encrypt(decrypted)
                     }
                     
                     val history = entry.getPasswordHistory().toMutableList()
@@ -212,11 +218,11 @@ class VaultViewModel @Inject constructor(
                     )
                     
                     val updated = entry.copy(
-                        password = newEncrypted,
+                        encryptedPassword = newEncrypted,
                         passwordHistoryJson = JsonUtils.toJson(history),
                         lastChanged = System.currentTimeMillis()
                     )
-                    repository.updateEntry(updated)
+                    repository.update(updated)
                 }
                 onResult(PasswordOperationResult.Success("Пароли обновлены"))
             } catch (e: Exception) {
@@ -234,7 +240,7 @@ class VaultViewModel @Inject constructor(
                 val currentEntries = allEntries.value
                 for (replacement in replacements) {
                     val entry = currentEntries.find { it.id == replacement.entryId } ?: continue
-                    val oldEncrypted = entry.password
+                    val oldEncrypted = entry.encryptedPassword
                     
                     val newEncrypted = withContext(Dispatchers.Default) {
                         CryptoUtils.encrypt(replacement.newPassword)
@@ -251,14 +257,14 @@ class VaultViewModel @Inject constructor(
                     )
                     
                     val updated = entry.copy(
-                        password = newEncrypted,
+                        encryptedPassword = newEncrypted,
                         passwordHistoryJson = JsonUtils.toJson(history),
                         lastChanged = System.currentTimeMillis(),
                         textHint = replacement.textHint ?: entry.textHint,
                         mnemonicPhraseHint = replacement.mnemonicPhraseHint ?: entry.mnemonicPhraseHint,
                         mnemonicOptionsJson = replacement.mnemonicOptionsJson ?: entry.mnemonicOptionsJson
                     )
-                    repository.updateEntry(updated)
+                    repository.update(updated)
                 }
                 onResult(PasswordOperationResult.Success("Пароли заменены"))
             } catch (e: Exception) {
@@ -308,11 +314,11 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val profile = profiles.value.find { it.id == profileId } ?: return@launch
-                val hashResult = ProfilePasswordHasher.hash(pin)
+                val salt = ProfilePasswordHasher.generateSalt()
+                val hash = ProfilePasswordHasher.hash(pin, salt)
                 val updated = profile.copy(
-                    pinHash = hashResult.hash,
-                    pinSalt = hashResult.salt,
-                    pinIterations = hashResult.iterations
+                    passwordHash = hash,
+                    passwordSalt = salt
                 )
                 repository.updateProfile(updated)
                 onResult(PasswordOperationResult.Success("PIN установлен"))
@@ -324,10 +330,9 @@ class VaultViewModel @Inject constructor(
 
     fun verifyProfilePin(profileId: Int, pin: String): Boolean {
         val profile = profiles.value.find { it.id == profileId } ?: return false
-        val hash = profile.pinHash ?: return false
-        val salt = profile.pinSalt ?: return false
-        val iterations = profile.pinIterations
-        return ProfilePasswordHasher.verify(pin, hash, salt, iterations)
+        val hash = profile.passwordHash ?: return false
+        val salt = profile.passwordSalt ?: return false
+        return ProfilePasswordHasher.verify(pin, hash, salt)
     }
 
     suspend fun exportAllProfiles(): BackupData {
