@@ -92,6 +92,11 @@ class VaultViewModel @Inject constructor(
         return allEntries.value.find { it.id == entryId }
     }
 
+    // ✅ ДОБАВЛЕНО: для совместимости с ExportImportScreen и GeneratorScreen
+    fun insert(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
+        insertEntry(entry, onResult)
+    }
+
     fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
         viewModelScope.launch {
             try {
@@ -188,6 +193,33 @@ class VaultViewModel @Inject constructor(
                 )
                 repository.update(updated)
                 onResult(PasswordOperationResult.Success("Пароль заменён"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    // ✅ ДОБАВЛЕНО: перегрузка для совместимости с RotationScreen и ReminderScreen
+    fun replacePassword(
+        entryId: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val entry = allEntries.value.find { it.id == entryId } ?: return@launch
+                val updated = entry.copy(
+                    textHint = newHint,
+                    generationType = newGenerationType,
+                    mnemonicPhraseHint = newMnemonicPhraseHint,
+                    mnemonicOptionsJson = newMnemonicOptionsJson,
+                    lastChanged = System.currentTimeMillis()
+                )
+                repository.update(updated)
+                onResult(PasswordOperationResult.Success("Параметры обновлены"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
