@@ -378,11 +378,6 @@ class VaultViewModel @Inject constructor(
     }
 }
 
-sealed class PasswordOperationResult {
-    data class Success(val message: String = "") : PasswordOperationResult()
-    data class Error(val message: String) : PasswordOperationResult()
-}
-
 data class BulkPasswordReplacement(
     val entryId: String,
     val newPassword: String,
@@ -396,5 +391,4 @@ data class PasswordShuffleAssignment(
     val entryId: String,
     val newPassword: String,
     val generationType: String,
-    val targetProfileId: Int? = null
-)
+    val targetProfileId: Int? =
