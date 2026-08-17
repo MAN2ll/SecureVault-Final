@@ -36,11 +36,21 @@ object MnemonicPasswordGenerator {
         "мой пароль", "пароль от сайта", "qwerty", "password"
     )
 
+    // ✅ БЕЗОПАСНЫЕ HELPER-ФУНКЦИИ ДЛЯ РАБОТЫ С Char и Set<Char>
+    private fun usedKey(ch: Char): Char = ch.lowercaseChar()
+    private fun isUsed(ch: Char, usedChars: Set<Char>): Boolean = usedKey(ch) in usedChars
+    private fun markUsed(ch: Char, usedChars: MutableSet<Char>) { usedChars.add(usedKey(ch)) }
+    private fun hasUsedChars(text: String, usedChars: Set<Char>): Boolean = text.any { it.lowercaseChar() in usedChars }
+    private fun markUsedText(text: String, usedChars: MutableSet<Char>) { text.forEach { usedChars.add(it.lowercaseChar()) } }
+
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
         if (options.phrase.lowercase().trim() in weakPhrases) return emptyList()
         
-        val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) options.serviceName.first().uppercaseChar().toString() else ""
+        val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
+            options.serviceName.first().uppercaseChar().toString()
+        } else ""
+        
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
             if (y.length == 2 && y[0] != y[1]) y else ""
@@ -68,20 +78,31 @@ object MnemonicPasswordGenerator {
             var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
-                    password += serviceMarker; usedChars.add(serviceMarker.first().lowercaseChar())
+                if (hasService && !isUsed(serviceMarker.first(), usedChars)) {
+                    password += serviceMarker
+                    markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker\n"
                 }
                 val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
-                password += base.first; explanation += base.second
-                if (!usedChars.contains('#') && !usedChars.contains('5')) {
-                    password += "#5"; usedChars.add('#'); usedChars.add('5'); explanation += "Резерв AMPG: #5\n"
+                password += base.first
+                explanation += base.second
+                if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
+                    password += "#5"
+                    markUsed('#', usedChars)
+                    markUsed('5', usedChars)
+                    explanation += "Резерв AMPG: #5\n"
                 }
                 if (hasYear) {
-                    val y1 = yearMarker[0]; val y2 = yearMarker[1]
-                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
-                        password += yearMarker; usedChars.add(y1); usedChars.add(y2); explanation += "Год: $yearMarker\n"
-                    } else continue
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!isUsed(y1, usedChars) && !isUsed(y2, usedChars)) {
+                        password += yearMarker
+                        markUsed(y1, usedChars)
+                        markUsed(y2, usedChars)
+                        explanation += "Год: $yearMarker\n"
+                    } else {
+                        continue
+                    }
                 }
                 if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
                     results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
@@ -91,28 +112,43 @@ object MnemonicPasswordGenerator {
                 val part1Len = options.targetLength / 2
                 val part2Len = options.targetLength - part1Len
                 var part1 = ""
-                if (hasService && !usedChars.contains(serviceMarker.first().lowercaseChar())) {
-                    part1 += serviceMarker; usedChars.add(serviceMarker.first().lowercaseChar())
+                if (hasService && !isUsed(serviceMarker.first(), usedChars)) {
+                    part1 += serviceMarker
+                    markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
                 val base1Len = part1Len - (if (hasService) 1 else 0) - 2
                 val base1 = buildBase(words1, base1Len, usedChars, variantIndex) ?: continue
-                part1 += base1.first; explanation += "Часть 1 основа: ${base1.second}\n"
-                if (!usedChars.contains('%') && !usedChars.contains('8')) {
-                    part1 += "%8"; usedChars.add('%'); usedChars.add('8'); explanation += "Резерв 1: %8\n"
+                part1 += base1.first
+                explanation += "Часть 1 основа: ${base1.second}\n"
+                if (!isUsed('%', usedChars) && !isUsed('8', usedChars)) {
+                    part1 += "%8"
+                    markUsed('%', usedChars)
+                    markUsed('8', usedChars)
+                    explanation += "Резерв 1: %8\n"
                 }
                 var part2 = ""
                 val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
                 val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100) ?: continue
-                part2 += base2.first; explanation += "Часть 2 основа: ${base2.second}\n"
-                if (!usedChars.contains('#') && !usedChars.contains('5')) {
-                    part2 += "#5"; usedChars.add('#'); usedChars.add('5'); explanation += "Резерв 2: #5\n"
+                part2 += base2.first
+                explanation += "Часть 2 основа: ${base2.second}\n"
+                if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
+                    part2 += "#5"
+                    markUsed('#', usedChars)
+                    markUsed('5', usedChars)
+                    explanation += "Резерв 2: #5\n"
                 }
                 if (hasYear) {
-                    val y1 = yearMarker[0]; val y2 = yearMarker[1]
-                    if (!usedChars.contains(y1) && !usedChars.contains(y2)) {
-                        part2 += yearMarker; usedChars.add(y1); usedChars.add(y2); explanation += "Год: $yearMarker (часть 2)\n"
-                    } else continue
+                    val y1 = yearMarker[0]
+                    val y2 = yearMarker[1]
+                    if (!isUsed(y1, usedChars) && !isUsed(y2, usedChars)) {
+                        part2 += yearMarker
+                        markUsed(y1, usedChars)
+                        markUsed(y2, usedChars)
+                        explanation += "Год: $yearMarker (часть 2)\n"
+                    } else {
+                        continue
+                    }
                 }
                 password = part1 + part2
                 if (password.length == options.targetLength && part1.length == part1Len && part2.length == part2Len && isValidVariant(password, options.splitMode)) {
@@ -140,9 +176,12 @@ object MnemonicPasswordGenerator {
         val firstWordTranslit = transliterateWord(words[0])
         var anchorFound = false
         for (c in firstWordTranslit) {
-            if (!usedChars.contains(c.lowercaseChar())) {
-                result.append(c.uppercaseChar()); usedChars.add(c.lowercaseChar())
-                explanation.append("${c.uppercaseChar()}(якорь)"); anchorFound = true; break
+            if (!isUsed(c, usedChars)) {
+                result.append(c.uppercaseChar())
+                markUsed(c, usedChars)
+                explanation.append("${c.uppercaseChar()}(якорь)")
+                anchorFound = true
+                break
             }
         }
         if (!anchorFound) return null
@@ -164,26 +203,28 @@ object MnemonicPasswordGenerator {
 
             when (variantOffset) {
                 0 -> {
-                    if (!usedChars.contains(lowerC)) chosen = lowerC
-                    else chosen = replacements?.firstOrNull { !usedChars.contains(it.lowercaseChar()) }?.first()
+                    if (!isUsed(lowerC, usedChars)) chosen = lowerC
+                    else chosen = replacements?.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
                 }
                 1 -> {
                     val isVowel = lowerC in "aeiou"
-                    if (isVowel && replacements != null) chosen = replacements.firstOrNull { !usedChars.contains(it.lowercaseChar()) }?.first()
-                    if (chosen == null && !usedChars.contains(lowerC)) chosen = lowerC
-                    else if (chosen == null) chosen = replacements?.firstOrNull { !usedChars.contains(it.lowercaseChar()) }?.first()
+                    if (isVowel && replacements != null) chosen = replacements.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
+                    if (chosen == null && !isUsed(lowerC, usedChars)) chosen = lowerC
+                    else if (chosen == null) chosen = replacements?.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
                 }
                 2 -> {
                     if (replacements != null) {
                         val prefs = if (replacements.size > 1) listOf(replacements[1], replacements[0]) else replacements
-                        chosen = prefs.firstOrNull { !usedChars.contains(it.lowercaseChar()) }?.first()
+                        chosen = prefs.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
                     }
-                    if (chosen == null && !usedChars.contains(lowerC)) chosen = lowerC
+                    if (chosen == null && !isUsed(lowerC, usedChars)) chosen = lowerC
                 }
             }
 
             if (chosen != null) {
-                result.append(chosen); usedChars.add(chosen.lowercaseChar()); explanation.append(chosen)
+                result.append(chosen)
+                markUsed(chosen, usedChars)
+                explanation.append(chosen)
                 if (twoChar == "ch") skipNext = true
             }
             pos++
