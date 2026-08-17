@@ -26,6 +26,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationScreen(
+    profileId: Int? = null, // Добавлено для совместимости с SecureVaultNavHost
     onBack: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
@@ -102,7 +103,6 @@ fun RotationScreen(
             rotationYear = null,
             allProfileEntries = rotationEntries,
             onPasswordReplaced = { newPassword, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
-                // Используем newPassword из callback (это реальный AMPG-пароль)
                 viewModel.replacePassword(
                     entryId = entry.id,
                     newPassword = newPassword,
