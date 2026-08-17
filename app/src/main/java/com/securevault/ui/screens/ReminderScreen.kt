@@ -102,7 +102,7 @@ fun ReminderScreen(
             rotationYear = null,
             allProfileEntries = rotationEntries,
             onPasswordReplaced = { newPassword, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
-                // ✅ Используем newPassword из callback (это реальный AMPG-пароль)
+                // Используем newPassword из callback (это реальный AMPG-пароль)
                 // Заглушка "NewSecurePassword123!" полностью удалена
                 viewModel.replacePassword(
                     entry = entry,
