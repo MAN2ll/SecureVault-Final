@@ -92,7 +92,6 @@ class VaultViewModel @Inject constructor(
         return allEntries.value.find { it.id == entryId }
     }
 
-    //  с onResult по умолчанию (для ExportImportScreen, GeneratorScreen)
     fun insert(entry: Entry, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
@@ -163,27 +162,53 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  принимает Entry (для ReminderScreen и др.)
+    //  ПЕРЕГРУЗКА 1: Базовая замена по Entry
     fun replacePassword(
         entry: Entry,
         newPassword: String,
         generationType: String,
         onResult: (PasswordOperationResult) -> Unit
     ) {
-        replacePasswordById(entry.id, newPassword, generationType, onResult)
+        replacePasswordInternal(entry.id, newPassword, generationType, null, generationType, null, null, onResult)
     }
 
-    // принимает entryId и newPassword (для RotationScreen и др.)
+    //  ПЕРЕГРУЗКА 2: Базовая замена по ID
     fun replacePassword(
         entryId: String,
         newPassword: String,
         generationType: String,
         onResult: (PasswordOperationResult) -> Unit
     ) {
-        replacePasswordById(entryId, newPassword, generationType, onResult)
+        replacePasswordInternal(entryId, newPassword, generationType, null, generationType, null, null, onResult)
     }
 
-    //  принимает entryId и метаданные (для RotationScreen/ReminderScreen при смене типа)
+    //  ПЕРЕГРУЗКА 3: Полная замена по ID (с метаданными) - ИСПРАВЛЯЕТ RotationScreen
+    fun replacePassword(
+        entryId: String,
+        newPassword: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        replacePasswordInternal(entryId, newPassword, newGenerationType, newHint, newGenerationType, newMnemonicPhraseHint, newMnemonicOptionsJson, onResult)
+    }
+
+    //  ПЕРЕГРУЗКА 4: Полная замена по Entry (с метаданными) - ИСПРАВЛЯЕТ ReminderScreen
+    fun replacePassword(
+        entry: Entry,
+        newPassword: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        replacePasswordInternal(entry.id, newPassword, newGenerationType, newHint, newGenerationType, newMnemonicPhraseHint, newMnemonicOptionsJson, onResult)
+    }
+
+    //  ПЕРЕГРУЗКА 5: Обновление только метаданных (без смены пароля)
     fun replacePassword(
         entryId: String,
         newHint: String?,
@@ -210,10 +235,15 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    private fun replacePasswordById(
+    // Внутренний метод для избежания дублирования кода
+    private fun replacePasswordInternal(
         entryId: String,
         newPassword: String,
-        generationType: String,
+        actualGenerationType: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?,
         onResult: (PasswordOperationResult) -> Unit
     ) {
         viewModelScope.launch {
@@ -229,7 +259,7 @@ class VaultViewModel @Inject constructor(
                     PasswordHistoryItem(
                         date = System.currentTimeMillis(),
                         encryptedOldPassword = oldEncrypted,
-                        type = generationType,
+                        type = actualGenerationType,
                         relatedService = null
                     )
                 )
@@ -238,7 +268,10 @@ class VaultViewModel @Inject constructor(
                     encryptedPassword = newEncrypted,
                     passwordHistoryJson = JsonUtils.toJson(history),
                     lastChanged = System.currentTimeMillis(),
-                    generationType = generationType
+                    textHint = newHint,
+                    generationType = newGenerationType,
+                    mnemonicPhraseHint = newMnemonicPhraseHint,
+                    mnemonicOptionsJson = newMnemonicOptionsJson
                 )
                 repository.update(updated)
                 onResult(PasswordOperationResult.Success("Пароль заменён"))
@@ -265,9 +298,7 @@ class VaultViewModel @Inject constructor(
                         continue
                     }
                     
-                    if (sourceEntryId == null) {
-                        continue
-                    }
+                    if (sourceEntryId == null) continue
                     
                     val sourceEntry = currentEntries.find { it.id == sourceEntryId }
                     if (sourceEntry == null) {
