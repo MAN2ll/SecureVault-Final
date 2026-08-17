@@ -25,10 +25,10 @@ object MnemonicPasswordGenerator {
         'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
+    // ✅ Строгая таблица замен без лишних вариантов
     private val leetMap = mapOf(
-        "a" to listOf("@", "4"), "o" to listOf("0", "9"), "t" to listOf("7"),
-        "ch" to listOf("4"), "s" to listOf("$", "5"), "i" to listOf("1", "!"),
-        "l" to listOf("!", "1"), "b" to listOf("6", "8")
+        "a" to "@", "o" to "0", "t" to "7", "ch" to "4",
+        "s" to "$", "i" to "1", "b" to "6", "l" to "!"
     )
 
     private val weakPhrases = setOf(
@@ -36,12 +36,9 @@ object MnemonicPasswordGenerator {
         "мой пароль", "пароль от сайта", "qwerty", "password"
     )
 
-    // ✅ БЕЗОПАСНЫЕ HELPER-ФУНКЦИИ ДЛЯ РАБОТЫ С Char и Set<Char>
     private fun usedKey(ch: Char): Char = ch.lowercaseChar()
     private fun isUsed(ch: Char, usedChars: Set<Char>): Boolean = usedKey(ch) in usedChars
     private fun markUsed(ch: Char, usedChars: MutableSet<Char>) { usedChars.add(usedKey(ch)) }
-    private fun hasUsedChars(text: String, usedChars: Set<Char>): Boolean = text.any { it.lowercaseChar() in usedChars }
-    private fun markUsedText(text: String, usedChars: MutableSet<Char>) { text.forEach { usedChars.add(it.lowercaseChar()) } }
 
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
@@ -83,7 +80,7 @@ object MnemonicPasswordGenerator {
                     markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker\n"
                 }
-                val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
+                val base = buildBase(words1, baseLength, usedChars, variantIndex, false) ?: continue
                 password += base.first
                 explanation += base.second
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -118,7 +115,7 @@ object MnemonicPasswordGenerator {
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
                 val base1Len = part1Len - (if (hasService) 1 else 0) - 2
-                val base1 = buildBase(words1, base1Len, usedChars, variantIndex) ?: continue
+                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, false) ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
                 if (!isUsed('%', usedChars) && !isUsed('8', usedChars)) {
@@ -129,7 +126,7 @@ object MnemonicPasswordGenerator {
                 }
                 var part2 = ""
                 val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
-                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100) ?: continue
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex, true) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -161,75 +158,122 @@ object MnemonicPasswordGenerator {
     }
 
     private fun getStrategyName(variantIndex: Int): String = when (variantIndex) {
-        0 -> "Минимальные замены (максимально читаемый)"
-        1 -> "Средние замены (баланс)"
-        2 -> "Максимальные замены (больше спецсимволов)"
+        0 -> "Читаемый (минимальные замены)"
+        1 -> "Сложный (максимальные замены)"
+        2 -> "Альтернативный (другие замены)"
         else -> "Стандартный"
     }
 
-    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
+    // ✅ Полная переработка: каждое слово даёт свой uppercase-якорь
+    private fun buildBase(
+        words: List<String>,
+        targetLen: Int,
+        usedChars: MutableSet<Char>,
+        variantOffset: Int,
+        isPart2: Boolean
+    ): Pair<String, String>? {
         val result = StringBuilder()
         val explanation = StringBuilder()
-        val translit = words.joinToString("") { transliterateWord(it) }
-        if (translit.isEmpty()) return null
-
-        val firstWordTranslit = transliterateWord(words[0])
-        var anchorFound = false
-        for (c in firstWordTranslit) {
-            if (!isUsed(c, usedChars)) {
-                result.append(c.uppercaseChar())
-                markUsed(c, usedChars)
-                explanation.append("${c.uppercaseChar()}(якорь)")
-                anchorFound = true
-                break
+        
+        val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
+        if (translitWords.isEmpty()) return null
+        
+        // Находим якоря для КАЖДОГО слова
+        val anchors = mutableListOf<Char>()
+        for (translit in translitWords) {
+            var anchorFound = false
+            for (c in translit) {
+                if (!isUsed(c, usedChars)) {
+                    anchors.add(c.uppercaseChar())
+                    markUsed(c, usedChars)
+                    explanation.append("${c.uppercaseChar()} ")
+                    anchorFound = true
+                    break
+                }
             }
+            if (!anchorFound) return null
         }
-        if (!anchorFound) return null
-
-        var pos = 0
-        val maxIterations = translit.length * 4
-        while (result.length < targetLen && pos < maxIterations) {
-            val idx = pos % translit.length
-            val c = translit[idx]
-            val lowerC = c.lowercaseChar()
+        
+        // Добавляем все якоря в результат (гарантия минимум N uppercase)
+        for (anchor in anchors) {
+            result.append(anchor)
+        }
+        
+        val lettersToTake = targetLen - anchors.size
+        if (lettersToTake < 0) return null
+        
+        // ✅ Приоритетные замены для достижения минимума digits/specials
+        val priorityReplacements = when {
+            isPart2 -> listOf("s" to "$", "l" to "!", "ch" to "4", "o" to "0") // Другой порядок для part2
+            variantOffset == 0 -> listOf("o" to "0", "ch" to "4", "l" to "!", "s" to "$")
+            variantOffset == 1 -> listOf("a" to "@", "o" to "0", "t" to "7", "ch" to "4", "s" to "$", "i" to "1", "b" to "6", "l" to "!")
+            variantOffset == 2 -> listOf("l" to "!", "s" to "$", "t" to "7", "i" to "1")
+            else -> emptyList()
+        }
+        
+        var totalTaken = 0
+        
+        // Проходим по всем словам, сохраняя порядок
+        for ((wordIdx, translit) in translitWords.withIndex()) {
+            var pos = 0
             
-            val nextIdx = (pos + 1) % translit.length
-            val twoChar = if (lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h') "ch" else ""
-            val leetKey = if (twoChar == "ch") "ch" else lowerC.toString()
-            val replacements = leetMap[leetKey]
-            
-            var chosen: Char? = null
-            var skipNext = false
-
-            when (variantOffset) {
-                0 -> {
-                    if (!isUsed(lowerC, usedChars)) chosen = lowerC
-                    else chosen = replacements?.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
-                }
-                1 -> {
-                    val isVowel = lowerC in "aeiou"
-                    if (isVowel && replacements != null) chosen = replacements.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
-                    if (chosen == null && !isUsed(lowerC, usedChars)) chosen = lowerC
-                    else if (chosen == null) chosen = replacements?.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
-                }
-                2 -> {
-                    if (replacements != null) {
-                        val prefs = if (replacements.size > 1) listOf(replacements[1], replacements[0]) else replacements
-                        chosen = prefs.firstOrNull { !isUsed(it.first(), usedChars) }?.first()
+            // Сначала применяем приоритетные замены
+            while (totalTaken < lettersToTake && pos < translit.length) {
+                val c = translit[pos]
+                val lowerC = c.lowercaseChar()
+                
+                if (lowerC == anchors[wordIdx].lowercaseChar()) { pos++; continue }
+                
+                val nextIdx = pos + 1
+                val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
+                val leetKey = if (isCh) "ch" else lowerC.toString()
+                
+                var chosen: Char? = null
+                var skipNext = false
+                
+                for ((key, rep) in priorityReplacements) {
+                    if (leetKey == key) {
+                        val repChar = rep.first()
+                        if (!isUsed(repChar, usedChars)) {
+                            chosen = repChar
+                            skipNext = isCh
+                            break
+                        }
                     }
-                    if (chosen == null && !isUsed(lowerC, usedChars)) chosen = lowerC
                 }
+                
+                if (chosen != null) {
+                    result.append(chosen)
+                    markUsed(chosen, usedChars)
+                    explanation.append(chosen)
+                    totalTaken++
+                }
+                
+                pos += if (skipNext) 2 else 1
             }
-
-            if (chosen != null) {
-                result.append(chosen)
-                markUsed(chosen, usedChars)
-                explanation.append(chosen)
-                if (twoChar == "ch") skipNext = true
+            
+            // Затем заполняем обычными буквами
+            pos = 0
+            while (totalTaken < lettersToTake && pos < translit.length) {
+                val c = translit[pos]
+                val lowerC = c.lowercaseChar()
+                
+                if (lowerC == anchors[wordIdx].lowercaseChar()) { pos++; continue }
+                
+                val nextIdx = pos + 1
+                val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
+                
+                if (!isUsed(lowerC, usedChars)) {
+                    result.append(lowerC)
+                    markUsed(lowerC, usedChars)
+                    explanation.append(lowerC)
+                    totalTaken++
+                }
+                
+                pos += if (isCh) 2 else 1
             }
-            pos++
-            if (skipNext) pos++
         }
+        
         if (result.length < targetLen) return null
         return Pair(result.toString(), explanation.toString())
     }
