@@ -182,7 +182,7 @@ class VaultViewModel @Inject constructor(
         replacePasswordInternal(entryId, newPassword, generationType, null, generationType, null, null, onResult)
     }
 
-    //  ПЕРЕГРУЗКА 3: Полная замена по ID (с метаданными) - ИСПРАВЛЯЕТ RotationScreen
+    //  ПЕРЕГРУЗКА 3: Полная замена по ID (с метаданными)
     fun replacePassword(
         entryId: String,
         newPassword: String,
