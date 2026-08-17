@@ -27,7 +27,13 @@ fun PasswordRotationDialog(
     rotationMonth: Int?,
     rotationYear: Int?,
     allProfileEntries: List<Entry>,
-    onPasswordReplaced: (entryId: String, newHint: String?, newGenerationType: String, newMnemonicPhraseHint: String?, newMnemonicOptionsJson: String?) -> Unit,
+    onPasswordReplaced: (
+        newPassword: String,
+        newHint: String?,
+        newGenerationType: String,
+        newMnemonicPhraseHint: String?,
+        newMnemonicOptionsJson: String?
+    ) -> Unit,
     onDismiss: () -> Unit
 ) {
     var phrase1 by remember { mutableStateOf(currentHint ?: "") }
@@ -136,8 +142,9 @@ fun PasswordRotationDialog(
                 onClick = {
                     if (selectedIdx >= 0) {
                         val res = variants[selectedIdx]
+                        //  передаём res.password, а не currentEntryId
                         onPasswordReplaced(
-                            currentEntryId,
+                            res.password,
                             res.mnemonicHint,
                             "mnemonic",
                             res.mnemonicHint,
