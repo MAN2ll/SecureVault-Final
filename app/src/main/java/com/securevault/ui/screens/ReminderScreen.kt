@@ -26,6 +26,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderScreen(
+    profileId: Int? = null, // Добавлено для совместимости с SecureVaultNavHost
     onBack: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
@@ -102,8 +103,6 @@ fun ReminderScreen(
             rotationYear = null,
             allProfileEntries = rotationEntries,
             onPasswordReplaced = { newPassword, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
-                // Используем newPassword из callback (это реальный AMPG-пароль)
-                // Заглушка "NewSecurePassword123!" полностью удалена
                 viewModel.replacePassword(
                     entry = entry,
                     newPassword = newPassword,
