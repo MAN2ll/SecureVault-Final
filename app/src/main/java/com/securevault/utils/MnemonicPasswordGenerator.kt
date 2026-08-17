@@ -25,7 +25,7 @@ object MnemonicPasswordGenerator {
         'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // ✅ Строгая таблица замен без лишних вариантов
+    // Строгая таблица замен без лишних вариантов
     private val leetMap = mapOf(
         "a" to "@", "o" to "0", "t" to "7", "ch" to "4",
         "s" to "$", "i" to "1", "b" to "6", "l" to "!"
