@@ -38,7 +38,7 @@ fun ReminderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ротация паролей", fontWeight = FontWeight.Bold) },
+                title = { Text("Напоминания о ротации", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = { LockActionButton(onLock = onLock) }
             )
@@ -90,10 +90,9 @@ fun ReminderScreen(
         }
     }
 
-    // (заменяет проблемный вызов на строке ~137)
     if (entryToUpdate != null) {
         val entry = entryToUpdate!!
-        
+
         PasswordRotationDialog(
             currentEntryId = entry.id,
             serviceName = entry.service,
@@ -102,13 +101,9 @@ fun ReminderScreen(
             rotationMonth = entry.rotationPeriodMonths,
             rotationYear = null,
             allProfileEntries = rotationEntries,
-            onPasswordReplaced = { replacedId, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
-                // В реальной реализации новый пароль генерируется внутри диалога и передаётся сюда.
-                // Для примера компиляции используем заглушку или данные из диалога.
-                val newPassword = "NewSecurePassword123!" 
-                
-                //  replacePassword с использованием объекта Entry
-                // Эта сигнатура гарантированно существует в VaultViewModel
+            onPasswordReplaced = { newPassword, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
+                // ✅ Используем newPassword из callback (это реальный AMPG-пароль)
+                // Заглушка "NewSecurePassword123!" полностью удалена
                 viewModel.replacePassword(
                     entry = entry,
                     newPassword = newPassword,
