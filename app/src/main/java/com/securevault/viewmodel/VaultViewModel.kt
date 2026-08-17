@@ -92,12 +92,8 @@ class VaultViewModel @Inject constructor(
         return allEntries.value.find { it.id == entryId }
     }
 
-    // ✅ ДОБАВЛЕНО: для совместимости с ExportImportScreen и GeneratorScreen
-    fun insert(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
-        insertEntry(entry, onResult)
-    }
-
-    fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
+    //  с onResult по умолчанию (для ExportImportScreen, GeneratorScreen)
+    fun insert(entry: Entry, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
                 repository.insert(entry)
@@ -106,6 +102,10 @@ class VaultViewModel @Inject constructor(
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
         }
+    }
+
+    fun insertEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
+        insert(entry, onResult)
     }
 
     fun updateEntry(entry: Entry, onResult: (PasswordOperationResult) -> Unit) {
@@ -163,43 +163,27 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    //  принимает Entry (для ReminderScreen и др.)
     fun replacePassword(
         entry: Entry,
         newPassword: String,
         generationType: String,
         onResult: (PasswordOperationResult) -> Unit
     ) {
-        viewModelScope.launch {
-            try {
-                val oldEncrypted = entry.encryptedPassword
-                val newEncrypted = withContext(Dispatchers.Default) {
-                    CryptoUtils.encrypt(newPassword)
-                }
-                
-                val history = entry.getPasswordHistory().toMutableList()
-                history.add(
-                    PasswordHistoryItem(
-                        date = System.currentTimeMillis(),
-                        encryptedOldPassword = oldEncrypted,
-                        type = generationType,
-                        relatedService = null
-                    )
-                )
-                
-                val updated = entry.copy(
-                    encryptedPassword = newEncrypted,
-                    passwordHistoryJson = JsonUtils.toJson(history),
-                    lastChanged = System.currentTimeMillis()
-                )
-                repository.update(updated)
-                onResult(PasswordOperationResult.Success("Пароль заменён"))
-            } catch (e: Exception) {
-                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
-            }
-        }
+        replacePasswordById(entry.id, newPassword, generationType, onResult)
     }
 
-    // ✅ ДОБАВЛЕНО: перегрузка для совместимости с RotationScreen и ReminderScreen
+    // принимает entryId и newPassword (для RotationScreen и др.)
+    fun replacePassword(
+        entryId: String,
+        newPassword: String,
+        generationType: String,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        replacePasswordById(entryId, newPassword, generationType, onResult)
+    }
+
+    //  принимает entryId и метаданные (для RotationScreen/ReminderScreen при смене типа)
     fun replacePassword(
         entryId: String,
         newHint: String?,
@@ -220,6 +204,44 @@ class VaultViewModel @Inject constructor(
                 )
                 repository.update(updated)
                 onResult(PasswordOperationResult.Success("Параметры обновлены"))
+            } catch (e: Exception) {
+                onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
+            }
+        }
+    }
+
+    private fun replacePasswordById(
+        entryId: String,
+        newPassword: String,
+        generationType: String,
+        onResult: (PasswordOperationResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val entry = allEntries.value.find { it.id == entryId } ?: return@launch
+                val oldEncrypted = entry.encryptedPassword
+                val newEncrypted = withContext(Dispatchers.Default) {
+                    CryptoUtils.encrypt(newPassword)
+                }
+                
+                val history = entry.getPasswordHistory().toMutableList()
+                history.add(
+                    PasswordHistoryItem(
+                        date = System.currentTimeMillis(),
+                        encryptedOldPassword = oldEncrypted,
+                        type = generationType,
+                        relatedService = null
+                    )
+                )
+                
+                val updated = entry.copy(
+                    encryptedPassword = newEncrypted,
+                    passwordHistoryJson = JsonUtils.toJson(history),
+                    lastChanged = System.currentTimeMillis(),
+                    generationType = generationType
+                )
+                repository.update(updated)
+                onResult(PasswordOperationResult.Success("Пароль заменён"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
