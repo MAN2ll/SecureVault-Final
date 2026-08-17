@@ -25,7 +25,6 @@ object MnemonicPasswordGenerator {
         'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya"
     )
 
-    // Строгая таблица замен без лишних вариантов
     private val leetMap = mapOf(
         "a" to "@", "o" to "0", "t" to "7", "ch" to "4",
         "s" to "$", "i" to "1", "b" to "6", "l" to "!"
@@ -126,7 +125,7 @@ object MnemonicPasswordGenerator {
                 }
                 var part2 = ""
                 val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
-                val base2 = buildBase(words2, base2Len, usedChars, variantIndex, true) ?: continue
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100, true) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -160,11 +159,11 @@ object MnemonicPasswordGenerator {
     private fun getStrategyName(variantIndex: Int): String = when (variantIndex) {
         0 -> "Читаемый (минимальные замены)"
         1 -> "Сложный (максимальные замены)"
-        2 -> "Альтернативный (другие замены)"
+        2 -> "Альтернативный (другой порядок якорей)"
         else -> "Стандартный"
     }
 
-    // ✅ Полная переработка: каждое слово даёт свой uppercase-якорь
+    //  Полная переработка: каждое слово даёт свой uppercase-якорь, гарантируем минимум символов каждого типа
     private fun buildBase(
         words: List<String>,
         targetLen: Int,
@@ -178,7 +177,7 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
         
-        // Находим якоря для КАЖДОГО слова
+        // Находим якоря для КАЖДОГО слова (гарантия минимум N uppercase)
         val anchors = mutableListOf<Char>()
         for (translit in translitWords) {
             var anchorFound = false
@@ -194,7 +193,7 @@ object MnemonicPasswordGenerator {
             if (!anchorFound) return null
         }
         
-        // Добавляем все якоря в результат (гарантия минимум N uppercase)
+        // Добавляем все якоря в результат
         for (anchor in anchors) {
             result.append(anchor)
         }
@@ -204,7 +203,7 @@ object MnemonicPasswordGenerator {
         
         // ✅ Приоритетные замены для достижения минимума digits/specials
         val priorityReplacements = when {
-            isPart2 -> listOf("s" to "$", "l" to "!", "ch" to "4", "o" to "0") // Другой порядок для part2
+            isPart2 -> listOf("s" to "$", "l" to "!", "ch" to "4", "o" to "0")
             variantOffset == 0 -> listOf("o" to "0", "ch" to "4", "l" to "!", "s" to "$")
             variantOffset == 1 -> listOf("a" to "@", "o" to "0", "t" to "7", "ch" to "4", "s" to "$", "i" to "1", "b" to "6", "l" to "!")
             variantOffset == 2 -> listOf("l" to "!", "s" to "$", "t" to "7", "i" to "1")
