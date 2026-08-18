@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,8 +45,6 @@ fun PasswordRotationDialog(
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var selectedIdx by remember { mutableIntStateOf(-1) }
     var isWeakPhrase by remember { mutableStateOf(false) }
-
-    val context = LocalContext.current
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, length, addService, addYear) {
         val opts = MnemonicPasswordGenerator.GenerationOptions(
@@ -106,27 +103,16 @@ fun PasswordRotationDialog(
                 }
 
                 if (isWeakPhrase) {
-                    Text(
-                        "Фраза слишком простая. Добавьте ещё 2–3 личных слова.",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
-                    )
+                    Text("Фраза слишком простая. Добавьте ещё 2–3 личных слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 } else if (variants.isEmpty() && phrase1.length >= 4) {
-                    Text(
-                        if (isTwoUsers) "Фраза слишком простая для двух пользователей." else "Не удалось сгенерировать валидные варианты.",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
-                    )
+                    Text(if (isTwoUsers) "Фраза слишком простая для двух пользователей." else "Не удалось сгенерировать валидные варианты.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
 
                 variants.forEachIndexed { index, res ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         onClick = { selectedIdx = index },
-                        colors = CardDefaults.cardColors(
-                            if (selectedIdx == index) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surface
-                        )
+                        colors = CardDefaults.cardColors(if (selectedIdx == index) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(res.variantName, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
@@ -142,7 +128,7 @@ fun PasswordRotationDialog(
                 onClick = {
                     if (selectedIdx >= 0) {
                         val res = variants[selectedIdx]
-                        //  передаём res.password, а не currentEntryId
+                        // первым параметром передаётся строго res.password
                         onPasswordReplaced(
                             res.password,
                             res.mnemonicHint,
