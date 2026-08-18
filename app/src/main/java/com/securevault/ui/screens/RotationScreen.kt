@@ -26,7 +26,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RotationScreen(
-    profileId: Int? = null, // Добавлено для совместимости с SecureVaultNavHost
+    profileId: Int? = null,
     onBack: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
@@ -46,10 +46,7 @@ fun RotationScreen(
         },
         snackbarHost = {
             snackbarMessage?.let { msg ->
-                Snackbar(
-                    modifier = Modifier.padding(16.dp),
-                    action = { TextButton(onClick = { snackbarMessage = null }) { Text("OK") } }
-                ) { Text(msg) }
+                Snackbar(modifier = Modifier.padding(16.dp), action = { TextButton(onClick = { snackbarMessage = null }) { Text("OK") } }) { Text(msg) }
             }
         }
     ) { padding ->
@@ -63,11 +60,7 @@ fun RotationScreen(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(rotationEntries) { entry ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -81,9 +74,7 @@ fun RotationScreen(
                                     Text("Просрочен с: ${dateFormat.format(Date(nextRotation))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                 }
                             }
-                            Button(onClick = { entryToUpdate = entry }) {
-                                Text("Обновить")
-                            }
+                            Button(onClick = { entryToUpdate = entry }) { Text("Обновить") }
                         }
                     }
                 }
@@ -102,14 +93,15 @@ fun RotationScreen(
             rotationMonth = entry.rotationPeriodMonths,
             rotationYear = null,
             allProfileEntries = rotationEntries,
-            onPasswordReplaced = { newPassword, newHint, newGenType, newMnemonicHint, newMnemonicOptions ->
+            onPasswordReplaced = { newPassword, newHint, newGenerationType, newMnemonicPhraseHint, newMnemonicOptionsJson ->
+                //  newPassword приходит из res.password, entry.id передаётся только как entryId
                 viewModel.replacePassword(
                     entryId = entry.id,
                     newPassword = newPassword,
                     newHint = newHint,
-                    newGenerationType = newGenType,
-                    newMnemonicPhraseHint = newMnemonicHint,
-                    newMnemonicOptionsJson = newMnemonicOptions
+                    newGenerationType = newGenerationType,
+                    newMnemonicPhraseHint = newMnemonicPhraseHint,
+                    newMnemonicOptionsJson = newMnemonicOptionsJson
                 ) { result ->
                     when (result) {
                         is PasswordOperationResult.Success -> {
