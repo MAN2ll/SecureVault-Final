@@ -46,7 +46,10 @@ fun ReminderScreen(
         },
         snackbarHost = {
             snackbarMessage?.let { msg ->
-                Snackbar(modifier = Modifier.padding(16.dp), action = { TextButton(onClick = { snackbarMessage = null }) { Text("OK") } }) { Text(msg) }
+                Snackbar(
+                    modifier = Modifier.padding(16.dp),
+                    action = { TextButton(onClick = { snackbarMessage = null }) { Text("OK") } }
+                ) { Text(msg) }
             }
         }
     ) { padding ->
@@ -60,7 +63,11 @@ fun ReminderScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 items(rotationEntries) { entry ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -74,7 +81,9 @@ fun ReminderScreen(
                                     Text("Просрочен с: ${dateFormat.format(Date(nextRotation))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                 }
                             }
-                            Button(onClick = { entryToUpdate = entry }) { Text("Обновить") }
+                            Button(onClick = { entryToUpdate = entry }) {
+                                Text("Обновить")
+                            }
                         }
                     }
                 }
@@ -94,8 +103,8 @@ fun ReminderScreen(
             rotationYear = null,
             allProfileEntries = rotationEntries,
             onPasswordReplaced = { newPassword, newHint, newGenerationType, newMnemonicPhraseHint, newMnemonicOptionsJson ->
-                // ✅ ИСПРАВЛЕНО: заглушка "NewSecurePassword123!" полностью удалена.
-                // newPassword приходит строго из res.password диалога.
+                //  Заглушка "NewSecurePassword123!" полностью удалена.
+                // Используем newPassword из callback (это реальный AMPG-пароль из res.password)
                 viewModel.replacePassword(
                     entry = entry,
                     newPassword = newPassword,
