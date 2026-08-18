@@ -17,8 +17,6 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode, val explanation: String, val variantOffset: Int = 0
     )
 
-    private data class CharData(val char: Char, val isDigit: Boolean, val isSpecial: Boolean, val isLower: Boolean)
-
     private val translitMap = mapOf(
         'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e",
         'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
@@ -159,16 +157,18 @@ object MnemonicPasswordGenerator {
     }
 
     private fun getStrategyName(variantIndex: Int): String = when (variantIndex) {
-        0 -> "Читаемый (стандартные замены)"
-        1 -> "Сложный (альтернативные замены)"
-        2 -> "Альтернативный (сдвиг якорей)"
+        0 -> "Читаемый (минимум замен)"
+        1 -> "Сбалансированный (часть замен)"
+        2 -> "Сложный (максимум замен)"
         else -> "Стандартный"
     }
 
+    //  собираем все символы, применяем замены, проверяем квоты
     private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
+        // 1. Находим якоря для каждого слова
         val anchors = mutableListOf<Char>()
         for ((wIdx, translit) in translitWords.withIndex()) {
             var anchorFound = false
@@ -194,17 +194,8 @@ object MnemonicPasswordGenerator {
             if (!anchorFound) return null
         }
 
-        val result = StringBuilder()
-        val explanation = StringBuilder()
-        for (anchor in anchors) {
-            result.append(anchor)
-            explanation.append("$anchor ")
-        }
-
-        val lettersToTake = targetLen - anchors.size
-        if (lettersToTake < 0) return null
-
-        val candidates = mutableListOf<CharData>()
+        // 2. Собираем все доступные символы из слов (кроме якорей)
+        val availableChars = mutableListOf<Char>()
         for ((wIdx, translit) in translitWords.withIndex()) {
             val anchorLower = anchors[wIdx].lowercaseChar()
             var pos = 0
@@ -223,57 +214,50 @@ object MnemonicPasswordGenerator {
                 val leetKey = if (isCh) "ch" else lowerC.toString()
                 val replacement = leetMap[leetKey]
 
-                var chosen: Char? = null
-                var skipNext = false
-
+                // Определяем, нужно ли заменять символ
                 val shouldReplace = when (variantOffset) {
-                    0 -> leetKey in listOf("o", "l", "ch", "s")
-                    1 -> leetKey in listOf("a", "t", "i", "b")
-                    2 -> leetKey in listOf("s", "l", "o", "ch")
+                    0 -> leetKey in listOf("o", "l", "ch", "s") // Минимум замен
+                    1 -> leetKey in listOf("a", "t", "i", "b", "o", "l") // Часть замен
+                    2 -> leetKey in listOf("s", "l", "o", "ch", "a", "t", "i", "b") // Максимум замен
                     else -> false
                 }
 
                 if (shouldReplace && replacement != null && !isUsed(replacement.first(), usedChars)) {
-                    chosen = replacement.first()
-                    skipNext = isCh
+                    availableChars.add(replacement.first())
                 } else if (!isUsed(lowerC, usedChars)) {
-                    chosen = lowerC
+                    availableChars.add(lowerC)
                 }
 
-                if (chosen != null) {
-                    candidates.add(CharData(chosen, chosen.isDigit(), !chosen.isLetterOrDigit(), chosen.isLowerCase()))
-                }
-                pos += if (skipNext) 2 else 1
+                pos += if (isCh) 2 else 1
             }
         }
 
-        val selected = mutableListOf<CharData>()
-        for (i in candidates.indices) {
-            if (selected.size >= lettersToTake) break
-            val cand = candidates[i]
-            val remaining = candidates.drop(i + 1)
+        // 3. Берём нужное количество символов
+        val lettersToTake = targetLen - anchors.size
+        if (lettersToTake < 0 || lettersToTake > availableChars.size) return null
 
-            val canFulfillIfSkipped = (remaining.count { it.isDigit } >= (2 - selected.count { it.isDigit })) &&
-                                      (remaining.count { it.isSpecial } >= (2 - selected.count { it.isSpecial })) &&
-                                      (remaining.count { it.isLower } >= (2 - selected.count { it.isLower })) &&
-                                      (remaining.size >= lettersToTake - selected.size)
+        val selected = availableChars.take(lettersToTake)
 
-            val shouldTake = !canFulfillIfSkipped
+        // 4. Проверяем квоты
+        val result = StringBuilder()
+        for (anchor in anchors) result.append(anchor)
+        for (ch in selected) result.append(ch)
 
-            if (shouldTake) {
-                selected.add(cand)
-            }
-        }
+        val password = result.toString()
+        val upper = password.count { it.isUpperCase() }
+        val lower = password.count { it.isLowerCase() }
+        val digits = password.count { it.isDigit() }
+        val specials = password.count { !it.isLetterOrDigit() }
 
-        if (selected.size < lettersToTake) return null
+        if (upper < 2 || lower < 2 || digits < 2 || specials < 2) return null
 
-        for (s in selected) {
-            result.append(s.char)
-            markUsed(s.char, usedChars)
-            explanation.append(s.char)
-        }
+        // 5. Формируем explanation
+        val explanation = StringBuilder()
+        for (anchor in anchors) explanation.append("$anchor ")
+        for (ch in selected) explanation.append(ch)
+        explanation.append("\n")
 
-        return Pair(result.toString(), explanation.toString())
+        return Pair(password, explanation.toString())
     }
 
     private fun transliterateWord(word: String): String {
