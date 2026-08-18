@@ -17,6 +17,8 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode, val explanation: String, val variantOffset: Int = 0
     )
 
+    private data class CharData(val char: Char, val isDigit: Boolean, val isSpecial: Boolean, val isLower: Boolean)
+
     private val translitMap = mapOf(
         'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e",
         'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
@@ -79,7 +81,7 @@ object MnemonicPasswordGenerator {
                     markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker\n"
                 }
-                val base = buildBase(words1, baseLength, usedChars, variantIndex, false) ?: continue
+                val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
                 password += base.first
                 explanation += base.second
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -114,7 +116,7 @@ object MnemonicPasswordGenerator {
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
                 val base1Len = part1Len - (if (hasService) 1 else 0) - 2
-                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, false) ?: continue
+                val base1 = buildBase(words1, base1Len, usedChars, variantIndex) ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
                 if (!isUsed('%', usedChars) && !isUsed('8', usedChars)) {
@@ -125,7 +127,7 @@ object MnemonicPasswordGenerator {
                 }
                 var part2 = ""
                 val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
-                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100, true) ?: continue
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -157,123 +159,120 @@ object MnemonicPasswordGenerator {
     }
 
     private fun getStrategyName(variantIndex: Int): String = when (variantIndex) {
-        0 -> "Читаемый (минимальные замены)"
-        1 -> "Сложный (максимальные замены)"
-        2 -> "Альтернативный (другой порядок якорей)"
+        0 -> "Читаемый (стандартные замены)"
+        1 -> "Сложный (альтернативные замены)"
+        2 -> "Альтернативный (сдвиг якорей)"
         else -> "Стандартный"
     }
 
-    //  Полная переработка: каждое слово даёт свой uppercase-якорь, гарантируем минимум символов каждого типа
-    private fun buildBase(
-        words: List<String>,
-        targetLen: Int,
-        usedChars: MutableSet<Char>,
-        variantOffset: Int,
-        isPart2: Boolean
-    ): Pair<String, String>? {
-        val result = StringBuilder()
-        val explanation = StringBuilder()
-        
+    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
-        
-        // Находим якоря для КАЖДОГО слова (гарантия минимум N uppercase)
+
         val anchors = mutableListOf<Char>()
-        for (translit in translitWords) {
+        for ((wIdx, translit) in translitWords.withIndex()) {
             var anchorFound = false
-            for (c in translit) {
+            val startIdx = if (variantOffset == 2 && translit.length > 1) 1 else 0
+            
+            for (i in startIdx until translit.length) {
+                val c = translit[i]
                 if (!isUsed(c, usedChars)) {
                     anchors.add(c.uppercaseChar())
                     markUsed(c, usedChars)
-                    explanation.append("${c.uppercaseChar()} ")
                     anchorFound = true
                     break
                 }
             }
+            if (!anchorFound && variantOffset == 2) {
+                val c = translit[0]
+                if (!isUsed(c, usedChars)) {
+                    anchors.add(c.uppercaseChar())
+                    markUsed(c, usedChars)
+                    anchorFound = true
+                }
+            }
             if (!anchorFound) return null
         }
-        
-        // Добавляем все якоря в результат
+
+        val result = StringBuilder()
+        val explanation = StringBuilder()
         for (anchor in anchors) {
             result.append(anchor)
+            explanation.append("$anchor ")
         }
-        
+
         val lettersToTake = targetLen - anchors.size
         if (lettersToTake < 0) return null
-        
-        // ✅ Приоритетные замены для достижения минимума digits/specials
-        val priorityReplacements = when {
-            isPart2 -> listOf("s" to "$", "l" to "!", "ch" to "4", "o" to "0")
-            variantOffset == 0 -> listOf("o" to "0", "ch" to "4", "l" to "!", "s" to "$")
-            variantOffset == 1 -> listOf("a" to "@", "o" to "0", "t" to "7", "ch" to "4", "s" to "$", "i" to "1", "b" to "6", "l" to "!")
-            variantOffset == 2 -> listOf("l" to "!", "s" to "$", "t" to "7", "i" to "1")
-            else -> emptyList()
-        }
-        
-        var totalTaken = 0
-        
-        // Проходим по всем словам, сохраняя порядок
-        for ((wordIdx, translit) in translitWords.withIndex()) {
+
+        val candidates = mutableListOf<CharData>()
+        for ((wIdx, translit) in translitWords.withIndex()) {
+            val anchorLower = anchors[wIdx].lowercaseChar()
             var pos = 0
-            
-            // Сначала применяем приоритетные замены
-            while (totalTaken < lettersToTake && pos < translit.length) {
+            while (pos < translit.length) {
                 val c = translit[pos]
                 val lowerC = c.lowercaseChar()
-                
-                if (lowerC == anchors[wordIdx].lowercaseChar()) { pos++; continue }
-                
+
+                if (lowerC == anchorLower) {
+                    val nextIsH = (pos + 1 < translit.length && lowerC == 'c' && translit[pos + 1].lowercaseChar() == 'h')
+                    pos += if (nextIsH) 2 else 1
+                    continue
+                }
+
                 val nextIdx = pos + 1
                 val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
                 val leetKey = if (isCh) "ch" else lowerC.toString()
-                
+                val replacement = leetMap[leetKey]
+
                 var chosen: Char? = null
                 var skipNext = false
-                
-                for ((key, rep) in priorityReplacements) {
-                    if (leetKey == key) {
-                        val repChar = rep.first()
-                        if (!isUsed(repChar, usedChars)) {
-                            chosen = repChar
-                            skipNext = isCh
-                            break
-                        }
-                    }
+
+                val shouldReplace = when (variantOffset) {
+                    0 -> leetKey in listOf("o", "l", "ch", "s")
+                    1 -> leetKey in listOf("a", "t", "i", "b")
+                    2 -> leetKey in listOf("s", "l", "o", "ch")
+                    else -> false
                 }
-                
+
+                if (shouldReplace && replacement != null && !isUsed(replacement.first(), usedChars)) {
+                    chosen = replacement.first()
+                    skipNext = isCh
+                } else if (!isUsed(lowerC, usedChars)) {
+                    chosen = lowerC
+                }
+
                 if (chosen != null) {
-                    result.append(chosen)
-                    markUsed(chosen, usedChars)
-                    explanation.append(chosen)
-                    totalTaken++
+                    candidates.add(CharData(chosen, chosen.isDigit(), !chosen.isLetterOrDigit(), chosen.isLowerCase()))
                 }
-                
                 pos += if (skipNext) 2 else 1
             }
-            
-            // Затем заполняем обычными буквами
-            pos = 0
-            while (totalTaken < lettersToTake && pos < translit.length) {
-                val c = translit[pos]
-                val lowerC = c.lowercaseChar()
-                
-                if (lowerC == anchors[wordIdx].lowercaseChar()) { pos++; continue }
-                
-                val nextIdx = pos + 1
-                val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
-                
-                if (!isUsed(lowerC, usedChars)) {
-                    result.append(lowerC)
-                    markUsed(lowerC, usedChars)
-                    explanation.append(lowerC)
-                    totalTaken++
-                }
-                
-                pos += if (isCh) 2 else 1
+        }
+
+        val selected = mutableListOf<CharData>()
+        for (i in candidates.indices) {
+            if (selected.size >= lettersToTake) break
+            val cand = candidates[i]
+            val remaining = candidates.drop(i + 1)
+
+            val canFulfillIfSkipped = (remaining.count { it.isDigit } >= (2 - selected.count { it.isDigit })) &&
+                                      (remaining.count { it.isSpecial } >= (2 - selected.count { it.isSpecial })) &&
+                                      (remaining.count { it.isLower } >= (2 - selected.count { it.isLower })) &&
+                                      (remaining.size >= lettersToTake - selected.size)
+
+            val shouldTake = !canFulfillIfSkipped
+
+            if (shouldTake) {
+                selected.add(cand)
             }
         }
-        
-        if (result.length < targetLen) return null
+
+        if (selected.size < lettersToTake) return null
+
+        for (s in selected) {
+            result.append(s.char)
+            markUsed(s.char, usedChars)
+            explanation.append(s.char)
+        }
+
         return Pair(result.toString(), explanation.toString())
     }
 
