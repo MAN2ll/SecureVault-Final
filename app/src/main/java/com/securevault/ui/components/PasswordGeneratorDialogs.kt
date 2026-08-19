@@ -314,13 +314,14 @@ private fun AmpgGeneratorContent(
             yStr.length == 2 && yStr[0] == yStr[1]
         }
         
-        // Проверка: помещается ли год в длину
+        // ✅ Проверка: помещается ли год в выбранную длину
         val reserveLen = if (isTwoUsers) 4 else 2
         val yearOverhead = if (addYear) 2 else 0
         val serviceOverhead = if (addService && serviceName.isNotEmpty()) 1 else 0
         val baseLength = length - reserveLen - yearOverhead - serviceOverhead
         val isYearTooLong = addYear && baseLength < 4
         
+        // Блокировка: год с повторяющимися цифрами
         if (addYear && isYearInvalid) {
             yearError = "Год $y нельзя добавить: цифры повторяются."
             variants = emptyList()
@@ -328,8 +329,9 @@ private fun AmpgGeneratorContent(
             return@LaunchedEffect
         }
         
+        //  Блокировка: год не помещается в длину
         if (addYear && isYearTooLong) {
-            yearError = "Год не помещается в выбранную длину. Увеличьте длину пароля или отключите год."
+            yearError = "Год не помещается в выбранную длину. Выберите длину 18 или отключите год."
             variants = emptyList()
             selectedIdx = -1
             return@LaunchedEffect
@@ -355,6 +357,7 @@ private fun AmpgGeneratorContent(
         isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
                 (isTwoUsers && (phrase2.lowercase().trim() in weakPhrasesSet))
         
+        // Проверки service/year
         if (addService && serviceName.isNotEmpty()) {
             if (variants.isEmpty() && !isWeakPhrase) {
                 serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
@@ -436,6 +439,7 @@ private fun AmpgGeneratorContent(
         }
     }
 
+    //  Правильные сообщения для слабых фраз
     if (isWeakPhrase) {
         Text(
             if (isTwoUsers) {
