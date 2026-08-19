@@ -48,13 +48,20 @@ object MnemonicPasswordGenerator {
             if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
         }
         
+        // Проверка service/year ДО генерации
         val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.first().uppercaseChar().toString()
         } else ""
         
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
-            if (y.length == 2 && y[0] != y[1]) y else ""
+            if (y.length == 2) {
+                if (y[0] == y[1]) {
+                    // Год с повторяющимися цифрами — ошибка, возвращаем пустой список
+                    return emptyList()
+                }
+                y
+            } else ""
         } else ""
         
         val hasService = serviceMarker.isNotEmpty()
@@ -174,13 +181,13 @@ object MnemonicPasswordGenerator {
     }
 
     private fun getStrategyName(variantIndex: Int): String = when (variantIndex) {
-        0 -> "Читаемый (минимум замен)"
-        1 -> "Сбалансированный (часть замен)"
-        2 -> "Сложный (максимум замен)"
+        0 -> "Стратегия 1 (якорь из 1-й буквы)"
+        1 -> "Стратегия 2 (якорь из 2-й буквы)"
+        2 -> "Стратегия 3 (якорь из 3-й буквы)"
         else -> "Стандартный"
     }
 
-    //  ПОЛНАЯ ПЕРЕРАБОТКА: гибкий выбор буквы ИЛИ замены
+    //  ТРИ РЕАЛЬНО РАЗНЫЕ СТРАТЕГИИ через разные якоря
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -191,13 +198,21 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        // 1. Находим якоря для каждого слова
+        // 1. Находим якоря для каждого слова — РАЗНЫЕ ДЛЯ КАЖДОЙ СТРАТЕГИИ
         val anchors = mutableListOf<Char>()
         for ((wIdx, translit) in translitWords.withIndex()) {
             var anchorFound = false
-            val startIdx = if (variantOffset == 2 && translit.length > 1) 1 else 0
             
-            for (i in startIdx until translit.length) {
+            // Разные стратегии используют разные позиции для якоря
+            val anchorPosition = when (variantOffset) {
+                0 -> 0 // Первый символ
+                1 -> minOf(1, translit.length - 1) // Второй символ (или первый, если слово короткое)
+                2 -> minOf(2, translit.length - 1) // Третий символ (или первый/второй)
+                else -> 0
+            }
+            
+            // Пытаемся взять символ с нужной позиции
+            for (i in anchorPosition until translit.length) {
                 val c = translit[i]
                 if (!isUsed(c, usedChars)) {
                     anchors.add(c.uppercaseChar())
@@ -206,19 +221,25 @@ object MnemonicPasswordGenerator {
                     break
                 }
             }
-            if (!anchorFound && variantOffset == 2) {
-                val c = translit[0]
-                if (!isUsed(c, usedChars)) {
-                    anchors.add(c.uppercaseChar())
-                    markUsed(c, usedChars)
-                    anchorFound = true
+            
+            // Если не нашли, пытаемся с начала
+            if (!anchorFound) {
+                for (i in 0 until anchorPosition) {
+                    val c = translit[i]
+                    if (!isUsed(c, usedChars)) {
+                        anchors.add(c.uppercaseChar())
+                        markUsed(c, usedChars)
+                        anchorFound = true
+                        break
+                    }
                 }
             }
+            
             if (!anchorFound) return null
         }
 
         // 2. Собираем ВСЕ возможные варианты символов (буква ИЛИ замена)
-        data class CharOption(val original: Char, val replacement: Char?, val isReplacement: Boolean)
+        data class CharOption(val original: Char, val replacement: Char?)
         val allOptions = mutableListOf<CharOption>()
         
         for ((wIdx, translit) in translitWords.withIndex()) {
@@ -241,12 +262,12 @@ object MnemonicPasswordGenerator {
 
                 // Добавляем оригинальную букву
                 if (!isUsed(lowerC, usedChars)) {
-                    allOptions.add(CharOption(lowerC, null, false))
+                    allOptions.add(CharOption(lowerC, null))
                 }
                 
                 // Добавляем замену, если есть
                 if (replacement != null && !isUsed(replacement.first(), usedChars)) {
-                    allOptions.add(CharOption(lowerC, replacement.first(), true))
+                    allOptions.add(CharOption(lowerC, replacement.first()))
                 }
 
                 pos += if (isCh) 2 else 1
@@ -260,7 +281,6 @@ object MnemonicPasswordGenerator {
         val selected = mutableListOf<Char>()
         val localUsed = usedChars.toMutableSet()
         
-        // Считаем квоты от existingChars и якорей
         val existingUpper = existingChars.count { it.isUpperCase() }
         val existingLower = existingChars.count { it.isLowerCase() }
         val existingDigits = existingChars.count { it.isDigit() }
