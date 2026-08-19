@@ -308,18 +308,25 @@ private fun AmpgGeneratorContent(
         
         val y = year.toIntOrNull()
         
-        //  Проверка года на повторяющиеся цифры
+        // Проверка года на повторяющиеся цифры
         val isYearInvalid = y != null && run {
             val yStr = y.toString().takeLast(2)
             yStr.length == 2 && yStr[0] == yStr[1]
         }
         
-        // ✅ Проверка: помещается ли год в выбранную длину
-        val reserveLen = if (isTwoUsers) 4 else 2
-        val yearOverhead = if (addYear) 2 else 0
-        val serviceOverhead = if (addService && serviceName.isNotEmpty()) 1 else 0
-        val baseLength = length - reserveLen - yearOverhead - serviceOverhead
-        val isYearTooLong = addYear && baseLength < 4
+        //  Исправленная проверка: для TWO_USERS считаем длину ЧАСТИ, а не всего пароля
+        val isYearTooLong = if (isTwoUsers) {
+            val part2Len = length / 2
+            val part2Overhead = 4 // #5 (2) + year (2)
+            val part2BaseLen = part2Len - part2Overhead
+            addYear && part2BaseLen < 5 // Нужно минимум 5 символов для body2
+        } else {
+            val reserveLen = 2
+            val yearOverhead = if (addYear) 2 else 0
+            val serviceOverhead = if (addService && serviceName.isNotEmpty()) 1 else 0
+            val baseLength = length - reserveLen - yearOverhead - serviceOverhead
+            addYear && baseLength < 4
+        }
         
         // Блокировка: год с повторяющимися цифрами
         if (addYear && isYearInvalid) {
@@ -329,7 +336,7 @@ private fun AmpgGeneratorContent(
             return@LaunchedEffect
         }
         
-        //  Блокировка: год не помещается в длину
+        // Блокировка: год не помещается в длину
         if (addYear && isYearTooLong) {
             yearError = "Год не помещается в выбранную длину. Выберите длину 18 или отключите год."
             variants = emptyList()
@@ -439,7 +446,7 @@ private fun AmpgGeneratorContent(
         }
     }
 
-    //  Правильные сообщения для слабых фраз
+    // Правильные сообщения для слабых фраз
     if (isWeakPhrase) {
         Text(
             if (isTwoUsers) {
