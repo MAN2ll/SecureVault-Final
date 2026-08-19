@@ -327,12 +327,16 @@ private fun AmpgGeneratorContent(
         isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
                 (isTwoUsers && (phrase2.lowercase().trim() in weakPhrasesSet))
         
-        //  Проверки service/year с понятными сообщениями
+        //  Исправленные проверки service/year
         if (addService && serviceName.isNotEmpty()) {
-            val serviceChar = serviceName.first().uppercaseChar()
-            val usedInPassword = variants.any { it.password.contains(serviceChar, ignoreCase = true) }
-            if (usedInPassword && variants.isEmpty()) {
-                serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
+            if (variants.isEmpty()) {
+                serviceError = "Не удалось сгенерировать пароль с указанным сервисом."
+            } else {
+                val serviceChar = serviceName.first().uppercaseChar()
+                val usedInPassword = variants.any { it.password.contains(serviceChar, ignoreCase = true) }
+                if (!usedInPassword) {
+                    serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
+                }
             }
         }
         
@@ -341,7 +345,14 @@ private fun AmpgGeneratorContent(
             if (yearStr.length == 2 && yearStr[0] == yearStr[1]) {
                 yearError = "Год нельзя добавить: цифры повторяются."
             } else if (variants.isEmpty()) {
-                yearError = "Год нельзя добавить: цифры уже используются в пароле."
+                yearError = "Не удалось сгенерировать пароль с указанным годом."
+            } else {
+                val usedInPassword = variants.any { variant ->
+                    yearStr.all { digit -> variant.password.contains(digit) }
+                }
+                if (!usedInPassword) {
+                    yearError = "Год нельзя добавить: цифры уже используются в пароле."
+                }
             }
         }
     }
