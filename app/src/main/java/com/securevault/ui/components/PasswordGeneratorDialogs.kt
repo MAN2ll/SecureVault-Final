@@ -111,6 +111,9 @@ private fun TwoPartGeneratorContent(
     context: android.content.Context,
     onGenerated: (String, String?, String) -> Unit
 ) {
+    // Явный выбор длины: 16, 18, 20
+    val allowedLengths = listOf(16, 18, 20)
+    var lengthIndex by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
     var pwd by remember { mutableStateOf("") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -135,22 +138,35 @@ private fun TwoPartGeneratorContent(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold
         )
+        Text(
+            "Длина: $length (${half}/${length - half})",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 
-    Row {
-        Slider(
-            value = length.toFloat(),
-            onValueChange = { length = it.toInt() },
-            valueRange = 16f..20f,
-            steps = 2,
-            modifier = Modifier.weight(1f)
-        )
-        Button(
-            onClick = { if (pwd.isNotEmpty()) onGenerated(pwd, null, "random_two_part") },
-            enabled = pwd.isNotEmpty()
-        ) {
-            Text("Выбрать")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        allowedLengths.forEachIndexed { index, len ->
+            FilterChip(
+                selected = lengthIndex == index,
+                onClick = {
+                    lengthIndex = index
+                    length = len
+                },
+                label = { Text("$len") }
+            )
         }
+    }
+
+    Button(
+        onClick = { if (pwd.isNotEmpty()) onGenerated(pwd, null, "random_two_part") },
+        enabled = pwd.isNotEmpty(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Выбрать")
     }
 }
 
@@ -201,7 +217,8 @@ private fun AnchorGeneratorContent(
     OutlinedTextField(
         value = anchor,
         onValueChange = { anchor = it },
-        label = { Text("Якорное слово") }
+        label = { Text("Якорное слово") },
+        modifier = Modifier.fillMaxWidth()
     )
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -279,6 +296,11 @@ private fun AmpgGeneratorContent(
     var selectedIdx by remember { mutableIntStateOf(-1) }
     var isWeakPhrase by remember { mutableStateOf(false) }
 
+    val weakPhrasesSet = setOf(
+        "мама мыла раму", "ма мыла раму", "я люблю тебя",
+        "мой пароль", "пароль от сайта", "qwerty", "password"
+    )
+
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length, addService, addYear) {
         val y = year.toIntOrNull()
         val opts = MnemonicPasswordGenerator.GenerationOptions(
@@ -298,10 +320,7 @@ private fun AmpgGeneratorContent(
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
 
-        isWeakPhrase = phrase1.lowercase().trim() in setOf(
-            "мама мыла раму", "ма мыла раму", "я люблю тебя",
-            "мой пароль", "пароль от сайта", "qwerty", "password"
-        )
+        isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -332,32 +351,54 @@ private fun AmpgGeneratorContent(
         )
     }
 
+    OutlinedTextField(
+        value = serviceName,
+        onValueChange = { serviceName = it },
+        label = { Text("Сервис (для маркера)") },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = year,
+        onValueChange = { year = it },
+        label = { Text("Год (для маркера, например 2026)") },
+        modifier = Modifier.fillMaxWidth()
+    )
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
             checked = addService,
-            onCheckedChange = { addService = it }
+            onCheckedChange = { addService = it },
+            enabled = serviceName.isNotEmpty()
         )
-        Text("Сервис", fontSize = 12.sp, modifier = Modifier.padding(end = 16.dp))
+        Text("Добавить сервис в начало", fontSize = 12.sp, modifier = Modifier.padding(end = 16.dp))
 
         Checkbox(
             checked = addYear,
-            onCheckedChange = { addYear = it }
+            onCheckedChange = { addYear = it },
+            enabled = year.length == 4
         )
-        Text("Год", fontSize = 12.sp)
+        Text("Добавить год в конец", fontSize = 12.sp)
     }
 
+    //  Правильные сообщения для слабых фраз
     if (isWeakPhrase) {
         Text(
-            "Фраза слишком простая. Добавьте ещё 2–3 личных слова.",
+            if (isTwoUsers) {
+                "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
+            } else {
+                "Фраза слишком простая. Добавьте ещё 2–3 личных слова."
+            },
             color = MaterialTheme.colorScheme.error,
-            fontSize = 12.sp
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
         )
     } else if (variants.isEmpty() && phrase1.length >= 4) {
         Text(
             if (isTwoUsers) {
                 "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
             } else {
-                "Не удалось сгенерировать валидные варианты."
+                "Не удалось сгенерировать валидные варианты. Попробуйте другую фразу или длину."
             },
             color = MaterialTheme.colorScheme.error,
             fontSize = 12.sp
@@ -390,6 +431,14 @@ private fun AmpgGeneratorContent(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
+                if (isTwoUsers && res.part1 != null && res.part2 != null) {
+                    Text(
+                        "${res.part1} / ${res.part2}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
                 Text(
                     res.explanation,
                     fontSize = 10.sp,
