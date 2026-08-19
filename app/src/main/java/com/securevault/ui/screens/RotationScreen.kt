@@ -20,6 +20,7 @@ import com.securevault.ui.components.LockActionButton
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -94,16 +95,21 @@ fun RotationScreen(
     if (entryToUpdate != null) {
         val entry = entryToUpdate!!
 
+        // Извлекаем реальный год из nextRotationDate
+        val rotationYear = entry.nextRotationDate?.let { timestamp ->
+            Calendar.getInstance().apply { timeInMillis = timestamp }.get(Calendar.YEAR)
+        }
+
         PasswordRotationDialog(
             currentEntryId = entry.id,
             serviceName = entry.service,
             currentHint = entry.textHint,
             generationType = entry.generationType,
             rotationMonth = entry.rotationPeriodMonths,
-            rotationYear = null,
+            rotationYear = rotationYear, // Передаём реальный год, а не null
             allProfileEntries = rotationEntries,
             onPasswordReplaced = { newPassword, newHint, newGenerationType, newMnemonicPhraseHint, newMnemonicOptionsJson ->
-                //  Используем newPassword из callback (это реальный AMPG-пароль из res.password)
+                //  Применяем именно newPassword из callback (это res.password)
                 viewModel.replacePassword(
                     entryId = entry.id,
                     newPassword = newPassword,
