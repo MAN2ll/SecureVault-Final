@@ -307,6 +307,34 @@ private fun AmpgGeneratorContent(
         yearError = null
         
         val y = year.toIntOrNull()
+        
+        //  Проверка года на повторяющиеся цифры
+        val isYearInvalid = y != null && run {
+            val yStr = y.toString().takeLast(2)
+            yStr.length == 2 && yStr[0] == yStr[1]
+        }
+        
+        // Проверка: помещается ли год в длину
+        val reserveLen = if (isTwoUsers) 4 else 2
+        val yearOverhead = if (addYear) 2 else 0
+        val serviceOverhead = if (addService && serviceName.isNotEmpty()) 1 else 0
+        val baseLength = length - reserveLen - yearOverhead - serviceOverhead
+        val isYearTooLong = addYear && baseLength < 4
+        
+        if (addYear && isYearInvalid) {
+            yearError = "Год $y нельзя добавить: цифры повторяются."
+            variants = emptyList()
+            selectedIdx = -1
+            return@LaunchedEffect
+        }
+        
+        if (addYear && isYearTooLong) {
+            yearError = "Год не помещается в выбранную длину. Увеличьте длину пароля или отключите год."
+            variants = emptyList()
+            selectedIdx = -1
+            return@LaunchedEffect
+        }
+        
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1,
             phrase2 = if (isTwoUsers) phrase2 else null,
@@ -327,33 +355,14 @@ private fun AmpgGeneratorContent(
         isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
                 (isTwoUsers && (phrase2.lowercase().trim() in weakPhrasesSet))
         
-        //  Исправленные проверки service/year
         if (addService && serviceName.isNotEmpty()) {
-            if (variants.isEmpty()) {
-                serviceError = "Не удалось сгенерировать пароль с указанным сервисом."
-            } else {
-                val serviceChar = serviceName.first().uppercaseChar()
-                val usedInPassword = variants.any { it.password.contains(serviceChar, ignoreCase = true) }
-                if (!usedInPassword) {
-                    serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
-                }
+            if (variants.isEmpty() && !isWeakPhrase) {
+                serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
             }
         }
         
-        if (addYear && y != null) {
-            val yearStr = y.toString().takeLast(2)
-            if (yearStr.length == 2 && yearStr[0] == yearStr[1]) {
-                yearError = "Год нельзя добавить: цифры повторяются."
-            } else if (variants.isEmpty()) {
-                yearError = "Не удалось сгенерировать пароль с указанным годом."
-            } else {
-                val usedInPassword = variants.any { variant ->
-                    yearStr.all { digit -> variant.password.contains(digit) }
-                }
-                if (!usedInPassword) {
-                    yearError = "Год нельзя добавить: цифры уже используются в пароле."
-                }
-            }
+        if (addYear && y != null && variants.isEmpty() && !isWeakPhrase && yearError == null) {
+            yearError = "Год нельзя добавить: цифры уже используются в пароле."
         }
     }
 
@@ -427,7 +436,6 @@ private fun AmpgGeneratorContent(
         }
     }
 
-    //  Правильные сообщения для слабых фраз
     if (isWeakPhrase) {
         Text(
             if (isTwoUsers) {
@@ -439,7 +447,7 @@ private fun AmpgGeneratorContent(
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium
         )
-    } else if (variants.isEmpty() && phrase1.length >= 4) {
+    } else if (variants.isEmpty() && phrase1.length >= 4 && yearError == null && serviceError == null) {
         Text(
             if (isTwoUsers) {
                 "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
