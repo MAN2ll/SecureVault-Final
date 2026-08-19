@@ -111,7 +111,6 @@ private fun TwoPartGeneratorContent(
     context: android.content.Context,
     onGenerated: (String, String?, String) -> Unit
 ) {
-    // Явный выбор длины: 16, 18, 20
     val allowedLengths = listOf(16, 18, 20)
     var lengthIndex by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
@@ -295,6 +294,8 @@ private fun AmpgGeneratorContent(
     }
     var selectedIdx by remember { mutableIntStateOf(-1) }
     var isWeakPhrase by remember { mutableStateOf(false) }
+    var serviceError by remember { mutableStateOf<String?>(null) }
+    var yearError by remember { mutableStateOf<String?>(null) }
 
     val weakPhrasesSet = setOf(
         "мама мыла раму", "ма мыла раму", "я люблю тебя",
@@ -302,6 +303,9 @@ private fun AmpgGeneratorContent(
     )
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, year, length, addService, addYear) {
+        serviceError = null
+        yearError = null
+        
         val y = year.toIntOrNull()
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1,
@@ -320,7 +324,26 @@ private fun AmpgGeneratorContent(
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
 
-        isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet
+        isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
+                (isTwoUsers && (phrase2.lowercase().trim() in weakPhrasesSet))
+        
+        //  Проверки service/year с понятными сообщениями
+        if (addService && serviceName.isNotEmpty()) {
+            val serviceChar = serviceName.first().uppercaseChar()
+            val usedInPassword = variants.any { it.password.contains(serviceChar, ignoreCase = true) }
+            if (usedInPassword && variants.isEmpty()) {
+                serviceError = "Сервис нельзя добавить: все подходящие символы уже используются в пароле."
+            }
+        }
+        
+        if (addYear && y != null) {
+            val yearStr = y.toString().takeLast(2)
+            if (yearStr.length == 2 && yearStr[0] == yearStr[1]) {
+                yearError = "Год нельзя добавить: цифры повторяются."
+            } else if (variants.isEmpty()) {
+                yearError = "Год нельзя добавить: цифры уже используются в пароле."
+            }
+        }
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -371,14 +394,26 @@ private fun AmpgGeneratorContent(
             onCheckedChange = { addService = it },
             enabled = serviceName.isNotEmpty()
         )
-        Text("Добавить сервис в начало", fontSize = 12.sp, modifier = Modifier.padding(end = 16.dp))
+        Column {
+            Text("Добавить сервис в начало", fontSize = 12.sp)
+            if (serviceError != null) {
+                Text(serviceError!!, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        Spacer(Modifier.width(16.dp))
 
         Checkbox(
             checked = addYear,
             onCheckedChange = { addYear = it },
             enabled = year.length == 4
         )
-        Text("Добавить год в конец", fontSize = 12.sp)
+        Column {
+            Text("Добавить год в конец", fontSize = 12.sp)
+            if (yearError != null) {
+                Text(yearError!!, fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
     }
 
     //  Правильные сообщения для слабых фраз
