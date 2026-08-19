@@ -79,7 +79,6 @@ object MnemonicPasswordGenerator {
             var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                //  Резервируем сервис И год ДО buildBase()
                 if (hasService) {
                     markUsed(serviceMarker.first(), usedChars)
                     password += serviceMarker
@@ -132,7 +131,6 @@ object MnemonicPasswordGenerator {
                 explanation += "Резерв 1: %8\n"
                 
                 var part2 = ""
-                //  Резервируем год ДО buildBase() для part2
                 if (hasYear) {
                     markUsed(yearMarker[0], usedChars)
                     markUsed(yearMarker[1], usedChars)
@@ -172,34 +170,6 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
-    //  Проверяет, есть ли в тексте хотя бы одна буква с заменой на цифру
-    private fun hasDigitSource(text: String): Boolean {
-        var i = 0
-        while (i < text.length) {
-            val c = text[i].lowercaseChar()
-            val next = if (i + 1 < text.length) text[i + 1].lowercaseChar() else ' '
-            val key = if (c == 'c' && next == 'h') "ch" else c.toString()
-            val replacement = leetMap[key]
-            if (replacement != null && replacement.first().isDigit()) return true
-            i += if (key == "ch") 2 else 1
-        }
-        return false
-    }
-
-    //  Проверяет, есть ли в тексте хотя бы одна буква с заменой на спецсимвол
-    private fun hasSpecialSource(text: String): Boolean {
-        var i = 0
-        while (i < text.length) {
-            val c = text[i].lowercaseChar()
-            val next = if (i + 1 < text.length) text[i + 1].lowercaseChar() else ' '
-            val key = if (c == 'c' && next == 'h') "ch" else c.toString()
-            val replacement = leetMap[key]
-            if (replacement != null && !replacement.first().isLetterOrDigit()) return true
-            i += if (key == "ch") 2 else 1
-        }
-        return false
-    }
-
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -210,13 +180,12 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        // Считаем, каких квот не хватает с учётом existingChars
         val existingDigits = existingChars.count { it.isDigit() }
         val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
         val needMoreDigits = existingDigits < 2
         val needMoreSpecials = existingSpecials < 2
 
-        //  Считаем ВСЕ источники квот в текущем наборе слов
+        // Считаем ВСЕ источники квот в текущем наборе слов
         val allSpecialSourceChars = mutableSetOf<Char>()
         val allDigitSourceChars = mutableSetOf<Char>()
         for (translit in translitWords) {
@@ -234,24 +203,25 @@ object MnemonicPasswordGenerator {
             }
         }
 
-        // Находим якоря с учётом квот
+        // Находим якоря с приоритетом позиций, но с поиском по ВСЕМУ слову
         val anchors = mutableListOf<Char>()
         for ((_, translit) in translitWords.withIndex()) {
             var anchorFound = false
             
-            val anchorPositions = when (variantOffset) {
+            // Приоритетные позиции в зависимости от стратегии
+            val priorityPositions = when (variantOffset) {
                 0 -> listOf(0, 1, 2)
                 1 -> listOf(1, 0, 2)
                 2 -> listOf(2, 1, 0)
                 else -> listOf(0, 1, 2)
             }
             
-            for (pos in anchorPositions) {
+            // Сначала пробуем приоритетные позиции
+            for (pos in priorityPositions) {
                 if (pos >= translit.length) continue
                 val c = translit[pos]
                 if (isUsed(c, usedChars)) continue
                 
-                // Проверяем: не является ли этот символ единственным источником квоты
                 val lowerC = c.lowercaseChar()
                 val isOnlyDigitSource = needMoreDigits && 
                     allDigitSourceChars.size == 1 && 
@@ -260,14 +230,36 @@ object MnemonicPasswordGenerator {
                     allSpecialSourceChars.size == 1 && 
                     allSpecialSourceChars.contains(lowerC)
                 
-                if (isOnlyDigitSource || isOnlySpecialSource) {
-                    continue // Пропускаем — этот якорь "съест" единственный источник квоты
-                }
+                if (isOnlyDigitSource || isOnlySpecialSource) continue
                 
                 anchors.add(c.uppercaseChar())
                 markUsed(c, usedChars)
                 anchorFound = true
                 break
+            }
+            
+            //  Если приоритетные не подошли — ищем по ВСЕМУ слову
+            if (!anchorFound) {
+                for (pos in translit.indices) {
+                    if (priorityPositions.contains(pos)) continue // уже проверили
+                    val c = translit[pos]
+                    if (isUsed(c, usedChars)) continue
+                    
+                    val lowerC = c.lowercaseChar()
+                    val isOnlyDigitSource = needMoreDigits && 
+                        allDigitSourceChars.size == 1 && 
+                        allDigitSourceChars.contains(lowerC)
+                    val isOnlySpecialSource = needMoreSpecials && 
+                        allSpecialSourceChars.size == 1 && 
+                        allSpecialSourceChars.contains(lowerC)
+                    
+                    if (isOnlyDigitSource || isOnlySpecialSource) continue
+                    
+                    anchors.add(c.uppercaseChar())
+                    markUsed(c, usedChars)
+                    anchorFound = true
+                    break
+                }
             }
             
             if (!anchorFound) return null
@@ -317,7 +309,6 @@ object MnemonicPasswordGenerator {
         var needSpecials = maxOf(0, 2 - existingSpecials)
         var needLower = maxOf(0, 2 - existingChars.count { it.isLowerCase() })
         
-        // Сначала берём замены, которые дают недостающие квоты
         for (option in allOptions) {
             if (selected.size >= lettersToTake) break
             
