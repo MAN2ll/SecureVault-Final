@@ -48,23 +48,14 @@ object MnemonicPasswordGenerator {
             if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
         }
         
-        val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
-            options.serviceName.first().uppercaseChar().toString()
-        } else ""
-        
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
             if (y.length == 2 && y[0] != y[1]) y else ""
         } else ""
         
-        val hasService = serviceMarker.isNotEmpty()
         val hasYear = yearMarker.isNotEmpty()
         val reserveLen = if (options.splitMode == SplitMode.TWO_USERS) 4 else 2
-        val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
-        val baseLength = options.targetLength - overhead
-
-        if (baseLength < 4) return emptyList()
-
+        
         val words1 = options.phrase.lowercase().replace(Regex("[^а-яёa-z\\s]"), "").split(Regex("\\s+")).filter { it.length >= 2 }
         val words2 = if (options.splitMode == SplitMode.TWO_USERS) {
             val p2 = options.phrase2 ?: ""
@@ -73,93 +64,111 @@ object MnemonicPasswordGenerator {
 
         if (words1.isEmpty() || (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty())) return emptyList()
 
-        for (variantIndex in 0 until count) {
-            val usedChars = mutableSetOf<Char>()
-            var password = ""
-            var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
+        //  Для service: перебираем все символы serviceName как fallback
+        val serviceCandidates = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
+            options.serviceName.map { it.uppercaseChar() }.distinct()
+        } else listOf(null)
 
-            if (options.splitMode == SplitMode.SINGLE_USER) {
-                if (hasService) {
-                    markUsed(serviceMarker.first(), usedChars)
-                    password += serviceMarker
-                    explanation += "Сервис: $serviceMarker\n"
-                }
-                if (hasYear) {
-                    markUsed(yearMarker[0], usedChars)
-                    markUsed(yearMarker[1], usedChars)
-                }
-                
-                val existingForBase = "#5" + yearMarker
-                val base = buildBase(words1, baseLength, usedChars, variantIndex, existingForBase) ?: continue
-                password += base.first
-                explanation += base.second
-                
-                password += "#5"
-                markUsed('#', usedChars)
-                markUsed('5', usedChars)
-                explanation += "Резерв AMPG: #5\n"
-                
-                if (hasYear) {
-                    password += yearMarker
-                    explanation += "Год: $yearMarker\n"
-                }
-                
-                if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
-                    results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
-                        PasswordGenerator.Strength.VERY_STRONG, null, null, options.splitMode, explanation, variantIndex))
-                }
-            } else {
-                val part1Len = options.targetLength / 2
-                val part2Len = options.targetLength - part1Len
-                
-                var part1 = ""
-                if (hasService) {
-                    markUsed(serviceMarker.first(), usedChars)
-                    part1 += serviceMarker
-                    explanation += "Сервис: $serviceMarker (часть 1)\n"
-                }
-                
-                val part1Existing = (if (hasService) serviceMarker else "") + "%8"
-                val base1Len = part1Len - part1Existing.length
-                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, part1Existing) ?: continue
-                part1 += base1.first
-                explanation += "Часть 1 основа: ${base1.second}\n"
-                
-                part1 += "%8"
-                markUsed('%', usedChars)
-                markUsed('8', usedChars)
-                explanation += "Резерв 1: %8\n"
-                
-                var part2 = ""
-                if (hasYear) {
-                    markUsed(yearMarker[0], usedChars)
-                    markUsed(yearMarker[1], usedChars)
-                }
-                
-                val part2Existing = "#5" + (if (hasYear) yearMarker else "")
-                val base2Len = part2Len - part2Existing.length
-                val base2 = buildBase(words2, base2Len, usedChars, variantIndex, part2Existing) ?: continue
-                part2 += base2.first
-                explanation += "Часть 2 основа: ${base2.second}\n"
-                
-                part2 += "#5"
-                markUsed('#', usedChars)
-                markUsed('5', usedChars)
-                explanation += "Резерв 2: #5\n"
-                
-                if (hasYear) {
-                    part2 += yearMarker
-                    explanation += "Год: $yearMarker (часть 2)\n"
-                }
-                
-                password = part1 + part2
-                
-                if (password.length == options.targetLength && part1.length == part1Len && part2.length == part2Len && isValidVariant(password, options.splitMode)) {
-                    results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
-                        PasswordGenerator.Strength.VERY_STRONG, part1, part2, options.splitMode, explanation, variantIndex))
+        for (serviceChar in serviceCandidates) {
+            val serviceMarker = serviceChar?.toString() ?: ""
+            val hasService = serviceMarker.isNotEmpty()
+            val overhead = (if (hasService) 1 else 0) + (if (hasYear) 2 else 0) + reserveLen
+            val baseLength = options.targetLength - overhead
+
+            if (baseLength < 4) continue
+
+            for (variantIndex in 0 until count) {
+                val usedChars = mutableSetOf<Char>()
+                var password = ""
+                var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
+
+                if (options.splitMode == SplitMode.SINGLE_USER) {
+                    if (hasService) {
+                        markUsed(serviceMarker.first(), usedChars)
+                        password += serviceMarker
+                        explanation += "Сервис: $serviceMarker\n"
+                    }
+                    if (hasYear) {
+                        markUsed(yearMarker[0], usedChars)
+                        markUsed(yearMarker[1], usedChars)
+                    }
+                    
+                    val existingForBase = "#5" + yearMarker
+                    val base = buildBase(words1, baseLength, usedChars, variantIndex, existingForBase) ?: continue
+                    password += base.first
+                    explanation += base.second
+                    
+                    password += "#5"
+                    markUsed('#', usedChars)
+                    markUsed('5', usedChars)
+                    explanation += "Резерв AMPG: #5\n"
+                    
+                    if (hasYear) {
+                        password += yearMarker
+                        explanation += "Год: $yearMarker\n"
+                    }
+                    
+                    if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
+                        results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
+                            PasswordGenerator.Strength.VERY_STRONG, null, null, options.splitMode, explanation, variantIndex))
+                    }
+                } else {
+                    val part1Len = options.targetLength / 2
+                    val part2Len = options.targetLength - part1Len
+                    
+                    var part1 = ""
+                    if (hasService) {
+                        markUsed(serviceMarker.first(), usedChars)
+                        part1 += serviceMarker
+                        explanation += "Сервис: $serviceMarker (часть 1)\n"
+                    }
+                    
+                    val part1Existing = (if (hasService) serviceMarker else "") + "%8"
+                    val base1Len = part1Len - part1Existing.length
+                    val base1 = buildBase(words1, base1Len, usedChars, variantIndex, part1Existing) ?: continue
+                    part1 += base1.first
+                    explanation += "Часть 1 основа: ${base1.second}\n"
+                    
+                    part1 += "%8"
+                    markUsed('%', usedChars)
+                    markUsed('8', usedChars)
+                    explanation += "Резерв 1: %8\n"
+                    
+                    var part2 = ""
+                    if (hasYear) {
+                        markUsed(yearMarker[0], usedChars)
+                        markUsed(yearMarker[1], usedChars)
+                    }
+                    
+                    val part2Existing = "#5" + (if (hasYear) yearMarker else "")
+                    val base2Len = part2Len - part2Existing.length
+                    val base2 = buildBase(words2, base2Len, usedChars, variantIndex, part2Existing) ?: continue
+                    part2 += base2.first
+                    explanation += "Часть 2 основа: ${base2.second}\n"
+                    
+                    part2 += "#5"
+                    markUsed('#', usedChars)
+                    markUsed('5', usedChars)
+                    explanation += "Резерв 2: #5\n"
+                    
+                    if (hasYear) {
+                        part2 += yearMarker
+                        explanation += "Год: $yearMarker (часть 2)\n"
+                    }
+                    
+                    password = part1 + part2
+                    
+                    if (password.length == options.targetLength && part1.length == part1Len && part2.length == part2Len && isValidVariant(password, options.splitMode)) {
+                        results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
+                            PasswordGenerator.Strength.VERY_STRONG, part1, part2, options.splitMode, explanation, variantIndex))
+                    }
                 }
             }
+            
+            //  Если нашли варианты с этим serviceChar — возвращаем их
+            if (results.isNotEmpty()) return results
         }
+        
         return results
     }
 
@@ -185,7 +194,6 @@ object MnemonicPasswordGenerator {
         val needMoreDigits = existingDigits < 2
         val needMoreSpecials = existingSpecials < 2
 
-        // Считаем ВСЕ источники квот в текущем наборе слов
         val allSpecialSourceChars = mutableSetOf<Char>()
         val allDigitSourceChars = mutableSetOf<Char>()
         for (translit in translitWords) {
@@ -203,12 +211,10 @@ object MnemonicPasswordGenerator {
             }
         }
 
-        // Находим якоря с приоритетом позиций, но с поиском по ВСЕМУ слову
         val anchors = mutableListOf<Char>()
         for ((_, translit) in translitWords.withIndex()) {
             var anchorFound = false
             
-            // Приоритетные позиции в зависимости от стратегии
             val priorityPositions = when (variantOffset) {
                 0 -> listOf(0, 1, 2)
                 1 -> listOf(1, 0, 2)
@@ -216,7 +222,6 @@ object MnemonicPasswordGenerator {
                 else -> listOf(0, 1, 2)
             }
             
-            // Сначала пробуем приоритетные позиции
             for (pos in priorityPositions) {
                 if (pos >= translit.length) continue
                 val c = translit[pos]
@@ -238,10 +243,9 @@ object MnemonicPasswordGenerator {
                 break
             }
             
-            //  Если приоритетные не подошли — ищем по ВСЕМУ слову
             if (!anchorFound) {
                 for (pos in translit.indices) {
-                    if (priorityPositions.contains(pos)) continue // уже проверили
+                    if (priorityPositions.contains(pos)) continue
                     val c = translit[pos]
                     if (isUsed(c, usedChars)) continue
                     
@@ -265,7 +269,6 @@ object MnemonicPasswordGenerator {
             if (!anchorFound) return null
         }
 
-        // Собираем все доступные символы (буква ИЛИ замена)
         data class CharOption(val original: Char, val replacement: Char?)
         val allOptions = mutableListOf<CharOption>()
         
