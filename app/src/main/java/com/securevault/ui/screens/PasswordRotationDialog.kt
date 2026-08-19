@@ -54,18 +54,38 @@ fun PasswordRotationDialog(
         "мой пароль", "пароль от сайта", "qwerty", "password"
     )
 
-    //  Проверка года на повторяющиеся цифры
-    val isYearInvalid = rotationYear != null && run {
-        val yStr = rotationYear.toString().takeLast(2)
-        yStr.length == 2 && yStr[0] == yStr[1]
-    }
-
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, length, addService, addYear) {
         yearError = null
         
-        //  Блокируем генерацию, если год с повторяющимися цифрами
+        // Проверка года на повторяющиеся цифры
+        val isYearInvalid = rotationYear != null && run {
+            val yStr = rotationYear.toString().takeLast(2)
+            yStr.length == 2 && yStr[0] == yStr[1]
+        }
+        
+        //  Проверка: помещается ли год в выбранную длину
+        val isYearTooLong = if (isTwoUsers) {
+            val part2Len = length / 2
+            val part2Overhead = 4 // #5 (2) + year (2)
+            val part2BaseLen = part2Len - part2Overhead
+            addYear && part2BaseLen < 5
+        } else {
+            val reserveLen = 2
+            val yearOverhead = if (addYear) 2 else 0
+            val serviceOverhead = if (addService && serviceName.isNotEmpty()) 1 else 0
+            val baseLength = length - reserveLen - yearOverhead - serviceOverhead
+            addYear && baseLength < 4
+        }
+        
         if (addYear && isYearInvalid) {
             yearError = "Год $rotationYear нельзя добавить: цифры повторяются."
+            variants = emptyList()
+            selectedIdx = -1
+            return@LaunchedEffect
+        }
+        
+        if (addYear && isYearTooLong) {
+            yearError = "Год не помещается в выбранную длину. Выберите длину 18 или отключите год."
             variants = emptyList()
             selectedIdx = -1
             return@LaunchedEffect
@@ -153,7 +173,6 @@ fun PasswordRotationDialog(
                     )
                 }
 
-                //  Сообщение об ошибке года
                 if (yearError != null) {
                     Text(
                         yearError!!,
@@ -163,7 +182,7 @@ fun PasswordRotationDialog(
                     )
                 }
 
-                if (isWeakPhrase) {
+                if (isWeakPhrase && yearError == null) {
                     Text(
                         if (isTwoUsers) {
                             "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
@@ -174,7 +193,7 @@ fun PasswordRotationDialog(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
-                } else if (variants.isEmpty() && phrase1.length >= 4 && yearError == null) {
+                } else if (variants.isEmpty() && phrase1.length >= 4 && yearError == null && !isWeakPhrase) {
                     Text(
                         if (isTwoUsers) {
                             "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
