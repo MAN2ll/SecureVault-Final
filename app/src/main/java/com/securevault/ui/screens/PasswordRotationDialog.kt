@@ -47,18 +47,35 @@ fun PasswordRotationDialog(
     }
     var selectedIdx by remember { mutableIntStateOf(-1) }
     var isWeakPhrase by remember { mutableStateOf(false) }
+    var yearError by remember { mutableStateOf<String?>(null) }
 
     val weakPhrasesSet = setOf(
         "мама мыла раму", "ма мыла раму", "я люблю тебя",
         "мой пароль", "пароль от сайта", "qwerty", "password"
     )
 
+    //  Проверка года на повторяющиеся цифры
+    val isYearInvalid = rotationYear != null && run {
+        val yStr = rotationYear.toString().takeLast(2)
+        yStr.length == 2 && yStr[0] == yStr[1]
+    }
+
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, length, addService, addYear) {
+        yearError = null
+        
+        //  Блокируем генерацию, если год с повторяющимися цифрами
+        if (addYear && isYearInvalid) {
+            yearError = "Год $rotationYear нельзя добавить: цифры повторяются."
+            variants = emptyList()
+            selectedIdx = -1
+            return@LaunchedEffect
+        }
+        
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1,
             phrase2 = if (isTwoUsers) phrase2 else null,
             serviceName = serviceName,
-            year = rotationYear, //Передаём rotationYear (не null)
+            year = rotationYear,
             targetLength = length,
             splitMode = if (isTwoUsers) {
                 MnemonicPasswordGenerator.SplitMode.TWO_USERS
@@ -71,9 +88,8 @@ fun PasswordRotationDialog(
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
 
-        // Проверка слабых фраз для обеих частей
         isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
-                (isTwoUsers && phrase2.lowercase().trim() in weakPhrasesSet)
+                (isTwoUsers && (phrase2.lowercase().trim() in weakPhrasesSet))
     }
 
     AlertDialog(
@@ -137,7 +153,16 @@ fun PasswordRotationDialog(
                     )
                 }
 
-                // Правильные сообщения для слабых фраз
+                //  Сообщение об ошибке года
+                if (yearError != null) {
+                    Text(
+                        yearError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
                 if (isWeakPhrase) {
                     Text(
                         if (isTwoUsers) {
@@ -149,7 +174,7 @@ fun PasswordRotationDialog(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
-                } else if (variants.isEmpty() && phrase1.length >= 4) {
+                } else if (variants.isEmpty() && phrase1.length >= 4 && yearError == null) {
                     Text(
                         if (isTwoUsers) {
                             "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
@@ -210,7 +235,6 @@ fun PasswordRotationDialog(
                 onClick = {
                     if (selectedIdx >= 0) {
                         val res = variants[selectedIdx]
-                        //  ПЕРВЫЙ ПАРАМЕТР: строго res.password (выбранный пароль)
                         onPasswordReplaced(
                             res.password,
                             res.mnemonicHint,
