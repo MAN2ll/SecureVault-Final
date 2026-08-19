@@ -41,7 +41,13 @@ object MnemonicPasswordGenerator {
 
     fun generateVariants(options: GenerationOptions, count: Int = 3): List<GenerationResult> {
         val results = mutableListOf<GenerationResult>()
+        
+        // Проверка слабых фраз
         if (options.phrase.lowercase().trim() in weakPhrases) return emptyList()
+        if (options.splitMode == SplitMode.TWO_USERS) {
+            val phrase2 = options.phrase2 ?: ""
+            if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
+        }
         
         val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.first().uppercaseChar().toString()
@@ -79,7 +85,8 @@ object MnemonicPasswordGenerator {
                     markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker\n"
                 }
-                val base = buildBase(words1, baseLength, usedChars, variantIndex) ?: continue
+                //  Передаём резерв #5 как existingChars для проверки квот
+                val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5") ?: continue
                 password += base.first
                 explanation += base.second
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
@@ -105,11 +112,10 @@ object MnemonicPasswordGenerator {
                         PasswordGenerator.Strength.VERY_STRONG, null, null, options.splitMode, explanation, variantIndex))
                 }
             } else {
-                // TWO_USERS: строим две половины отдельно
+                // TWO_USERS
                 val part1Len = options.targetLength / 2
                 val part2Len = options.targetLength - part1Len
                 
-                // Part1: service + body1 + %8
                 var part1 = ""
                 val part1Existing = (if (hasService) serviceMarker else "") + "%8"
                 
@@ -120,6 +126,7 @@ object MnemonicPasswordGenerator {
                 }
                 
                 val base1Len = part1Len - part1Existing.length
+                //  Передаём part1Existing для проверки квот
                 val base1 = buildBase(words1, base1Len, usedChars, variantIndex, part1Existing) ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
@@ -131,11 +138,11 @@ object MnemonicPasswordGenerator {
                     explanation += "Резерв 1: %8\n"
                 }
                 
-                // Part2: body2 + #5 + year
                 var part2 = ""
                 val part2Existing = "#5" + (if (hasYear) yearMarker else "")
                 
                 val base2Len = part2Len - part2Existing.length
+                // Передаём part2Existing для проверки квот
                 val base2 = buildBase(words2, base2Len, usedChars, variantIndex, part2Existing) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
@@ -178,7 +185,7 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
-    // проверка квот с учётом existingChars (service, резерв, year)
+    //  ПОЛНАЯ ПЕРЕРАБОТКА: учёт existingChars, уникальность, подбор под квоты
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -252,33 +259,122 @@ object MnemonicPasswordGenerator {
             }
         }
 
-        // 3. Берём нужное количество символов
+        // 3. Берём нужное количество символов, проверяя уникальность
         val lettersToTake = targetLen - anchors.size
         if (lettersToTake < 0 || lettersToTake > availableChars.size) return null
 
-        val selected = availableChars.take(lettersToTake)
+        val selected = mutableListOf<Char>()
+        val localUsed = usedChars.toMutableSet()
+        
+        for (ch in availableChars) {
+            if (selected.size >= lettersToTake) break
+            if (!isUsed(ch, localUsed)) {
+                selected.add(ch)
+                localUsed.add(usedKey(ch))
+            }
+        }
 
-        // 4. Формируем результат (якоря + выбранные символы)
+        if (selected.size < lettersToTake) return null
+
+        // 4. Формируем результат
         val result = StringBuilder()
         for (anchor in anchors) result.append(anchor)
         for (ch in selected) result.append(ch)
 
-        // 5.  ПРОВЕРЯЕМ КВОТЫ С УЧЁТОМ existingChars (service, резерв, year)
+        // 5.  ПРОВЕРЯЕМ КВОТЫ С УЧЁТОМ existingChars
         val fullPart = result.toString() + existingChars
         val upper = fullPart.count { it.isUpperCase() }
         val lower = fullPart.count { it.isLowerCase() }
         val digits = fullPart.count { it.isDigit() }
         val specials = fullPart.count { !it.isLetterOrDigit() }
 
-        if (upper < 2 || lower < 2 || digits < 2 || specials < 2) return null
+        // 6.  Если квоты не выполнены, пытаемся заменить символы
+        if (upper < 2 || lower < 2 || digits < 2 || specials < 2) {
+            val fixedSelected = fixQuotas(selected, anchors, existingChars, usedChars, variantOffset)
+            if (fixedSelected == null) return null
+            
+            result.clear()
+            for (anchor in anchors) result.append(anchor)
+            for (ch in fixedSelected) result.append(ch)
+            
+            // Обновляем usedChars
+            for (ch in fixedSelected) markUsed(ch, usedChars)
+        } else {
+            // Квоты выполнены, просто отмечаем символы
+            for (ch in selected) markUsed(ch, usedChars)
+        }
 
-        // 6. Формируем explanation
+        // 7. Формируем explanation
         val explanation = StringBuilder()
         for (anchor in anchors) explanation.append("$anchor ")
-        for (ch in selected) explanation.append(ch)
+        for (ch in (if (upper < 2 || lower < 2 || digits < 2 || specials < 2) {
+            val fixedSelected = fixQuotas(selected, anchors, existingChars, usedChars, variantOffset)
+            fixedSelected ?: return null
+        } else selected)) explanation.append(ch)
         explanation.append("\n")
 
         return Pair(result.toString(), explanation.toString())
+    }
+
+    //  Функция для подбора символов под недостающие квоты
+    private fun fixQuotas(
+        selected: List<Char>,
+        anchors: List<Char>,
+        existingChars: String,
+        usedChars: MutableSet<Char>,
+        variantOffset: Int
+    ): List<Char>? {
+        val result = selected.toMutableList()
+        val localUsed = usedChars.toMutableSet()
+        
+        for (ch in anchors) localUsed.add(usedKey(ch))
+        for (ch in existingChars) localUsed.add(usedKey(ch))
+        for (ch in result) localUsed.add(usedKey(ch))
+        
+        // Проверяем текущие квоты
+        val fullPart = anchors.joinToString("") + result.joinToString("") + existingChars
+        var upper = fullPart.count { it.isUpperCase() }
+        var lower = fullPart.count { it.isLowerCase() }
+        var digits = fullPart.count { it.isDigit() }
+        var specials = fullPart.count { !it.isLetterOrDigit() }
+        
+        // Если нужно больше digits или specials, заменяем lowercase на них
+        if (digits < 2 || specials < 2) {
+            val digitPool = ('0'..'9').filter { !localUsed.contains(it) }
+            val specialPool = listOf('!', '@', '#', '$', '%', '^', '&', '*', '?').filter { !localUsed.contains(it) }
+            
+            for (i in result.indices) {
+                val ch = result[i]
+                if (ch.isLowerCase() && (digits < 2 || specials < 2)) {
+                    val replacement = if (digits < 2 && digitPool.isNotEmpty()) {
+                        digitPool.first()
+                    } else if (specials < 2 && specialPool.isNotEmpty()) {
+                        specialPool.first()
+                    } else null
+                    
+                    if (replacement != null) {
+                        localUsed.remove(usedKey(ch))
+                        result[i] = replacement
+                        localUsed.add(usedKey(replacement))
+                        
+                        if (replacement.isDigit()) digits++
+                        else if (!replacement.isLetterOrDigit()) specials++
+                        lower--
+                    }
+                }
+            }
+        }
+        
+        // Финальная проверка
+        val finalFull = anchors.joinToString("") + result.joinToString("") + existingChars
+        val finalUpper = finalFull.count { it.isUpperCase() }
+        val finalLower = finalFull.count { it.isLowerCase() }
+        val finalDigits = finalFull.count { it.isDigit() }
+        val finalSpecials = finalFull.count { !it.isLetterOrDigit() }
+        
+        if (finalUpper < 2 || finalLower < 2 || finalDigits < 2 || finalSpecials < 2) return null
+        
+        return result
     }
 
     private fun transliterateWord(word: String): String {
