@@ -42,28 +42,38 @@ fun PasswordRotationDialog(
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
 
-    var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
+    var variants by remember {
+        mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList())
+    }
     var selectedIdx by remember { mutableIntStateOf(-1) }
     var isWeakPhrase by remember { mutableStateOf(false) }
+
+    val weakPhrasesSet = setOf(
+        "мама мыла раму", "ма мыла раму", "я люблю тебя",
+        "мой пароль", "пароль от сайта", "qwerty", "password"
+    )
 
     LaunchedEffect(phrase1, phrase2, isTwoUsers, serviceName, length, addService, addYear) {
         val opts = MnemonicPasswordGenerator.GenerationOptions(
             phrase = phrase1,
             phrase2 = if (isTwoUsers) phrase2 else null,
             serviceName = serviceName,
-            year = rotationYear,
+            year = rotationYear, //Передаём rotationYear (не null)
             targetLength = length,
-            splitMode = if (isTwoUsers) MnemonicPasswordGenerator.SplitMode.TWO_USERS else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
+            splitMode = if (isTwoUsers) {
+                MnemonicPasswordGenerator.SplitMode.TWO_USERS
+            } else {
+                MnemonicPasswordGenerator.SplitMode.SINGLE_USER
+            },
             addServiceMarker = addService,
             addYearMarker = addYear
         )
         variants = MnemonicPasswordGenerator.generateVariants(opts, 3)
         selectedIdx = if (variants.isNotEmpty()) 0 else -1
 
-        isWeakPhrase = phrase1.lowercase().trim() in setOf(
-            "мама мыла раму", "ма мыла раму", "я люблю тебя",
-            "мой пароль", "пароль от сайта", "qwerty", "password"
-        )
+        // Проверка слабых фраз для обеих частей
+        isWeakPhrase = phrase1.lowercase().trim() in weakPhrasesSet ||
+                (isTwoUsers && phrase2.lowercase().trim() in weakPhrasesSet)
     }
 
     AlertDialog(
@@ -71,18 +81,27 @@ fun PasswordRotationDialog(
         title = { Text("Ротация пароля (AMPG)", fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isTwoUsers, onCheckedChange = { isTwoUsers = it })
+                    Checkbox(
+                        checked = isTwoUsers,
+                        onCheckedChange = { isTwoUsers = it }
+                    )
                     Text("Два пользователя")
                 }
 
                 OutlinedTextField(
                     value = phrase1,
                     onValueChange = { phrase1 = it },
-                    label = { Text(if (isTwoUsers) "Фраза 1-й половины" else "Мнемоническая фраза") },
+                    label = {
+                        Text(
+                            if (isTwoUsers) "Фраза 1-й половины" else "Мнемоническая фраза"
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -96,28 +115,91 @@ fun PasswordRotationDialog(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = addService, onCheckedChange = { addService = it })
-                    Text("Сервис", fontSize = 12.sp, modifier = Modifier.padding(end = 16.dp))
-                    Checkbox(checked = addYear, onCheckedChange = { addYear = it })
-                    Text("Год", fontSize = 12.sp)
+                    Checkbox(
+                        checked = addService,
+                        onCheckedChange = { addService = it },
+                        enabled = serviceName.isNotEmpty()
+                    )
+                    Text(
+                        "Добавить сервис ($serviceName) в начало",
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(end = 16.dp)
+                    )
+
+                    Checkbox(
+                        checked = addYear,
+                        onCheckedChange = { addYear = it },
+                        enabled = rotationYear != null
+                    )
+                    Text(
+                        "Добавить год (${rotationYear ?: "—"}) в конец",
+                        fontSize = 12.sp
+                    )
                 }
 
+                // Правильные сообщения для слабых фраз
                 if (isWeakPhrase) {
-                    Text("Фраза слишком простая. Добавьте ещё 2–3 личных слова.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    Text(
+                        if (isTwoUsers) {
+                            "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
+                        } else {
+                            "Фраза слишком простая. Добавьте ещё 2–3 личных слова."
+                        },
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 } else if (variants.isEmpty() && phrase1.length >= 4) {
-                    Text(if (isTwoUsers) "Фраза слишком простая для двух пользователей." else "Не удалось сгенерировать валидные варианты.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    Text(
+                        if (isTwoUsers) {
+                            "Фраза слишком простая для двух пользователей. Добавьте слова в каждую часть."
+                        } else {
+                            "Не удалось сгенерировать валидные варианты. Попробуйте другую фразу или длину."
+                        },
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp
+                    )
                 }
 
                 variants.forEachIndexed { index, res ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
                         onClick = { selectedIdx = index },
-                        colors = CardDefaults.cardColors(if (selectedIdx == index) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+                        colors = CardDefaults.cardColors(
+                            if (selectedIdx == index) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        )
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
-                            Text(res.variantName, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
-                            Text(res.password, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text(res.explanation, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                res.variantName,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                res.password,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            if (isTwoUsers && res.part1 != null && res.part2 != null) {
+                                Text(
+                                    "${res.part1} / ${res.part2}",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Text(
+                                res.explanation,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -128,7 +210,7 @@ fun PasswordRotationDialog(
                 onClick = {
                     if (selectedIdx >= 0) {
                         val res = variants[selectedIdx]
-                        // первым параметром передаётся строго res.password
+                        //  ПЕРВЫЙ ПАРАМЕТР: строго res.password (выбранный пароль)
                         onPasswordReplaced(
                             res.password,
                             res.mnemonicHint,
