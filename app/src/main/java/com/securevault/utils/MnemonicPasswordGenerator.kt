@@ -105,35 +105,48 @@ object MnemonicPasswordGenerator {
                         PasswordGenerator.Strength.VERY_STRONG, null, null, options.splitMode, explanation, variantIndex))
                 }
             } else {
+                // TWO_USERS: строим две половины отдельно
                 val part1Len = options.targetLength / 2
                 val part2Len = options.targetLength - part1Len
+                
+                // Part1: service + body1 + %8
                 var part1 = ""
+                val part1Existing = (if (hasService) serviceMarker else "") + "%8"
+                
                 if (hasService && !isUsed(serviceMarker.first(), usedChars)) {
                     part1 += serviceMarker
                     markUsed(serviceMarker.first(), usedChars)
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
-                val base1Len = part1Len - (if (hasService) 1 else 0) - 2
-                val base1 = buildBase(words1, base1Len, usedChars, variantIndex) ?: continue
+                
+                val base1Len = part1Len - part1Existing.length
+                val base1 = buildBase(words1, base1Len, usedChars, variantIndex, part1Existing) ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
+                
                 if (!isUsed('%', usedChars) && !isUsed('8', usedChars)) {
                     part1 += "%8"
                     markUsed('%', usedChars)
                     markUsed('8', usedChars)
                     explanation += "Резерв 1: %8\n"
                 }
+                
+                // Part2: body2 + #5 + year
                 var part2 = ""
-                val base2Len = part2Len - 2 - (if (hasYear) 2 else 0)
-                val base2 = buildBase(words2, base2Len, usedChars, variantIndex + 100) ?: continue
+                val part2Existing = "#5" + (if (hasYear) yearMarker else "")
+                
+                val base2Len = part2Len - part2Existing.length
+                val base2 = buildBase(words2, base2Len, usedChars, variantIndex, part2Existing) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
+                
                 if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
                     part2 += "#5"
                     markUsed('#', usedChars)
                     markUsed('5', usedChars)
                     explanation += "Резерв 2: #5\n"
                 }
+                
                 if (hasYear) {
                     val y1 = yearMarker[0]
                     val y2 = yearMarker[1]
@@ -146,7 +159,9 @@ object MnemonicPasswordGenerator {
                         continue
                     }
                 }
+                
                 password = part1 + part2
+                
                 if (password.length == options.targetLength && part1.length == part1Len && part2.length == part2Len && isValidVariant(password, options.splitMode)) {
                     results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
                         PasswordGenerator.Strength.VERY_STRONG, part1, part2, options.splitMode, explanation, variantIndex))
@@ -163,8 +178,14 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
-    //  собираем все символы, применяем замены, проверяем квоты
-    private fun buildBase(words: List<String>, targetLen: Int, usedChars: MutableSet<Char>, variantOffset: Int): Pair<String, String>? {
+    // проверка квот с учётом existingChars (service, резерв, year)
+    private fun buildBase(
+        words: List<String>, 
+        targetLen: Int, 
+        usedChars: MutableSet<Char>, 
+        variantOffset: Int,
+        existingChars: String = ""
+    ): Pair<String, String>? {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
@@ -214,11 +235,10 @@ object MnemonicPasswordGenerator {
                 val leetKey = if (isCh) "ch" else lowerC.toString()
                 val replacement = leetMap[leetKey]
 
-                // Определяем, нужно ли заменять символ
                 val shouldReplace = when (variantOffset) {
-                    0 -> leetKey in listOf("o", "l", "ch", "s") // Минимум замен
-                    1 -> leetKey in listOf("a", "t", "i", "b", "o", "l") // Часть замен
-                    2 -> leetKey in listOf("s", "l", "o", "ch", "a", "t", "i", "b") // Максимум замен
+                    0 -> leetKey in listOf("o", "l", "ch", "s")
+                    1 -> leetKey in listOf("a", "t", "i", "b", "o", "l")
+                    2 -> leetKey in listOf("s", "l", "o", "ch", "a", "t", "i", "b")
                     else -> false
                 }
 
@@ -238,26 +258,27 @@ object MnemonicPasswordGenerator {
 
         val selected = availableChars.take(lettersToTake)
 
-        // 4. Проверяем квоты
+        // 4. Формируем результат (якоря + выбранные символы)
         val result = StringBuilder()
         for (anchor in anchors) result.append(anchor)
         for (ch in selected) result.append(ch)
 
-        val password = result.toString()
-        val upper = password.count { it.isUpperCase() }
-        val lower = password.count { it.isLowerCase() }
-        val digits = password.count { it.isDigit() }
-        val specials = password.count { !it.isLetterOrDigit() }
+        // 5.  ПРОВЕРЯЕМ КВОТЫ С УЧЁТОМ existingChars (service, резерв, year)
+        val fullPart = result.toString() + existingChars
+        val upper = fullPart.count { it.isUpperCase() }
+        val lower = fullPart.count { it.isLowerCase() }
+        val digits = fullPart.count { it.isDigit() }
+        val specials = fullPart.count { !it.isLetterOrDigit() }
 
         if (upper < 2 || lower < 2 || digits < 2 || specials < 2) return null
 
-        // 5. Формируем explanation
+        // 6. Формируем explanation
         val explanation = StringBuilder()
         for (anchor in anchors) explanation.append("$anchor ")
         for (ch in selected) explanation.append(ch)
         explanation.append("\n")
 
-        return Pair(password, explanation.toString())
+        return Pair(result.toString(), explanation.toString())
     }
 
     private fun transliterateWord(word: String): String {
