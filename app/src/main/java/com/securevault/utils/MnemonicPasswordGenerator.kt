@@ -48,12 +48,10 @@ object MnemonicPasswordGenerator {
             if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
         }
         
-        //  Блокировка невалидного года (2022/2033)
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
             if (y.length == 2) {
                 if (y[0] == y[1]) {
-                    // Год с повторяющимися цифрами — возвращаем пустой список
                     return emptyList()
                 }
                 y
@@ -71,7 +69,6 @@ object MnemonicPasswordGenerator {
 
         if (words1.isEmpty() || (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty())) return emptyList()
 
-        // Перебираем все символы serviceName как fallback
         val serviceCandidates = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.map { it.uppercaseChar() }.distinct()
         } else listOf(null)
@@ -195,7 +192,6 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        //  Считаем квоты с учётом existingChars (service, резервы, year)
         val existingUpper = existingChars.count { it.isUpperCase() }
         val existingDigits = existingChars.count { it.isDigit() }
         val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
@@ -221,7 +217,6 @@ object MnemonicPasswordGenerator {
             }
         }
 
-        // Находим якоря с учётом needUpper
         val anchors = mutableListOf<Char>()
         var upperAnchorsNeeded = needUpper
         
@@ -235,7 +230,6 @@ object MnemonicPasswordGenerator {
                 else -> listOf(0, 1, 2)
             }
             
-            // Сначала пробуем приоритетные позиции
             for (pos in priorityPositions) {
                 if (pos >= translit.length) continue
                 val c = translit[pos]
@@ -251,13 +245,11 @@ object MnemonicPasswordGenerator {
                 
                 if (isOnlyDigitSource || isOnlySpecialSource) continue
                 
-                //  Если нужно больше uppercase — делаем якорь uppercase
-                // Если uppercase квота уже выполнена — якорь может быть lowercase
                 val anchorChar = if (upperAnchorsNeeded > 0) {
                     upperAnchorsNeeded--
                     c.uppercaseChar()
                 } else {
-                    c // Оставляем lowercase
+                    c
                 }
                 
                 anchors.add(anchorChar)
@@ -266,7 +258,6 @@ object MnemonicPasswordGenerator {
                 break
             }
             
-            // Если приоритетные не подошли — ищем по всему слову
             if (!anchorFound) {
                 for (pos in translit.indices) {
                     if (priorityPositions.contains(pos)) continue
@@ -336,45 +327,58 @@ object MnemonicPasswordGenerator {
         val lettersToTake = targetLen - anchors.size
         if (lettersToTake < 0) return null
 
-        val selected = mutableListOf<Char>()
+        //  УМНЫЙ ПОДБОР: сначала собираем доступные символы по типам
+        val availableDigits = mutableListOf<Char>()
+        val availableSpecials = mutableListOf<Char>()
+        val availableLowers = mutableListOf<Char>()
         val localUsed = usedChars.toMutableSet()
-        
-        var needDigits = maxOf(0, 2 - existingDigits)
-        var needSpecials = maxOf(0, 2 - existingSpecials)
-        var needLower = maxOf(0, 2 - existingChars.count { it.isLowerCase() })
-        
+
+        for (option in allOptions) {
+            val ch = option.replacement ?: option.original
+            if (isUsed(ch, localUsed)) continue
+            
+            if (ch.isDigit()) availableDigits.add(ch)
+            else if (!ch.isLetterOrDigit()) availableSpecials.add(ch)
+            else if (ch.isLowerCase()) availableLowers.add(ch)
+        }
+
+        val needDigits = maxOf(0, 2 - existingDigits)
+        val needSpecials = maxOf(0, 2 - existingSpecials)
+        val needLower = maxOf(0, 2 - existingChars.count { it.isLowerCase() })
+
+        //  Проверяем, достаточно ли символов для квот
+        if (availableDigits.size < needDigits || 
+            availableSpecials.size < needSpecials || 
+            availableLowers.size < needLower) {
+            return null
+        }
+
+        //  Сначала берём ОБЯЗАТЕЛЬНЫЕ символы для квот
+        val selected = mutableListOf<Char>()
+
+        for (i in 0 until needDigits) {
+            selected.add(availableDigits[i])
+            localUsed.add(usedKey(availableDigits[i]))
+        }
+
+        for (i in 0 until needSpecials) {
+            selected.add(availableSpecials[i])
+            localUsed.add(usedKey(availableSpecials[i]))
+        }
+
+        for (i in 0 until needLower) {
+            selected.add(availableLowers[i])
+            localUsed.add(usedKey(availableLowers[i]))
+        }
+
+        //  Добираем оставшимися символами до lettersToTake
         for (option in allOptions) {
             if (selected.size >= lettersToTake) break
             
             val ch = option.replacement ?: option.original
-            if (isUsed(ch, localUsed)) continue
-            
-            val chIsDigit = ch.isDigit()
-            val chIsSpecial = !ch.isLetterOrDigit()
-            val chIsLower = ch.isLowerCase()
-            
-            val shouldTake = (chIsDigit && needDigits > 0) || 
-                           (chIsSpecial && needSpecials > 0) || 
-                           (chIsLower && needLower > 0)
-            
-            if (shouldTake) {
+            if (!isUsed(ch, localUsed)) {
                 selected.add(ch)
                 localUsed.add(usedKey(ch))
-                if (chIsDigit) needDigits--
-                if (chIsSpecial) needSpecials--
-                if (chIsLower) needLower--
-            }
-        }
-        
-        if (selected.size < lettersToTake) {
-            for (option in allOptions) {
-                if (selected.size >= lettersToTake) break
-                
-                val ch = option.replacement ?: option.original
-                if (!isUsed(ch, localUsed)) {
-                    selected.add(ch)
-                    localUsed.add(usedKey(ch))
-                }
             }
         }
 
