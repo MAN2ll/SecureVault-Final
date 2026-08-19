@@ -48,20 +48,13 @@ object MnemonicPasswordGenerator {
             if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
         }
         
-        // Проверка service/year ДО генерации
         val serviceMarker = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.first().uppercaseChar().toString()
         } else ""
         
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
-            if (y.length == 2) {
-                if (y[0] == y[1]) {
-                    // Год с повторяющимися цифрами — ошибка, возвращаем пустой список
-                    return emptyList()
-                }
-                y
-            } else ""
+            if (y.length == 2 && y[0] != y[1]) y else ""
         } else ""
         
         val hasService = serviceMarker.isNotEmpty()
@@ -86,32 +79,32 @@ object MnemonicPasswordGenerator {
             var explanation = "Фраза: ${options.phrase}\nСтратегия: ${getStrategyName(variantIndex)}\n"
 
             if (options.splitMode == SplitMode.SINGLE_USER) {
-                if (hasService && !isUsed(serviceMarker.first(), usedChars)) {
-                    password += serviceMarker
+                //  Резервируем сервис И год ДО buildBase()
+                if (hasService) {
                     markUsed(serviceMarker.first(), usedChars)
+                    password += serviceMarker
                     explanation += "Сервис: $serviceMarker\n"
                 }
-                val base = buildBase(words1, baseLength, usedChars, variantIndex, "#5") ?: continue
+                if (hasYear) {
+                    markUsed(yearMarker[0], usedChars)
+                    markUsed(yearMarker[1], usedChars)
+                }
+                
+                val existingForBase = "#5" + yearMarker
+                val base = buildBase(words1, baseLength, usedChars, variantIndex, existingForBase) ?: continue
                 password += base.first
                 explanation += base.second
-                if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
-                    password += "#5"
-                    markUsed('#', usedChars)
-                    markUsed('5', usedChars)
-                    explanation += "Резерв AMPG: #5\n"
-                }
+                
+                password += "#5"
+                markUsed('#', usedChars)
+                markUsed('5', usedChars)
+                explanation += "Резерв AMPG: #5\n"
+                
                 if (hasYear) {
-                    val y1 = yearMarker[0]
-                    val y2 = yearMarker[1]
-                    if (!isUsed(y1, usedChars) && !isUsed(y2, usedChars)) {
-                        password += yearMarker
-                        markUsed(y1, usedChars)
-                        markUsed(y2, usedChars)
-                        explanation += "Год: $yearMarker\n"
-                    } else {
-                        continue
-                    }
+                    password += yearMarker
+                    explanation += "Год: $yearMarker\n"
                 }
+                
                 if (password.length == options.targetLength && isValidVariant(password, options.splitMode)) {
                     results.add(GenerationResult(password, options.phrase.take(30), "Вариант ${variantIndex + 1}",
                         PasswordGenerator.Strength.VERY_STRONG, null, null, options.splitMode, explanation, variantIndex))
@@ -121,52 +114,44 @@ object MnemonicPasswordGenerator {
                 val part2Len = options.targetLength - part1Len
                 
                 var part1 = ""
-                val part1Existing = (if (hasService) serviceMarker else "") + "%8"
-                
-                if (hasService && !isUsed(serviceMarker.first(), usedChars)) {
-                    part1 += serviceMarker
+                if (hasService) {
                     markUsed(serviceMarker.first(), usedChars)
+                    part1 += serviceMarker
                     explanation += "Сервис: $serviceMarker (часть 1)\n"
                 }
                 
+                val part1Existing = (if (hasService) serviceMarker else "") + "%8"
                 val base1Len = part1Len - part1Existing.length
                 val base1 = buildBase(words1, base1Len, usedChars, variantIndex, part1Existing) ?: continue
                 part1 += base1.first
                 explanation += "Часть 1 основа: ${base1.second}\n"
                 
-                if (!isUsed('%', usedChars) && !isUsed('8', usedChars)) {
-                    part1 += "%8"
-                    markUsed('%', usedChars)
-                    markUsed('8', usedChars)
-                    explanation += "Резерв 1: %8\n"
-                }
+                part1 += "%8"
+                markUsed('%', usedChars)
+                markUsed('8', usedChars)
+                explanation += "Резерв 1: %8\n"
                 
                 var part2 = ""
-                val part2Existing = "#5" + (if (hasYear) yearMarker else "")
+                //  Резервируем год ДО buildBase() для part2
+                if (hasYear) {
+                    markUsed(yearMarker[0], usedChars)
+                    markUsed(yearMarker[1], usedChars)
+                }
                 
+                val part2Existing = "#5" + (if (hasYear) yearMarker else "")
                 val base2Len = part2Len - part2Existing.length
                 val base2 = buildBase(words2, base2Len, usedChars, variantIndex, part2Existing) ?: continue
                 part2 += base2.first
                 explanation += "Часть 2 основа: ${base2.second}\n"
                 
-                if (!isUsed('#', usedChars) && !isUsed('5', usedChars)) {
-                    part2 += "#5"
-                    markUsed('#', usedChars)
-                    markUsed('5', usedChars)
-                    explanation += "Резерв 2: #5\n"
-                }
+                part2 += "#5"
+                markUsed('#', usedChars)
+                markUsed('5', usedChars)
+                explanation += "Резерв 2: #5\n"
                 
                 if (hasYear) {
-                    val y1 = yearMarker[0]
-                    val y2 = yearMarker[1]
-                    if (!isUsed(y1, usedChars) && !isUsed(y2, usedChars)) {
-                        part2 += yearMarker
-                        markUsed(y1, usedChars)
-                        markUsed(y2, usedChars)
-                        explanation += "Год: $yearMarker (часть 2)\n"
-                    } else {
-                        continue
-                    }
+                    part2 += yearMarker
+                    explanation += "Год: $yearMarker (часть 2)\n"
                 }
                 
                 password = part1 + part2
@@ -187,7 +172,34 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
-    //  ТРИ РЕАЛЬНО РАЗНЫЕ СТРАТЕГИИ через разные якоря
+    //  Проверяет, есть ли в тексте хотя бы одна буква с заменой на цифру
+    private fun hasDigitSource(text: String): Boolean {
+        var i = 0
+        while (i < text.length) {
+            val c = text[i].lowercaseChar()
+            val next = if (i + 1 < text.length) text[i + 1].lowercaseChar() else ' '
+            val key = if (c == 'c' && next == 'h') "ch" else c.toString()
+            val replacement = leetMap[key]
+            if (replacement != null && replacement.first().isDigit()) return true
+            i += if (key == "ch") 2 else 1
+        }
+        return false
+    }
+
+    //  Проверяет, есть ли в тексте хотя бы одна буква с заменой на спецсимвол
+    private fun hasSpecialSource(text: String): Boolean {
+        var i = 0
+        while (i < text.length) {
+            val c = text[i].lowercaseChar()
+            val next = if (i + 1 < text.length) text[i + 1].lowercaseChar() else ' '
+            val key = if (c == 'c' && next == 'h') "ch" else c.toString()
+            val replacement = leetMap[key]
+            if (replacement != null && !replacement.first().isLetterOrDigit()) return true
+            i += if (key == "ch") 2 else 1
+        }
+        return false
+    }
+
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -198,47 +210,70 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        // 1. Находим якоря для каждого слова — РАЗНЫЕ ДЛЯ КАЖДОЙ СТРАТЕГИИ
+        // Считаем, каких квот не хватает с учётом existingChars
+        val existingDigits = existingChars.count { it.isDigit() }
+        val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
+        val needMoreDigits = existingDigits < 2
+        val needMoreSpecials = existingSpecials < 2
+
+        //  Считаем ВСЕ источники квот в текущем наборе слов
+        val allSpecialSourceChars = mutableSetOf<Char>()
+        val allDigitSourceChars = mutableSetOf<Char>()
+        for (translit in translitWords) {
+            var i = 0
+            while (i < translit.length) {
+                val c = translit[i].lowercaseChar()
+                val next = if (i + 1 < translit.length) translit[i + 1].lowercaseChar() else ' '
+                val key = if (c == 'c' && next == 'h') "ch" else c.toString()
+                val replacement = leetMap[key]
+                if (replacement != null) {
+                    if (replacement.first().isDigit()) allDigitSourceChars.add(c)
+                    if (!replacement.first().isLetterOrDigit()) allSpecialSourceChars.add(c)
+                }
+                i += if (key == "ch") 2 else 1
+            }
+        }
+
+        // Находим якоря с учётом квот
         val anchors = mutableListOf<Char>()
-        for ((wIdx, translit) in translitWords.withIndex()) {
+        for ((_, translit) in translitWords.withIndex()) {
             var anchorFound = false
             
-            // Разные стратегии используют разные позиции для якоря
-            val anchorPosition = when (variantOffset) {
-                0 -> 0 // Первый символ
-                1 -> minOf(1, translit.length - 1) // Второй символ (или первый, если слово короткое)
-                2 -> minOf(2, translit.length - 1) // Третий символ (или первый/второй)
-                else -> 0
+            val anchorPositions = when (variantOffset) {
+                0 -> listOf(0, 1, 2)
+                1 -> listOf(1, 0, 2)
+                2 -> listOf(2, 1, 0)
+                else -> listOf(0, 1, 2)
             }
             
-            // Пытаемся взять символ с нужной позиции
-            for (i in anchorPosition until translit.length) {
-                val c = translit[i]
-                if (!isUsed(c, usedChars)) {
-                    anchors.add(c.uppercaseChar())
-                    markUsed(c, usedChars)
-                    anchorFound = true
-                    break
+            for (pos in anchorPositions) {
+                if (pos >= translit.length) continue
+                val c = translit[pos]
+                if (isUsed(c, usedChars)) continue
+                
+                // Проверяем: не является ли этот символ единственным источником квоты
+                val lowerC = c.lowercaseChar()
+                val isOnlyDigitSource = needMoreDigits && 
+                    allDigitSourceChars.size == 1 && 
+                    allDigitSourceChars.contains(lowerC)
+                val isOnlySpecialSource = needMoreSpecials && 
+                    allSpecialSourceChars.size == 1 && 
+                    allSpecialSourceChars.contains(lowerC)
+                
+                if (isOnlyDigitSource || isOnlySpecialSource) {
+                    continue // Пропускаем — этот якорь "съест" единственный источник квоты
                 }
-            }
-            
-            // Если не нашли, пытаемся с начала
-            if (!anchorFound) {
-                for (i in 0 until anchorPosition) {
-                    val c = translit[i]
-                    if (!isUsed(c, usedChars)) {
-                        anchors.add(c.uppercaseChar())
-                        markUsed(c, usedChars)
-                        anchorFound = true
-                        break
-                    }
-                }
+                
+                anchors.add(c.uppercaseChar())
+                markUsed(c, usedChars)
+                anchorFound = true
+                break
             }
             
             if (!anchorFound) return null
         }
 
-        // 2. Собираем ВСЕ возможные варианты символов (буква ИЛИ замена)
+        // Собираем все доступные символы (буква ИЛИ замена)
         data class CharOption(val original: Char, val replacement: Char?)
         val allOptions = mutableListOf<CharOption>()
         
@@ -260,12 +295,10 @@ object MnemonicPasswordGenerator {
                 val leetKey = if (isCh) "ch" else lowerC.toString()
                 val replacement = leetMap[leetKey]
 
-                // Добавляем оригинальную букву
                 if (!isUsed(lowerC, usedChars)) {
                     allOptions.add(CharOption(lowerC, null))
                 }
                 
-                // Добавляем замену, если есть
                 if (replacement != null && !isUsed(replacement.first(), usedChars)) {
                     allOptions.add(CharOption(lowerC, replacement.first()))
                 }
@@ -277,18 +310,12 @@ object MnemonicPasswordGenerator {
         val lettersToTake = targetLen - anchors.size
         if (lettersToTake < 0) return null
 
-        // 3. Выбираем символы с приоритетом под квоты
         val selected = mutableListOf<Char>()
         val localUsed = usedChars.toMutableSet()
         
-        val existingUpper = existingChars.count { it.isUpperCase() }
-        val existingLower = existingChars.count { it.isLowerCase() }
-        val existingDigits = existingChars.count { it.isDigit() }
-        val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
-        
         var needDigits = maxOf(0, 2 - existingDigits)
         var needSpecials = maxOf(0, 2 - existingSpecials)
-        var needLower = maxOf(0, 2 - existingLower)
+        var needLower = maxOf(0, 2 - existingChars.count { it.isLowerCase() })
         
         // Сначала берём замены, которые дают недостающие квоты
         for (option in allOptions) {
@@ -314,7 +341,6 @@ object MnemonicPasswordGenerator {
             }
         }
         
-        // Если не набрали, добираем любыми доступными символами
         if (selected.size < lettersToTake) {
             for (option in allOptions) {
                 if (selected.size >= lettersToTake) break
@@ -329,12 +355,10 @@ object MnemonicPasswordGenerator {
 
         if (selected.size < lettersToTake) return null
 
-        // 4. Формируем результат
         val result = StringBuilder()
         for (anchor in anchors) result.append(anchor)
         for (ch in selected) result.append(ch)
 
-        // 5. Финальная проверка квот
         val fullPart = result.toString() + existingChars
         val upper = fullPart.count { it.isUpperCase() }
         val lower = fullPart.count { it.isLowerCase() }
