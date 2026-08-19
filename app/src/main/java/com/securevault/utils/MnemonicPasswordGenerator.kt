@@ -48,9 +48,16 @@ object MnemonicPasswordGenerator {
             if (phrase2.lowercase().trim() in weakPhrases) return emptyList()
         }
         
+        //  Блокировка невалидного года (2022/2033)
         val yearMarker = if (options.addYearMarker) {
             val y = (options.year ?: options.rotationYear)?.toString()?.takeLast(2) ?: ""
-            if (y.length == 2 && y[0] != y[1]) y else ""
+            if (y.length == 2) {
+                if (y[0] == y[1]) {
+                    // Год с повторяющимися цифрами — возвращаем пустой список
+                    return emptyList()
+                }
+                y
+            } else ""
         } else ""
         
         val hasYear = yearMarker.isNotEmpty()
@@ -64,7 +71,7 @@ object MnemonicPasswordGenerator {
 
         if (words1.isEmpty() || (options.splitMode == SplitMode.TWO_USERS && words2.isEmpty())) return emptyList()
 
-        //  Для service: перебираем все символы serviceName как fallback
+        // Перебираем все символы serviceName как fallback
         val serviceCandidates = if (options.addServiceMarker && options.serviceName.isNotEmpty()) {
             options.serviceName.map { it.uppercaseChar() }.distinct()
         } else listOf(null)
@@ -165,7 +172,6 @@ object MnemonicPasswordGenerator {
                 }
             }
             
-            //  Если нашли варианты с этим serviceChar — возвращаем их
             if (results.isNotEmpty()) return results
         }
         
@@ -189,8 +195,12 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
+        //  Считаем квоты с учётом existingChars (service, резервы, year)
+        val existingUpper = existingChars.count { it.isUpperCase() }
         val existingDigits = existingChars.count { it.isDigit() }
         val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
+        
+        val needUpper = maxOf(0, 2 - existingUpper)
         val needMoreDigits = existingDigits < 2
         val needMoreSpecials = existingSpecials < 2
 
@@ -211,7 +221,10 @@ object MnemonicPasswordGenerator {
             }
         }
 
+        // Находим якоря с учётом needUpper
         val anchors = mutableListOf<Char>()
+        var upperAnchorsNeeded = needUpper
+        
         for ((_, translit) in translitWords.withIndex()) {
             var anchorFound = false
             
@@ -222,6 +235,7 @@ object MnemonicPasswordGenerator {
                 else -> listOf(0, 1, 2)
             }
             
+            // Сначала пробуем приоритетные позиции
             for (pos in priorityPositions) {
                 if (pos >= translit.length) continue
                 val c = translit[pos]
@@ -237,12 +251,22 @@ object MnemonicPasswordGenerator {
                 
                 if (isOnlyDigitSource || isOnlySpecialSource) continue
                 
-                anchors.add(c.uppercaseChar())
+                //  Если нужно больше uppercase — делаем якорь uppercase
+                // Если uppercase квота уже выполнена — якорь может быть lowercase
+                val anchorChar = if (upperAnchorsNeeded > 0) {
+                    upperAnchorsNeeded--
+                    c.uppercaseChar()
+                } else {
+                    c // Оставляем lowercase
+                }
+                
+                anchors.add(anchorChar)
                 markUsed(c, usedChars)
                 anchorFound = true
                 break
             }
             
+            // Если приоритетные не подошли — ищем по всему слову
             if (!anchorFound) {
                 for (pos in translit.indices) {
                     if (priorityPositions.contains(pos)) continue
@@ -259,7 +283,14 @@ object MnemonicPasswordGenerator {
                     
                     if (isOnlyDigitSource || isOnlySpecialSource) continue
                     
-                    anchors.add(c.uppercaseChar())
+                    val anchorChar = if (upperAnchorsNeeded > 0) {
+                        upperAnchorsNeeded--
+                        c.uppercaseChar()
+                    } else {
+                        c
+                    }
+                    
+                    anchors.add(anchorChar)
                     markUsed(c, usedChars)
                     anchorFound = true
                     break
