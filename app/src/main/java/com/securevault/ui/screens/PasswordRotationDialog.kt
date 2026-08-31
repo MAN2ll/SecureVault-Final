@@ -63,7 +63,7 @@ fun PasswordRotationDialog(
             yStr.length == 2 && yStr[0] == yStr[1]
         }
         
-        //  Проверка: помещается ли год в выбранную длину
+        // Проверка: помещается ли год в выбранную длину
         val isYearTooLong = if (isTwoUsers) {
             val part2Len = length / 2
             val part2Overhead = 4 // #5 (2) + year (2)
