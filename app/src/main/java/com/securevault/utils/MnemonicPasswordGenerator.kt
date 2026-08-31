@@ -180,6 +180,7 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
+    // ✅ ПОЛНОСТЬЮ ПЕРЕПИСАН: явный учёт квот на каждом этапе
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -190,38 +191,41 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        // Считаем квоты из existingChars (service + резерв)
+        // === ЭТАП 1: Считаем квоты из existingChars ===
         val existingUpper = existingChars.count { it.isUpperCase() }
+        val existingLower = existingChars.count { it.isLowerCase() }
         val existingDigits = existingChars.count { it.isDigit() }
         val existingSpecials = existingChars.count { !it.isLetterOrDigit() }
-        val existingLower = existingChars.count { it.isLowerCase() }
-        
-        val needUpperFromExisting = maxOf(0, 2 - existingUpper)
-        val needMoreDigitsFromExisting = existingDigits < 2
-        val needMoreSpecialsFromExisting = existingSpecials < 2
 
-        // Находим якоря
-        val anchors = mutableListOf<Char>()
-        var upperAnchorsNeeded = needUpperFromExisting
+        // === ЭТАП 2: Находим все источники квот в словах ===
+        data class SourceInfo(val char: Char, val replacement: Char?)
+        val digitSources = mutableListOf<SourceInfo>()
+        val specialSources = mutableListOf<SourceInfo>()
         
-        val allSpecialSourceChars = mutableSetOf<Char>()
-        val allDigitSourceChars = mutableSetOf<Char>()
         for (translit in translitWords) {
             var i = 0
             while (i < translit.length) {
                 val c = translit[i].lowercaseChar()
                 val next = if (i + 1 < translit.length) translit[i + 1].lowercaseChar() else ' '
                 val key = if (c == 'c' && next == 'h') "ch" else c.toString()
-                val replacement = leetMap[key]
+                val replacement = leetMap[key]?.firstOrNull()
                 if (replacement != null) {
-                    if (replacement.first().isDigit()) allDigitSourceChars.add(c)
-                    if (!replacement.first().isLetterOrDigit()) allSpecialSourceChars.add(c)
+                    if (replacement.isDigit()) digitSources.add(SourceInfo(c, replacement))
+                    if (!replacement.isLetterOrDigit()) specialSources.add(SourceInfo(c, replacement))
                 }
                 i += if (key == "ch") 2 else 1
             }
         }
 
-        for ((_, translit) in translitWords.withIndex()) {
+        // === ЭТАП 3: Выбираем якоря с защитой источников квот ===
+        val anchors = mutableListOf<Char>()
+        var upperAnchorsNeeded = maxOf(0, 2 - existingUpper)
+        
+        // Уникальные символы-источники (без учёта регистра)
+        val uniqueDigitSourceChars = digitSources.map { it.char }.toSet()
+        val uniqueSpecialSourceChars = specialSources.map { it.char }.toSet()
+        
+        for (translit in translitWords) {
             var anchorFound = false
             
             val priorityPositions = when (variantOffset) {
@@ -231,26 +235,31 @@ object MnemonicPasswordGenerator {
                 else -> listOf(0, 1, 2)
             }
             
-            for (pos in priorityPositions) {
+            // Собираем все возможные позиции для якоря в этом слове
+            val candidatePositions = priorityPositions + (translit.indices.filter { it !in priorityPositions })
+            
+            for (pos in candidatePositions) {
                 if (pos >= translit.length) continue
                 val c = translit[pos]
                 if (isUsed(c, usedChars)) continue
+                if (anchors.contains(c.uppercaseChar())) continue // Уже взяли такой якорь
                 
                 val lowerC = c.lowercaseChar()
-                val isOnlyDigitSource = needMoreDigitsFromExisting && 
-                    allDigitSourceChars.size == 1 && 
-                    allDigitSourceChars.contains(lowerC)
-                val isOnlySpecialSource = needMoreSpecialsFromExisting && 
-                    allSpecialSourceChars.size == 1 && 
-                    allSpecialSourceChars.contains(lowerC)
+                
+                // Проверяем, не является ли этот символ единственным источником квоты
+                val isOnlyDigitSource = (existingDigits + anchors.count { it.isDigit() } < 2) &&
+                    uniqueDigitSourceChars.size == 1 && uniqueDigitSourceChars.contains(lowerC)
+                val isOnlySpecialSource = (existingSpecials + anchors.count { !it.isLetterOrDigit() } < 2) &&
+                    uniqueSpecialSourceChars.size == 1 && uniqueSpecialSourceChars.contains(lowerC)
                 
                 if (isOnlyDigitSource || isOnlySpecialSource) continue
                 
+                // Выбираем регистр якоря
                 val anchorChar = if (upperAnchorsNeeded > 0) {
                     upperAnchorsNeeded--
                     c.uppercaseChar()
                 } else {
-                    c
+                    c.lowercaseChar()
                 }
                 
                 anchors.add(anchorChar)
@@ -259,155 +268,124 @@ object MnemonicPasswordGenerator {
                 break
             }
             
-            if (!anchorFound) {
-                for (pos in translit.indices) {
-                    if (priorityPositions.contains(pos)) continue
-                    val c = translit[pos]
-                    if (isUsed(c, usedChars)) continue
-                    
-                    val lowerC = c.lowercaseChar()
-                    val isOnlyDigitSource = needMoreDigitsFromExisting && 
-                        allDigitSourceChars.size == 1 && 
-                        allDigitSourceChars.contains(lowerC)
-                    val isOnlySpecialSource = needMoreSpecialsFromExisting && 
-                        allSpecialSourceChars.size == 1 && 
-                        allSpecialSourceChars.contains(lowerC)
-                    
-                    if (isOnlyDigitSource || isOnlySpecialSource) continue
-                    
-                    val anchorChar = if (upperAnchorsNeeded > 0) {
-                        upperAnchorsNeeded--
-                        c.uppercaseChar()
-                    } else {
-                        c
-                    }
-                    
-                    anchors.add(anchorChar)
-                    markUsed(c, usedChars)
-                    anchorFound = true
-                    break
-                }
-            }
-            
             if (!anchorFound) return null
         }
 
-        //  ПЕРЕСЧЁТ КВОТ С УЧЁТОМ ANCHORS
+        // === ЭТАП 4: Пересчитываем квоты с учётом existingChars + anchors ===
         val anchorsUpper = anchors.count { it.isUpperCase() }
         val anchorsLower = anchors.count { it.isLowerCase() }
+        val anchorsDigits = anchors.count { it.isDigit() }
+        val anchorsSpecials = anchors.count { !it.isLetterOrDigit() }
         
         val totalUpper = existingUpper + anchorsUpper
         val totalLower = existingLower + anchorsLower
-        val totalDigits = existingDigits
-        val totalSpecials = existingSpecials
+        val totalDigits = existingDigits + anchorsDigits
+        val totalSpecials = existingSpecials + anchorsSpecials
         
         val needMoreUpper = maxOf(0, 2 - totalUpper)
+        val needMoreLower = maxOf(0, 2 - totalLower)
         val needMoreDigits = maxOf(0, 2 - totalDigits)
         val needMoreSpecials = maxOf(0, 2 - totalSpecials)
-        val needMoreLower = maxOf(0, 2 - totalLower)
 
-        // Собираем доступные символы
-        data class CharOption(val original: Char, val replacement: Char?)
-        val allOptions = mutableListOf<CharOption>()
+        // === ЭТАП 5: Собираем доступные символы из слов ===
+        val anchorLowerSet = anchors.map { it.lowercaseChar() }.toSet()
+        val localUsed = usedChars.toMutableSet()
         
-        for ((wIdx, translit) in translitWords.withIndex()) {
-            val anchorLower = anchors[wIdx].lowercaseChar()
-            var pos = 0
-            while (pos < translit.length) {
-                val c = translit[pos]
-                val lowerC = c.lowercaseChar()
-
-                if (lowerC == anchorLower) {
-                    val nextIsH = (pos + 1 < translit.length && lowerC == 'c' && translit[pos + 1].lowercaseChar() == 'h')
-                    pos += if (nextIsH) 2 else 1
-                    continue
-                }
-
-                val nextIdx = pos + 1
-                val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
-                val leetKey = if (isCh) "ch" else lowerC.toString()
-                val replacement = leetMap[leetKey]
-
-                if (!isUsed(lowerC, usedChars)) {
-                    allOptions.add(CharOption(lowerC, null))
-                }
-                
-                if (replacement != null && !isUsed(replacement.first(), usedChars)) {
-                    allOptions.add(CharOption(lowerC, replacement.first()))
-                }
-
-                pos += if (isCh) 2 else 1
-            }
-        }
-
-        val lettersToTake = targetLen - anchors.size
-        if (lettersToTake < 0) return null
-
-        //  УМНЫЙ ПОДБОР: собираем символы по типам
         val availableDigits = mutableListOf<Char>()
         val availableSpecials = mutableListOf<Char>()
         val availableLowers = mutableListOf<Char>()
         val availableUppers = mutableListOf<Char>()
-        val localUsed = usedChars.toMutableSet()
-
-        for (option in allOptions) {
-            val ch = option.replacement ?: option.original
-            if (isUsed(ch, localUsed)) continue
-            
-            if (ch.isDigit()) availableDigits.add(ch)
-            else if (!ch.isLetterOrDigit()) availableSpecials.add(ch)
-            else if (ch.isLowerCase()) availableLowers.add(ch)
-            else if (ch.isUpperCase()) availableUppers.add(ch)
+        
+        for (translit in translitWords) {
+            var pos = 0
+            while (pos < translit.length) {
+                val c = translit[pos]
+                val lowerC = c.lowercaseChar()
+                
+                // Пропускаем символы-якоря
+                if (lowerC in anchorLowerSet) {
+                    val nextIsH = (pos + 1 < translit.length && lowerC == 'c' && translit[pos + 1].lowercaseChar() == 'h')
+                    pos += if (nextIsH) 2 else 1
+                    continue
+                }
+                
+                val nextIdx = pos + 1
+                val isCh = (nextIdx < translit.length && lowerC == 'c' && translit[nextIdx].lowercaseChar() == 'h')
+                val leetKey = if (isCh) "ch" else lowerC.toString()
+                val replacement = leetMap[leetKey]?.firstOrNull()
+                
+                // Добавляем замену, если доступна
+                if (replacement != null && !isUsed(replacement, localUsed)) {
+                    when {
+                        replacement.isDigit() -> availableDigits.add(replacement)
+                        !replacement.isLetterOrDigit() -> availableSpecials.add(replacement)
+                    }
+                    localUsed.add(usedKey(replacement))
+                }
+                
+                // Добавляем оригинальную букву, если доступна
+                if (!isUsed(lowerC, usedChars) && !isUsed(lowerC, localUsed)) {
+                    if (lowerC.isLowerCase()) availableLowers.add(lowerC)
+                    localUsed.add(usedKey(lowerC))
+                }
+                
+                pos += if (isCh) 2 else 1
+            }
         }
 
-        // Проверяем, достаточно ли символов
-        if (availableDigits.size < needMoreDigits || 
-            availableSpecials.size < needMoreSpecials || 
+        // === ЭТАП 6: Проверяем, достаточно ли символов ===
+        val lettersToTake = targetLen - anchors.size
+        if (lettersToTake < 0) return null
+        
+        if (availableDigits.size < needMoreDigits ||
+            availableSpecials.size < needMoreSpecials ||
             availableLowers.size < needMoreLower ||
             availableUppers.size < needMoreUpper) {
             return null
         }
+        
+        val totalAvailable = availableDigits.size + availableSpecials.size + availableLowers.size + availableUppers.size
+        if (totalAvailable < lettersToTake) return null
 
-        // Сначала берём обязательные
+        // === ЭТАП 7: Берём обязательные символы для квот ===
         val selected = mutableListOf<Char>()
-
+        val selectedUsed = localUsed.toMutableSet()
+        
         for (i in 0 until needMoreUpper) {
             selected.add(availableUppers[i])
-            localUsed.add(usedKey(availableUppers[i]))
+            selectedUsed.add(usedKey(availableUppers[i]))
         }
-
         for (i in 0 until needMoreDigits) {
             selected.add(availableDigits[i])
-            localUsed.add(usedKey(availableDigits[i]))
+            selectedUsed.add(usedKey(availableDigits[i]))
         }
-
         for (i in 0 until needMoreSpecials) {
             selected.add(availableSpecials[i])
-            localUsed.add(usedKey(availableSpecials[i]))
+            selectedUsed.add(usedKey(availableSpecials[i]))
         }
-
         for (i in 0 until needMoreLower) {
             selected.add(availableLowers[i])
-            localUsed.add(usedKey(availableLowers[i]))
+            selectedUsed.add(usedKey(availableLowers[i]))
         }
 
-        // Добираем оставшимися
-        for (option in allOptions) {
+        // === ЭТАП 8: Добираем оставшимися символами ===
+        val allAvailable = availableUppers + availableDigits + availableSpecials + availableLowers
+        for (ch in allAvailable) {
             if (selected.size >= lettersToTake) break
-            
-            val ch = option.replacement ?: option.original
-            if (!isUsed(ch, localUsed)) {
+            if (!isUsed(ch, selectedUsed)) {
                 selected.add(ch)
-                localUsed.add(usedKey(ch))
+                selectedUsed.add(usedKey(ch))
             }
         }
 
         if (selected.size < lettersToTake) return null
 
+        // === ЭТАП 9: Формируем результат ===
         val result = StringBuilder()
         for (anchor in anchors) result.append(anchor)
         for (ch in selected) result.append(ch)
 
+        // === ЭТАП 10: Финальная проверка квот ===
         val fullPart = result.toString() + existingChars
         val upper = fullPart.count { it.isUpperCase() }
         val lower = fullPart.count { it.isLowerCase() }
