@@ -59,16 +59,14 @@ fun GeneratorScreen(
             return
         }
 
-        val result = PasswordGenerator.generate(
-            length = length,
-            useUpper = useUppercase,
-            useDigits = useDigits,
-            useSpecial = useSpecial,
-            context = context
-        )
-        generatedPassword = result.password
-        passwordStrength = result.strength
-        showError = null
+        val result = PasswordGenerator.generate(length, useLower, useUpper, useDigits, useSpecials, context)
+            result.onSuccess { pwd ->
+                generatedPassword = pwd
+                errorMessage = null
+            }.onFailure { err ->
+                errorMessage = err.message ?: "Ошибка генерации"
+                generatedPassword = ""
+            }
     }
 
     Scaffold(
