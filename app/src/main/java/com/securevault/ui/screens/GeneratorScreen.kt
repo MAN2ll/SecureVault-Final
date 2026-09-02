@@ -35,6 +35,7 @@ fun GeneratorScreen(
     val currentProfileId by viewModel.currentProfileId.collectAsState()
 
     var length by remember { mutableIntStateOf(12) }
+    var useLower by remember { mutableStateOf(true) } //  Добавлено
     var useUppercase by remember { mutableStateOf(true) }
     var useDigits by remember { mutableStateOf(true) }
     var useSpecial by remember { mutableStateOf(false) }
@@ -59,14 +60,29 @@ fun GeneratorScreen(
             return
         }
 
-        val result = PasswordGenerator.generate(length, useLower, useUpper, useDigits, useSpecials, context)
-            result.onSuccess { pwd ->
-                generatedPassword = pwd
-                errorMessage = null
-            }.onFailure { err ->
-                errorMessage = err.message ?: "Ошибка генерации"
-                generatedPassword = ""
+        //  Безопасный вызов с обработкой Result
+        val result = PasswordGenerator.generate(
+            length = length,
+            useLower = useLower,
+            useUpper = useUppercase,
+            useDigits = useDigits,
+            useSpecials = useSpecial
+        )
+        
+        result.onSuccess { res ->
+            generatedPassword = res.password
+            // Простая оценка надёжности для UI
+            passwordStrength = when {
+                length < 10 -> PasswordGenerator.Strength.WEAK
+                length < 14 -> PasswordGenerator.Strength.MEDIUM
+                length < 18 -> PasswordGenerator.Strength.STRONG
+                else -> PasswordGenerator.Strength.VERY_STRONG
             }
+            showError = null
+        }.onFailure { err ->
+            showError = err.message ?: "Ошибка генерации"
+            generatedPassword = ""
+        }
     }
 
     Scaffold(
@@ -117,12 +133,16 @@ fun GeneratorScreen(
                         Slider(
                             value = length.toFloat(),
                             onValueChange = { length = it.toInt() },
-                            valueRange = 8f..20f,
-                            steps = 12,
+                            valueRange = 8f..32f,
+                            steps = 24,
                             modifier = Modifier.weight(2f)
                         )
                     }
 
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = useLower, onCheckedChange = { useLower = it })
+                        Text("Строчные буквы (a-z)", modifier = Modifier.padding(start = 8.dp), fontSize = 14.sp)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Checkbox(checked = useUppercase, onCheckedChange = { useUppercase = it })
                         Text("Заглавные буквы (A-Z)", modifier = Modifier.padding(start = 8.dp), fontSize = 14.sp)
@@ -146,6 +166,17 @@ fun GeneratorScreen(
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(4.dp))
                 Text("Сгенерировать пароль")
+            }
+
+            if (showError != null && generatedPassword.isEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Text(
+                        text = showError!!, 
+                        color = MaterialTheme.colorScheme.error, 
+                        fontSize = 13.sp, 
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
             }
 
             if (generatedPassword.isNotEmpty()) {
@@ -244,14 +275,14 @@ fun GeneratorScreen(
                         return@Button
                     }
 
-                    // ✅ Проверка уникальности символов
+                    //  Проверка уникальности символов (если PasswordValidator существует в проекте)
                     val uniqueCheck = PasswordValidator.validateUniqueCharacters(generatedPassword)
                     if (!uniqueCheck.isValid) {
                         showError = uniqueCheck.errorMessage
                         return@Button
                     }
 
-                    // ✅ HMAC fingerprint для новой записи
+                    //  HMAC fingerprint для новой записи
                     val fingerprint = PasswordValidator.buildPasswordFingerprint(generatedPassword, context)
 
                     val newEntry = Entry.create(
@@ -272,10 +303,6 @@ fun GeneratorScreen(
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(4.dp))
                 Text("Сохранить в хранилище")
-            }
-
-            if (showError != null && generatedPassword.isEmpty()) {
-                Text(text = showError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
         }
     }
