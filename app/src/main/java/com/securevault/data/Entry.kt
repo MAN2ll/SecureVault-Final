@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "entries")
 data class Entry(
     @PrimaryKey(autoGenerate = true)
-    val id: Int = 0, // Или String, в зависимости от твоей старой версии. Оставь как было.
+    val id: Int = 0, // ВАЖНО: Если в твоем оригинальном файле было val id: String, верни String!
     
     @ColumnInfo(name = "profile_id")
     val profileId: Int,
@@ -54,11 +54,11 @@ data class Entry(
     @ColumnInfo(name = "last_changed")
     val lastChanged: Long = System.currentTimeMillis(),
 
-    // БЛОК 6: Добавлено поле тегов
+    // БЛОК 6: Новое поле для тегов (по умолчанию пустая строка)
     @ColumnInfo(name = "tags_csv")
     val tagsCsv: String = ""
 ) {
-    // БЛОК 6: Вычисляемое свойство для удобной работы с тегами
+    // БЛОК 6: Вычисляемое свойство для удобной работы с тегами в UI
     val tags: List<String>
         get() = tagsCsv
             .split(",")
@@ -66,34 +66,14 @@ data class Entry(
             .filter { it.isNotEmpty() }
             .distinctBy { it.lowercase() }
 
+    // Вспомогательный метод для получения истории. 
+    // ЗАМЕНИ emptyList() на свой реальный парсинг через JsonUtils, если он у тебя был!
     fun getPasswordHistory(): List<PasswordHistoryItem> {
         return if (passwordHistoryJson.isNullOrBlank()) {
             emptyList()
         } else {
-            // Здесь должен быть твой JsonUtils.fromJson
             // Пример: JsonUtils.fromJson(passwordHistoryJson, object : TypeToken<List<PasswordHistoryItem>>() {}.type) ?: emptyList()
-            emptyList() // ЗАМЕНИ на свой реальный парсинг, если он был
-        }
-    }
-
-    companion object {
-        fun create(
-            service: String,
-            username: String,
-            password: String, // Этот пароль будет зашифрован в ViewModel
-            profileId: Int,
-            passwordFingerprint: String? = null,
-            tagsCsv: String = "" // БЛОК 6: Параметр по умолчанию
-        ): Entry {
-            return Entry(
-                profileId = profileId,
-                service = service,
-                username = username,
-                encryptedPassword = password, // В реальной жизни здесь должен быть вызов CryptoUtils.encrypt
-                tagsCsv = tagsCsv,
-                createdAt = System.currentTimeMillis(),
-                lastChanged = System.currentTimeMillis()
-            )
+            emptyList() 
         }
     }
 }
