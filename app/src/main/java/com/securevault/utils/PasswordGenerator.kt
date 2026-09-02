@@ -3,6 +3,9 @@ package com.securevault.utils
 import java.security.SecureRandom
 
 object PasswordGenerator {
+    // ДОБАВЛЕНО: enum Strength для совместимости с UI
+    enum class Strength { WEAK, MEDIUM, STRONG, VERY_STRONG }
+
     private const val LOWER = "abcdefghijklmnopqrstuvwxyz"
     private const val UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     private const val DIGITS = "0123456789"
@@ -15,10 +18,6 @@ object PasswordGenerator {
         val explanation: String = ""
     )
 
-    /**
-     * Генерирует случайный пароль без повторов (с учётом регистра).
-     * Возвращает Result, чтобы избежать вылетов приложения при невозможности генерации.
-     */
     fun generate(
         length: Int,
         useLower: Boolean,
@@ -49,13 +48,11 @@ object PasswordGenerator {
             return true
         }
 
-        // 1. Гарантируем минимум по 1 символу из каждой включенной категории
         if (useLower && !addRandomChar(LOWER)) return Result.failure(IllegalArgumentException("Недостаточно уникальных строчных букв"))
         if (useUpper && !addRandomChar(UPPER)) return Result.failure(IllegalArgumentException("Недостаточно уникальных заглавных букв"))
         if (useDigits && !addRandomChar(DIGITS)) return Result.failure(IllegalArgumentException("Недостаточно уникальных цифр"))
         if (useSpecials && !addRandomChar(SPECIALS)) return Result.failure(IllegalArgumentException("Недостаточно уникальных спецсимволов"))
 
-        // 2. Собираем все доступные символы из включенных категорий
         val allEnabledChars = buildString {
             if (useLower) append(LOWER)
             if (useUpper) append(UPPER)
@@ -63,7 +60,6 @@ object PasswordGenerator {
             if (useSpecials) append(SPECIALS)
         }
 
-        // 3. Добираем оставшиеся символы до нужной длины
         while (selectedChars.size < length) {
             val available = allEnabledChars.filter { !usedLowerChars.contains(it.lowercaseChar()) }
             if (available.isEmpty()) {
@@ -74,15 +70,10 @@ object PasswordGenerator {
             selectedChars.add(randomChar)
         }
 
-        // 4. Перемешиваем результат
         selectedChars.shuffle(secureRandom)
-
         return Result.success(GenerationResult(selectedChars.joinToString("")))
     }
 
-    /**
-     * Генерация пароля из двух частей (например, 8 / 8).
-     */
     fun generateTwoPart(
         length: Int,
         useLower: Boolean,
@@ -144,9 +135,6 @@ object PasswordGenerator {
 
     data class AnchorGenerationResult(val password: String, val explanation: String)
 
-    /**
-     * Генерация с якорным словом (например, "сова" -> "S0v@...").
-     */
     fun generateWithAnchor(
         anchorWord: String,
         totalLength: Int,
@@ -178,14 +166,12 @@ object PasswordGenerator {
             return true
         }
 
-        // 1. Добавляем якорь
         val anchorResult = buildAnchor(anchorWord, usedLowerChars)
         resultChars.addAll(anchorResult.chars)
         usedLowerChars.addAll(anchorResult.usedLower)
 
         var explanation = "Якорь: ${anchorResult.explanation}\n"
         
-        // 2. Добавляем маркеры
         if (addService && serviceName.isNotEmpty()) {
             val serviceChar = serviceName.first().uppercaseChar()
             if (!usedLowerChars.contains(serviceChar.lowercaseChar())) {
@@ -207,7 +193,6 @@ object PasswordGenerator {
             }
         }
 
-        // 3. Добираем оставшуюся длину
         val allEnabledChars = buildString {
             if (useLower) append(LOWER)
             if (useUpper) append(UPPER)
