@@ -25,9 +25,10 @@ import com.securevault.viewmodel.VaultViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryEditorScreen(
-    entryId: String? = null,
-    profileId: Int,
+    id: String? = null, // Изменено с entryId на id для совместимости с NavHost
+    profileId: Int?, //  Изменено на Int? для совместимости с NavHost
     onBack: () -> Unit,
+    onLock: () -> Unit = {}, //  Добавлено для совместимости с NavHost
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -37,7 +38,6 @@ fun EntryEditorScreen(
     var url by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     
-    // БЛОК 8: Состояние для тегов
     var tagsCsv by remember { mutableStateOf("") }
     
     var isFavorite by remember { mutableStateOf(false) }
@@ -47,24 +47,29 @@ fun EntryEditorScreen(
     var passwordChangedManually by remember { mutableStateOf(false) }
     var originalPassword by remember { mutableStateOf("") }
 
-    var isLoading by remember { mutableStateOf(entryId != null) }
+    var isLoading by remember { mutableStateOf(id != null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    //  Безопасное получение Int, если profileId вдруг null
+    val currentProfileId = profileId ?: 0
 
-    LaunchedEffect(entryId) {
-        if (entryId != null) {
-            val entry = viewModel.findEntryById(entryId)
+    LaunchedEffect(id) {
+        if (id != null) {
+            val entry = viewModel.findEntryById(id)
             if (entry != null) {
                 service = entry.service
                 username = entry.username
-                password = entry.password // Расшифрованный пароль
+                password = entry.password
                 originalPassword = password
                 url = entry.url ?: ""
                 notes = entry.notes ?: ""
-                tagsCsv = entry.tagsCsv // Загружаем теги
+                tagsCsv = entry.tagsCsv
                 isFavorite = entry.isFavorite
                 rotationEnabled = entry.rotationEnabled
                 rotationPeriodMonths = entry.rotationPeriodMonths
             }
+            isLoading = false
+        } else {
             isLoading = false
         }
     }
@@ -72,7 +77,7 @@ fun EntryEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (entryId == null) "Новая запись" else "Редактирование", fontWeight = FontWeight.Bold) },
+                title = { Text(if (id == null) "Новая запись" else "Редактирование", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Назад")
@@ -130,7 +135,6 @@ fun EntryEditorScreen(
                     modifier = Modifier.padding(start = 16.dp)
                 )
 
-                // БЛОК 8: Поле для тегов
                 OutlinedTextField(
                     value = tagsCsv,
                     onValueChange = { tagsCsv = it },
@@ -192,7 +196,6 @@ fun EntryEditorScreen(
                             return@Button
                         }
 
-                        // БЛОК 8: Проверки перед сохранением ручного пароля
                         if (passwordChangedManually) {
                             val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
                             if (!uniqueCheck.isValid) {
@@ -203,13 +206,12 @@ fun EntryEditorScreen(
 
                         val fingerprint = PasswordValidator.buildPasswordFingerprint(password, context)
 
-                        if (entryId == null) {
-                            // Создание новой записи
+                        if (id == null) {
                             val newEntry = Entry.create(
                                 service = service,
                                 username = username,
                                 password = password,
-                                profileId = profileId,
+                                profileId = currentProfileId,
                                 passwordFingerprint = fingerprint,
                                 url = url.ifBlank { null },
                                 notes = notes.ifBlank { null },
@@ -220,15 +222,16 @@ fun EntryEditorScreen(
                                 tagsCsv = tagsCsv
                             )
                             viewModel.insert(newEntry) { result ->
-                                if (result is PasswordOperationResult.Success) onBack()
-                                else errorMessage = result.message
+                                //  Используем when для корректного smart-cast и доступа к .message
+                                when (result) {
+                                    is PasswordOperationResult.Success -> onBack()
+                                    is PasswordOperationResult.Error -> errorMessage = result.message
+                                }
                             }
                         } else {
-                            // Обновление существующей записи
-                            val oldEntry = viewModel.findEntryById(entryId) ?: return@Button
+                            val oldEntry = viewModel.findEntryById(id) ?: return@Button
                             
                             var finalHistoryJson = oldEntry.passwordHistoryJson
-                            // Если пароль изменился, добавляем его в историю
                             if (password != oldEntry.password) {
                                 val updatedEntryWithHistory = oldEntry.addToPasswordHistory(
                                     oldPassword = oldEntry.password,
@@ -244,7 +247,7 @@ fun EntryEditorScreen(
                                 encryptedPassword = CryptoUtils.encrypt(password),
                                 url = url.ifBlank { null },
                                 notes = notes.ifBlank { null },
-                                tagsCsv = tagsCsv, // Обновляем теги
+                                tagsCsv = tagsCsv,
                                 isFavorite = isFavorite,
                                 rotationEnabled = rotationEnabled,
                                 rotationPeriodMonths = rotationPeriodMonths,
@@ -252,12 +255,14 @@ fun EntryEditorScreen(
                                 generationType = if (passwordChangedManually) "manual" else oldEntry.generationType,
                                 passwordFingerprint = fingerprint,
                                 lastChanged = System.currentTimeMillis()
-                                // createdAt намеренно не меняется!
                             )
                             
                             viewModel.updateEntry(updatedEntry) { result ->
-                                if (result is PasswordOperationResult.Success) onBack()
-                                else errorMessage = result.message
+                                //  Используем when для корректного smart-cast и доступа к .message
+                                when (result) {
+                                    is PasswordOperationResult.Success -> onBack()
+                                    is PasswordOperationResult.Error -> errorMessage = result.message
+                                }
                             }
                         }
                     },
