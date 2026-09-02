@@ -31,7 +31,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
-    profileId: Int,
+    profileId: Int?, // ИЗМЕНЕНО: принимаем Int? для совместимости с навигацией
     onBack: () -> Unit,
     onLock: () -> Unit,
     onScanQr: () -> Unit,
@@ -42,25 +42,30 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
-    // Блок 2: Состояния для удаления и выбора
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
+    
+    // ИСПРАВЛЕНО: используем Set<String> и entry.id.toString() для универсальности
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var operationMessage by remember { mutableStateOf<String?>(null) }
     
-    // Состояния для проверки мастер-пароля
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
 
-    // Блок 2: Установка профиля при открытии экрана
+    // Если профиль не выбран, возвращаемся назад
+    if (profileId == null) {
+        LaunchedEffect(Unit) { onBack() }
+        return
+    }
+
     LaunchedEffect(profileId) {
         viewModel.setCurrentProfile(profileId)
     }
 
-    // Блок 2: Сбор тегов для фильтрации
+    // Сбор тегов для фильтрации (работает, так как в Entry.kt добавлено свойство tags)
     val allTags = remember(entries) {
         entries
             .flatMap { it.tags }
@@ -96,7 +101,6 @@ fun VaultListScreen(
                     }
                 },
                 actions = {
-                    // Блок 2: Кнопка режима выбора
                     IconButton(onClick = {
                         selectionMode = !selectionMode
                         if (!selectionMode) selectedEntryIds = emptySet()
@@ -107,7 +111,6 @@ fun VaultListScreen(
                         )
                     }
                     
-                    // Блок 2: Меню действий
                     var showMenu by remember { mutableStateOf(false) }
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, "Меню")
@@ -157,7 +160,6 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Блок 2: Фильтр избранного
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -169,7 +171,6 @@ fun VaultListScreen(
                 Text("Только избранное", fontSize = 14.sp)
             }
             
-            // ✅ Блок 2: Горизонтальный ряд фильтров по тегам
             if (allTags.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -193,7 +194,6 @@ fun VaultListScreen(
                 Spacer(Modifier.height(8.dp))
             }
             
-            // Блок 2: Кнопка удаления выбранных записей
             if (selectionMode && selectedEntryIds.isNotEmpty()) {
                 Button(
                     onClick = {
@@ -244,12 +244,14 @@ fun VaultListScreen(
                         EntryCard(
                             entry = entry,
                             selectionMode = selectionMode,
-                            isSelected = entry.id in selectedEntryIds,
+                            // ИСПРАВЛЕНО: используем toString() для сравнения
+                            isSelected = entry.id.toString() in selectedEntryIds,
                             onToggleSelection = {
-                                selectedEntryIds = if (entry.id in selectedEntryIds) {
-                                    selectedEntryIds - entry.id
+                                val idStr = entry.id.toString()
+                                selectedEntryIds = if (idStr in selectedEntryIds) {
+                                    selectedEntryIds - idStr
                                 } else {
-                                    selectedEntryIds + entry.id
+                                    selectedEntryIds + idStr
                                 }
                             },
                             onToggleFavorite = {
@@ -270,7 +272,6 @@ fun VaultListScreen(
         }
     }
 
-    // Блок 2: Диалог подтверждения удаления одной записи
     if (entryToDelete != null) {
         AlertDialog(
             onDismissRequest = { entryToDelete = null },
@@ -282,7 +283,8 @@ fun VaultListScreen(
                         val entry = entryToDelete!!
                         entryToDelete = null
                         pendingDeleteAction = {
-                            viewModel.deleteEntry(entry.id, profileId) { result ->
+                            // ИСПРАВЛЕНО: передаем entry.id.toString()
+                            viewModel.deleteEntry(entry.id.toString(), profileId) { result ->
                                 when (result) {
                                     is PasswordOperationResult.Success -> {
                                         operationMessage = "Запись удалена"
@@ -308,7 +310,6 @@ fun VaultListScreen(
         )
     }
 
-    //  Блок 2: Диалог подтверждения удаления всех записей
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
@@ -345,7 +346,6 @@ fun VaultListScreen(
         )
     }
 
-    //Блок 2: Диалог запроса мастер-пароля
     if (showMasterPasswordDialog) {
         MasterPasswordDialog(
             context = context,
@@ -405,6 +405,7 @@ private fun EntryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Теперь entry.tags работает, так как добавлен в Entry.kt
                 if (entry.tags.isNotEmpty()) {
                     Text(
                         entry.tags.joinToString(", "),
@@ -424,7 +425,6 @@ private fun EntryCard(
                 }
             }
             
-            // Блок 2: Кнопка избранного
             IconButton(onClick = onToggleFavorite) {
                 Icon(
                     if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
@@ -434,7 +434,6 @@ private fun EntryCard(
                 )
             }
             
-            // ✅ Блок 2: Кнопка удаления (только вне режима выбора)
             if (!selectionMode) {
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, "Удалить", tint = MaterialTheme.colorScheme.error)
