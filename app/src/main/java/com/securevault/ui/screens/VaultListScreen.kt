@@ -31,11 +31,22 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultListScreen(
-    profileId: Int?, // ИЗМЕНЕНО: принимаем Int? для совместимости с навигацией
-    onBack: () -> Unit,
-    onLock: () -> Unit,
-    onScanQr: () -> Unit,
-    onMnemonicGenerator: () -> Unit,
+    profileId: Int?,
+    // Добавлены все параметры навигации, которые ожидает SecureVaultNavHost, со значениями по умолчанию
+    onNavigateToEntry: (String) -> Unit = {},
+    onNavigateToNewEntry: () -> Unit = {},
+    onNavigateToAudit: () -> Unit = {},
+    onNavigateToExport: () -> Unit = {},
+    onNavigateToRotation: () -> Unit = {},
+    onNavigateToRotationJournal: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToMnemonicGenerator: () -> Unit = {},
+    onNavigateToQrScanner: () -> Unit = {},
+    onNavigateToProfiles: () -> Unit = {},
+    onBack: () -> Unit = {},
+    onLock: () -> Unit = {},
+    onScanQr: () -> Unit = {},
+    onMnemonicGenerator: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -45,8 +56,6 @@ fun VaultListScreen(
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
-    
-    // ИСПРАВЛЕНО: используем Set<String> и entry.id.toString() для универсальности
     var selectedEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var operationMessage by remember { mutableStateOf<String?>(null) }
     
@@ -55,7 +64,7 @@ fun VaultListScreen(
     
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
 
-    // Если профиль не выбран, возвращаемся назад
+    //  Если профиль не выбран, возвращаемся назад
     if (profileId == null) {
         LaunchedEffect(Unit) { onBack() }
         return
@@ -65,7 +74,7 @@ fun VaultListScreen(
         viewModel.setCurrentProfile(profileId)
     }
 
-    // Сбор тегов для фильтрации (работает, так как в Entry.kt добавлено свойство tags)
+    //  Сбор тегов для фильтрации (работает благодаря добавлению tags в Entry.kt)
     val allTags = remember(entries) {
         entries
             .flatMap { it.tags }
@@ -95,7 +104,7 @@ fun VaultListScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         viewModel.setCurrentProfile(null)
-                        onBack()
+                        onNavigateToProfiles() // Или onBack(), в зависимости от твоей логики
                     }) {
                         Icon(Icons.Default.ArrowBack, "Назад к профилям")
                     }
@@ -124,7 +133,7 @@ fun VaultListScreen(
                             text = { Text("Сканировать QR") },
                             onClick = {
                                 showMenu = false
-                                onScanQr()
+                                onNavigateToQrScanner()
                             },
                             leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
                         )
@@ -132,7 +141,7 @@ fun VaultListScreen(
                             text = { Text("Мнемонический генератор") },
                             onClick = {
                                 showMenu = false
-                                onMnemonicGenerator()
+                                onNavigateToMnemonicGenerator()
                             },
                             leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
                         )
@@ -244,14 +253,12 @@ fun VaultListScreen(
                         EntryCard(
                             entry = entry,
                             selectionMode = selectionMode,
-                            // ИСПРАВЛЕНО: используем toString() для сравнения
-                            isSelected = entry.id.toString() in selectedEntryIds,
+                            isSelected = entry.id in selectedEntryIds,
                             onToggleSelection = {
-                                val idStr = entry.id.toString()
-                                selectedEntryIds = if (idStr in selectedEntryIds) {
-                                    selectedEntryIds - idStr
+                                selectedEntryIds = if (entry.id in selectedEntryIds) {
+                                    selectedEntryIds - entry.id
                                 } else {
-                                    selectedEntryIds + idStr
+                                    selectedEntryIds + entry.id
                                 }
                             },
                             onToggleFavorite = {
@@ -283,8 +290,7 @@ fun VaultListScreen(
                         val entry = entryToDelete!!
                         entryToDelete = null
                         pendingDeleteAction = {
-                            // ИСПРАВЛЕНО: передаем entry.id.toString()
-                            viewModel.deleteEntry(entry.id.toString(), profileId) { result ->
+                            viewModel.deleteEntry(entry.id, profileId) { result ->
                                 when (result) {
                                     is PasswordOperationResult.Success -> {
                                         operationMessage = "Запись удалена"
@@ -405,7 +411,6 @@ private fun EntryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                // Теперь entry.tags работает, так как добавлен в Entry.kt
                 if (entry.tags.isNotEmpty()) {
                     Text(
                         entry.tags.joinToString(", "),
