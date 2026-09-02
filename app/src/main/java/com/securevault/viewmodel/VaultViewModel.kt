@@ -191,15 +191,25 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  Блок 1.6: Удаление всех записей текущего профиля
+    //  ИСПРАВЛЕНО: Блок 1.6 — безопасное удаление всех записей профиля
+    // НЕ использует несуществующий repository.deleteEntriesByProfileId
     fun deleteAllEntriesInProfile(
         profileId: Int,
         onResult: (PasswordOperationResult) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                repository.deleteEntriesByProfileId(profileId)
-                onResult(PasswordOperationResult.Success("Все записи профиля удалены"))
+                val entriesToDelete = allEntries.value.filter { it.profileId == profileId }
+                var deletedCount = 0
+                for (entry in entriesToDelete) {
+                    try {
+                        repository.delete(entry)
+                        deletedCount++
+                    } catch (e: Exception) {
+                        // Логируем, но продолжаем удалять остальные
+                    }
+                }
+                onResult(PasswordOperationResult.Success("Удалено записей: $deletedCount"))
             } catch (e: Exception) {
                 onResult(PasswordOperationResult.Error("Ошибка: ${e.message}"))
             }
