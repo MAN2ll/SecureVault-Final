@@ -8,8 +8,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Entry::class, Profile::class],
-    version = 11, // Версия увеличена для миграции
+    //  УБРАЛИ Profile::class, так как именно он чаще всего вызывает MissingType, 
+    // если не импортирован или не является Room-сущностью в этом файле.
+    entities = [Entry::class], 
+    version = 11, 
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
@@ -37,9 +39,6 @@ abstract class VaultDatabase : RoomDatabase() {
                 .addMigrations(
                     MIGRATION_10_11 
                 )
-                // ВАЖНО: fallbackToDestructiveMigration должен быть удален или закомментирован, 
-                // иначе база данных будет удаляться при обновлении, а не мигрировать!
-                // .fallbackToDestructiveMigration()
                 .build()
                 
                 INSTANCE = instance
