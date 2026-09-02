@@ -8,15 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    //  УБРАЛИ Profile::class, так как именно он чаще всего вызывает MissingType, 
-    // если не импортирован или не является Room-сущностью в этом файле.
-    entities = [Entry::class], 
-    version = 11, 
+    entities = [Entry::class, Profile::class],
+    version = 11,
     exportSchema = false
 )
 abstract class VaultDatabase : RoomDatabase() {
     
-    abstract fun vaultDao(): VaultDao
+    //  ИЗМЕНЕНО: используем EntryDao и ProfileDao вместо несуществующего VaultDao
+    abstract fun entryDao(): EntryDao
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         @Volatile
