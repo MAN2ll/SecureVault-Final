@@ -52,11 +52,19 @@ fun BulkRotationDialog(
     var mnemonicPhrase by remember { mutableStateOf("") }
     var includeLeet by remember { mutableStateOf(true) }
 
+    //  ИСПРАВЛЕНО: Безопасная обработка Result от PasswordGenerator
     val generatedPasswords = remember(entries, selectedMode, randomLength, useUpper, useDigits, useSpecial, mnemonicPhrase, includeLeet) {
         if (selectedMode == BulkMode.RANDOM) {
-            entries.mapIndexed { index, entry ->
-                val result = PasswordGenerator.generate(randomLength, useUpper, useDigits, useSpecial, context)
-                Triple(entry, result.password, "random")
+            entries.map { entry ->
+                val result = PasswordGenerator.generate(
+                    length = randomLength,
+                    useLower = true, //  Обязательно добавляем useLower
+                    useUpper = useUpper,
+                    useDigits = useDigits,
+                    useSpecials = useSpecial // ✅ Параметр называется useSpecials
+                )
+                // ✅ Безопасно извлекаем пароль, если генерация успешна, иначе пустая строка
+                Triple(entry, result.getOrNull()?.password ?: "", "random")
             }
         } else {
             if (mnemonicPhrase.isNotBlank()) {
