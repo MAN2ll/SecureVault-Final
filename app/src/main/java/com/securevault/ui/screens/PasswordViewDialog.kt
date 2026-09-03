@@ -1,9 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.securevault.ui.screens
+package com.securevault.ui.components
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,106 +14,112 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
-import com.securevault.data.Profile
-import com.securevault.ui.components.ProfileAccessDialog
-import com.securevault.utils.AccessResult
-import com.securevault.utils.PasswordAccessPolicy
-import com.securevault.viewmodel.AuthViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.securevault.utils.CryptoUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordViewDialog(
     entry: Entry,
-    profile: Profile,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
-    onQr: () -> Unit,
-    onDelete: () -> Unit,
-    authViewModel: AuthViewModel = hiltViewModel()
+    onDelete: () -> Unit
 ) {
     val context = LocalContext.current
-    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
-
-    var showPassword by remember { mutableStateOf(false) }
-    var decryptedPassword by remember { mutableStateOf<String?>(null) }
-    var showProfileAccessDialog by remember { mutableStateOf(false) }
-    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
-    var showPinNotSetDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        authViewModel.clearSensitiveEvent.collect { onDismiss() }
-    }
-
-    fun requestAccess() {
-        when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
-            is AccessResult.Granted -> { showPassword = true; decryptedPassword = entry.password }
-            is AccessResult.PinRequired -> { currentAccessAllowBiometric = false; showProfileAccessDialog = true }
-            is AccessResult.BiometricOrPin -> { currentAccessAllowBiometric = true; showProfileAccessDialog = true }
-            is AccessResult.PinNotSet -> { showPinNotSetDialog = true }
-        }
+    var passwordVisible by remember { mutableStateOf(false) }
+    
+    // Расшифровываем пароль для отображения
+    val decryptedPassword = remember(entry.encryptedPassword) {
+        try { CryptoUtils.decrypt(entry.encryptedPassword) } catch (e: Exception) { "Ошибка расшифровки" }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
         title = { Text(entry.service, fontWeight = FontWeight.Bold) },
         text = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 InfoRow("Логин", entry.username)
-                if (!entry.url.isNullOrBlank()) InfoRow("URL", entry.url)
-                if (!entry.notes.isNullOrBlank()) InfoRow("Заметки", entry.notes)
-                if (!entry.textHint.isNullOrBlank()) InfoRow("Подсказка", entry.textHint)
-                if (!entry.mnemonicPhraseHint.isNullOrBlank()) InfoRow("Мнемоника", entry.mnemonicPhraseHint)
-                InfoRow("Создан", dateFormat.format(Date(entry.createdAt)))
-
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(4.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
-                                fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
-                            )
-                            if (!showPassword) {
-                                IconButton(onClick = { requestAccess() }) { Icon(Icons.Default.Visibility, "Показать пароль", tint = MaterialTheme.colorScheme.primary) }
-                            } else {
-                                IconButton(onClick = {
-                                    context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("password", decryptedPassword))
-                                    Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
-                                }) { Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary) }
-                            }
-                        }
+                
+                InfoRow("Пароль", decryptedPassword, isPassword = true, visible = passwordVisible)
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            "Показать/скрыть пароль"
+                        )
+                    }
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", decryptedPassword))
+                    }) {
+                        Icon(Icons.Default.ContentCopy, "Копировать пароль")
                     }
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onQr) { Icon(Icons.Default.QrCode, "Показать QR-код") }
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Изменить запись") }
-                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Удалить запись", tint = MaterialTheme.colorScheme.error) }
+
+                if (entry.url?.isNotBlank() == true) {
+                    InfoRow("URL", entry.url)
                 }
+                
+                if (entry.notes?.isNotBlank() == true) {
+                    InfoRow("Заметки", entry.notes)
+                }
+
+                //  БЛОК 9: Отображение тегов в диалоге просмотра
+                if (entry.tags.isNotEmpty()) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text(
+                            "Теги: ",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.width(80.dp)
+                        )
+                        Text(
+                            entry.tags.joinToString(", "),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                InfoRow("Создан", java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(entry.createdAt))
+                InfoRow("Изменен", java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(entry.lastChanged))
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
+        confirmButton = {
+            Button(onClick = onEdit) {
+                Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Редактировать")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Удалить")
+            }
+        }
     )
-
-    if (showProfileAccessDialog) {
-        val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
-        ProfileAccessDialog(profile = profile, title = "Подтверждение доступа", subtitle = dialogSubtitle, allowBiometric = currentAccessAllowBiometric, onConfirmed = { showPassword = true; decryptedPassword = entry.password; showProfileAccessDialog = false }, onDismiss = { showProfileAccessDialog = false })
-    }
-    if (showPinNotSetDialog) {
-        AlertDialog(onDismissRequest = { showPinNotSetDialog = false }, title = { Text("PIN профиля не задан") }, text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") }, confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } })
-    }
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+private fun InfoRow(label: String, value: String, isPassword: Boolean = false, visible: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            "$label: ",
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            modifier = Modifier.width(80.dp)
+        )
+        Text(
+            text = if (isPassword && !visible) "••••••••" else value,
+            fontSize = 14.sp,
+            fontFamily = if (isPassword) FontFamily.Monospace else FontFamily.Default,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
