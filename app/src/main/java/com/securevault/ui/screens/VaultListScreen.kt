@@ -32,7 +32,6 @@ import java.util.Locale
 @Composable
 fun VaultListScreen(
     profileId: Int?,
-    // Добавлены все параметры навигации, которые ожидает SecureVaultNavHost, со значениями по умолчанию
     onNavigateToEntry: (String) -> Unit = {},
     onNavigateToNewEntry: () -> Unit = {},
     onNavigateToAudit: () -> Unit = {},
@@ -62,9 +61,11 @@ fun VaultListScreen(
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
+    //  БЛОК 9: Состояние для текстового поиска
+    var searchQuery by remember { mutableStateOf("") }
+    
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
 
-    //  Если профиль не выбран, возвращаемся назад
     if (profileId == null) {
         LaunchedEffect(Unit) { onBack() }
         return
@@ -74,7 +75,7 @@ fun VaultListScreen(
         viewModel.setCurrentProfile(profileId)
     }
 
-    //  Сбор тегов для фильтрации (работает благодаря добавлению tags в Entry.kt)
+    //  БЛОК 9: Сбор всех уникальных тегов для фильтрации
     val allTags = remember(entries) {
         entries
             .flatMap { it.tags }
@@ -83,9 +84,18 @@ fun VaultListScreen(
     }
     var selectedTag by remember { mutableStateOf<String?>(null) }
     
-    val filteredEntries = remember(entries, selectedTag) {
-        if (selectedTag == null) entries
-        else entries.filter { entry -> selectedTag in entry.tags }
+    //  БЛОК 9: Комплексная фильтрация: по тексту (сервис, логин, теги) И по выбранному тегу
+    val filteredEntries = remember(entries, searchQuery, selectedTag) {
+        entries.filter { entry ->
+            val matchesSearch = searchQuery.isBlank() || 
+                entry.service.contains(searchQuery, ignoreCase = true) ||
+                entry.username.contains(searchQuery, ignoreCase = true) ||
+                entry.tags.any { it.contains(searchQuery, ignoreCase = true) }
+            
+            val matchesTag = selectedTag == null || selectedTag in entry.tags
+            
+            matchesSearch && matchesTag
+        }
     }
 
     Scaffold(
@@ -94,17 +104,13 @@ fun VaultListScreen(
                 title = { 
                     Column {
                         Text("Пароли", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Записей: ${filteredEntries.size}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text("Записей: ${filteredEntries.size}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = {
                         viewModel.setCurrentProfile(null)
-                        onNavigateToProfiles() // Или onBack(), в зависимости от твоей логики
+                        onNavigateToProfiles()
                     }) {
                         Icon(Icons.Default.ArrowBack, "Назад к профилям")
                     }
@@ -131,30 +137,20 @@ fun VaultListScreen(
                     ) {
                         DropdownMenuItem(
                             text = { Text("Сканировать QR") },
-                            onClick = {
-                                showMenu = false
-                                onNavigateToQrScanner()
-                            },
+                            onClick = { showMenu = false; onNavigateToQrScanner() },
                             leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
                         )
                         DropdownMenuItem(
                             text = { Text("Мнемонический генератор") },
-                            onClick = {
-                                showMenu = false
-                                onNavigateToMnemonicGenerator()
-                            },
+                            onClick = { showMenu = false; onNavigateToMnemonicGenerator() },
                             leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
                         )
                         DropdownMenuItem(
                             text = { Text("Удалить все пароли профиля") },
-                            onClick = {
-                                showMenu = false
-                                showDeleteAllDialog = true
-                            },
+                            onClick = { showMenu = false; showDeleteAllDialog = true },
                             leadingIcon = { Icon(Icons.Default.DeleteSweep, null) }
                         )
                     }
-                    
                     LockActionButton(onLock = onLock)
                 }
             )
@@ -169,6 +165,23 @@ fun VaultListScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            //  БЛОК 9: Поле поиска
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Поиск по сервису, логину или тегам...") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, "Очистить")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -180,6 +193,7 @@ fun VaultListScreen(
                 Text("Только избранное", fontSize = 14.sp)
             }
             
+            //  БЛОК 9: Горизонтальный ряд фильтров по тегам
             if (allTags.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -207,19 +221,14 @@ fun VaultListScreen(
                 Button(
                     onClick = {
                         pendingDeleteAction = {
-                            viewModel.deleteEntries(
-                                selectedEntryIds.toList(),
-                                profileId
-                            ) { result ->
+                            viewModel.deleteEntries(selectedEntryIds.toList(), profileId) { result ->
                                 when (result) {
                                     is PasswordOperationResult.Success -> {
                                         operationMessage = result.message
                                         selectedEntryIds = emptySet()
                                         selectionMode = false
                                     }
-                                    is PasswordOperationResult.Error -> {
-                                        operationMessage = result.message
-                                    }
+                                    is PasswordOperationResult.Error -> operationMessage = result.message
                                 }
                             }
                         }
@@ -240,7 +249,7 @@ fun VaultListScreen(
                         Icon(Icons.Default.Lock, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(16.dp))
                         Text("Нет записей", fontWeight = FontWeight.Medium, fontSize = 18.sp)
-                        Text("Добавьте первую запись", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Добавьте первую запись или измените фильтры", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             } else {
@@ -255,22 +264,16 @@ fun VaultListScreen(
                             selectionMode = selectionMode,
                             isSelected = entry.id in selectedEntryIds,
                             onToggleSelection = {
-                                selectedEntryIds = if (entry.id in selectedEntryIds) {
-                                    selectedEntryIds - entry.id
-                                } else {
-                                    selectedEntryIds + entry.id
-                                }
+                                if (entry.id in selectedEntryIds) selectedEntryIds -= entry.id
+                                else selectedEntryIds += entry.id
                             },
                             onToggleFavorite = {
                                 viewModel.toggleFavorite(entry) { result ->
-                                    if (result is PasswordOperationResult.Error) {
-                                        operationMessage = result.message
-                                    }
+                                    if (result is PasswordOperationResult.Error) operationMessage = result.message
                                 }
                             },
-                            onDelete = {
-                                entryToDelete = entry
-                            },
+                            onDelete = { entryToDelete = entry },
+                            onOpen = { onNavigateToEntry(entry.id) }, // Открытие записи
                             dateFormat = dateFormat
                         )
                     }
@@ -279,6 +282,7 @@ fun VaultListScreen(
         }
     }
 
+    // Диалоги удаления и мастер-пароля (без изменений)
     if (entryToDelete != null) {
         AlertDialog(
             onDismissRequest = { entryToDelete = null },
@@ -292,27 +296,17 @@ fun VaultListScreen(
                         pendingDeleteAction = {
                             viewModel.deleteEntry(entry.id, profileId) { result ->
                                 when (result) {
-                                    is PasswordOperationResult.Success -> {
-                                        operationMessage = "Запись удалена"
-                                    }
-                                    is PasswordOperationResult.Error -> {
-                                        operationMessage = result.message
-                                    }
+                                    is PasswordOperationResult.Success -> operationMessage = "Запись удалена"
+                                    is PasswordOperationResult.Error -> operationMessage = result.message
                                 }
                             }
                         }
                         showMasterPasswordDialog = true
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Удалить")
-                }
+                ) { Text("Удалить") }
             },
-            dismissButton = {
-                TextButton(onClick = { entryToDelete = null }) {
-                    Text("Отмена")
-                }
-            }
+            dismissButton = { TextButton(onClick = { entryToDelete = null }) { Text("Отмена") } }
         )
     }
 
@@ -328,27 +322,17 @@ fun VaultListScreen(
                         pendingDeleteAction = {
                             viewModel.deleteAllEntriesInProfile(profileId) { result ->
                                 when (result) {
-                                    is PasswordOperationResult.Success -> {
-                                        operationMessage = result.message
-                                    }
-                                    is PasswordOperationResult.Error -> {
-                                        operationMessage = result.message
-                                    }
+                                    is PasswordOperationResult.Success -> operationMessage = result.message
+                                    is PasswordOperationResult.Error -> operationMessage = result.message
                                 }
                             }
                         }
                         showMasterPasswordDialog = true
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Удалить все")
-                }
+                ) { Text("Удалить все") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteAllDialog = false }) {
-                    Text("Отмена")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteAllDialog = false }) { Text("Отмена") } }
         )
     }
 
@@ -385,15 +369,15 @@ private fun EntryCard(
     onToggleSelection: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
+    onOpen: () -> Unit, //  Добавлен колбэк для открытия
     dateFormat: SimpleDateFormat
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !selectionMode) { /* Открыть PasswordViewDialog */ },
+            .clickable(enabled = !selectionMode) { onOpen() },
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -401,31 +385,29 @@ private fun EntryCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selectionMode) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onToggleSelection() }
-                )
+                Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
                 Spacer(Modifier.width(8.dp))
             }
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                
+                //  БЛОК 9: Отображение тегов короткой строкой в карточке
                 if (entry.tags.isNotEmpty()) {
                     Text(
                         entry.tags.joinToString(", "),
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1
                     )
                 }
+                
                 if (entry.rotationEnabled && entry.nextRotationDate != null) {
                     Text(
                         "Ротация: ${dateFormat.format(Date(entry.nextRotationDate))}",
                         fontSize = 10.sp,
-                        color = if (entry.nextRotationDate <= System.currentTimeMillis()) 
-                            MaterialTheme.colorScheme.error 
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (entry.nextRotationDate <= System.currentTimeMillis()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -434,8 +416,7 @@ private fun EntryCard(
                 Icon(
                     if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                     null,
-                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -469,33 +450,18 @@ private fun MasterPasswordDialog(
                     onValueChange = { password = it },
                     label = { Text("Мастер-пароль") },
                     singleLine = true,
-                    visualTransformation = if (passwordVisible) 
-                        androidx.compose.ui.text.input.VisualTransformation.None
-                    else 
-                        androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                null
-                            )
+                            Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
                         }
                     }
                 )
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onConfirm(password) },
-                enabled = password.isNotEmpty()
-            ) {
-                Text("Подтвердить")
-            }
+            Button(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Подтвердить") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Отмена")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
 }
