@@ -2,12 +2,9 @@
 
 package com.securevault.ui.screens
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,164 +20,140 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import com.securevault.ui.components.LockActionButton
-import com.securevault.utils.RotationNotificationWorker
-import com.securevault.viewmodel.AuthViewModel
-import java.util.concurrent.TimeUnit
+import com.securevault.viewmodel.VaultViewModel
+import java.util.concurrent.Executor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToExport: () -> Unit,
-    onNavigateToChangePassword: () -> Unit,
-    onLock: () -> Unit,
-    viewModel: AuthViewModel = hiltViewModel()
+    viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE) }
     
-    var isBiometricEnabled by remember { mutableStateOf(viewModel.isBiometricLoginEnabled()) }
-    var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean("notifications_rotation_enabled", false)) }
-    
-    val timeoutOptions = listOf(0 to "Сразу", 1 to "Через 1 минуту", 5 to "Через 5 минут", 15 to "Через 15 минут", 30 to "Через 30 минут")
-    var currentTimeout by remember { mutableStateOf(prefs.getInt("auto_lock_timeout_minutes", 5)) }
-    val currentTimeoutLabel = timeoutOptions.find { it.first == currentTimeout }?.second ?: "Через 5 минут"
-    var expandedAutoLock by remember { mutableStateOf(false) }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            notificationsEnabled = true
-            prefs.edit().putBoolean("notifications_rotation_enabled", true).apply()
-            scheduleNotifications(context)
-        }
+    var biometricEnabled by remember { 
+        mutableStateOf(prefs.getBoolean("biometric_enabled", false)) 
     }
+
+    // Состояние для принудительного сброса переключателя при ошибке/отмене биометрии
+    var actualBiometricState by remember { mutableStateOf(biometricEnabled) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
-                actions = { LockActionButton(onLock = onLock) }
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Назад")
+                    }
+                }
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Безопасность", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-
+            // БЛОК 11: Безопасное включение биометрии
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Автоблокировка", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    ExposedDropdownMenuBox(expanded = expandedAutoLock, onExpandedChange = { expandedAutoLock = !expandedAutoLock }) {
-                        OutlinedTextField(
-                            readOnly = true, value = currentTimeoutLabel, onValueChange = {},
-                            label = { Text("Время блокировки") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAutoLock) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Вход по биометрии", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            "Использовать отпечаток пальца или Face ID для быстрого доступа",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        ExposedDropdownMenu(expanded = expandedAutoLock, onDismissRequest = { expandedAutoLock = false }) {
-                            timeoutOptions.forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        currentTimeout = value
-                                        prefs.edit().putInt("auto_lock_timeout_minutes", value).apply()
-                                        expandedAutoLock = false
-                                    }
+                    }
+                    Switch(
+                        checked = actualBiometricState,
+                        onCheckedChange = { isEnabled ->
+                            if (isEnabled) {
+                                // Пытаемся включить: проверяем доступность
+                                val biometricManager = BiometricManager.from(context)
+                                val canAuthenticate = biometricManager.canAuthenticate(
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG or 
+                                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
                                 )
-                            }
-                        }
-                    }
-                }
-            }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Вход по отпечатку пальца", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                        Text("Используйте биометрию для быстрого входа", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(
-                        checked = isBiometricEnabled,
-                        onCheckedChange = { newValue ->
-                            viewModel.setBiometricLoginEnabled(newValue)
-                            isBiometricEnabled = newValue
-                        }
-                    )
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Уведомления о ротации", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-                        Text("Напоминать о просроченных паролях", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(
-                        checked = notificationsEnabled,
-                        onCheckedChange = { isChecked ->
-                            if (isChecked) {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                        notificationsEnabled = true
-                                        prefs.edit().putBoolean("notifications_rotation_enabled", true).apply()
-                                        scheduleNotifications(context)
-                                    } else {
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
+                                    // Запускаем BiometricPrompt
+                                    launchBiometricPrompt(context) { success ->
+                                        if (success) {
+                                            actualBiometricState = true
+                                            biometricEnabled = true
+                                            prefs.edit().putBoolean("biometric_enabled", true).apply()
+                                        } else {
+                                            // При отмене или ошибке оставляем выключенным
+                                            actualBiometricState = false
+                                            biometricEnabled = false
+                                        }
                                     }
                                 } else {
-                                    notificationsEnabled = true
-                                    prefs.edit().putBoolean("notifications_rotation_enabled", true).apply()
-                                    scheduleNotifications(context)
+                                    // Биометрия не настроена на устройстве
+                                    actualBiometricState = false
+                                    biometricEnabled = false
+                                    // Можно добавить Snackbar с сообщением об ошибке
                                 }
                             } else {
-                                notificationsEnabled = false
-                                prefs.edit().putBoolean("notifications_rotation_enabled", false).apply()
-                                cancelNotifications(context)
+                                // Выключение выполняется мгновенно, без запроса биометрии
+                                actualBiometricState = false
+                                biometricEnabled = false
+                                prefs.edit().putBoolean("biometric_enabled", false).apply()
                             }
                         }
                     )
                 }
             }
 
-            HorizontalDivider()
-            Text("Действия", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-
-            SettingsActionCard(icon = Icons.Default.Lock, title = "Сменить мастер-пароль", subtitle = "Обновите пароль для входа в приложение", onClick = onNavigateToChangePassword)
-            SettingsActionCard(icon = Icons.Default.Upload, title = "Экспорт / Импорт", subtitle = "Резервное копирование и перенос данных", onClick = onNavigateToExport)
+            // Здесь могут быть твои остальные настройки (экспорт, импорт, очистка и т.д.)
+            // Оставь их как есть, просто добавь этот блок Switch выше.
         }
     }
 }
 
-private fun scheduleNotifications(context: Context) {
-    val workRequest = PeriodicWorkRequestBuilder<RotationNotificationWorker>(1, TimeUnit.DAYS).build()
-    WorkManager.getInstance(context).enqueueUniquePeriodicWork("securevault_rotation_notifications", ExistingPeriodicWorkPolicy.UPDATE, workRequest)
-}
-
-private fun cancelNotifications(context: Context) {
-    WorkManager.getInstance(context).cancelUniqueWork("securevault_rotation_notifications")
-}
-
-@Composable
-private fun SettingsActionCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+//  Вспомогательная функция для запуска BiometricPrompt
+private fun launchBiometricPrompt(context: Context, onResult: (Boolean) -> Unit) {
+    val executor: Executor = ContextCompat.getMainExecutor(context)
+    val biometricPrompt = BiometricPrompt(
+        // Примечание: здесь нужен Activity. В Compose это можно получить через LocalContext.current как Activity
+        // Если этот код в Composable, лучше передать activity: Activity в параметры функции
+        context as androidx.activity.ComponentActivity, 
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                onResult(true)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
+                onResult(false)
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+                onResult(false)
+            }
         }
-    }
+    )
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Подтвердите личность")
+        .setSubtitle("Для включения входа по биометрии подтвердите свои данные")
+        .setNegativeButtonText("Отмена")
+        .build()
+
+    biometricPrompt.authenticate(promptInfo)
 }
