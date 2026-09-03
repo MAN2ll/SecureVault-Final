@@ -3,7 +3,6 @@
 package com.securevault.ui.screens
 
 import android.content.Context
-import androidx.activity.ComponentActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
@@ -20,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity //  ИСПРАВЛЕНО: нужен именно FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.VaultViewModel
 import java.util.concurrent.Executor
@@ -28,13 +28,14 @@ import java.util.concurrent.Executor
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToExport: () -> Unit = {}, //  Добавлено
-    onNavigateToChangePassword: () -> Unit = {}, //  Добавлено
-    onLock: () -> Unit = {}, //  Добавлено
+    onNavigateToExport: () -> Unit = {},
+    onNavigateToChangePassword: () -> Unit = {},
+    onLock: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val activity = context as? ComponentActivity
+    //  ИСПРАВЛЕНО: приводим к FragmentActivity, так как этого требует BiometricPrompt
+    val activity = context as? FragmentActivity
     val prefs = remember { context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE) }
     
     var biometricEnabled by remember { mutableStateOf(prefs.getBoolean("biometric_enabled", false)) }
@@ -94,16 +95,15 @@ fun SettingsScreen(
                     )
                 }
             }
-            
-            // Здесь могут быть твои кнопки Экспорта/Импорта, вызывающие onNavigateToExport()
         }
     }
 }
 
-private fun launchBiometricPrompt(activity: ComponentActivity, onResult: (Boolean) -> Unit) {
+//  ИСПРАВЛЕНО: параметр теперь строго FragmentActivity
+private fun launchBiometricPrompt(activity: FragmentActivity, onResult: (Boolean) -> Unit) {
     val executor: Executor = ContextCompat.getMainExecutor(activity)
     val biometricPrompt = BiometricPrompt(
-        activity, //  Теперь передаем Activity, а не Context
+        activity, //  Теперь тип точно совпадает с требуемым конструктором
         executor,
         object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
