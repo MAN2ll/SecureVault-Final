@@ -180,7 +180,6 @@ object MnemonicPasswordGenerator {
         else -> "Стандартный"
     }
 
-    // ПОЛНОСТЬЮ ПЕРЕПИСАН buildBase для исправления selectedUsed
     private fun buildBase(
         words: List<String>, 
         targetLen: Int, 
@@ -191,7 +190,6 @@ object MnemonicPasswordGenerator {
         val translitWords = words.map { transliterateWord(it) }.filter { it.isNotEmpty() }
         if (translitWords.isEmpty()) return null
 
-        // 1. Находим якоря
         val anchors = mutableListOf<Char>()
         var upperAnchorsNeeded = maxOf(0, 2 - existingChars.count { it.isUpperCase() })
         
@@ -221,6 +219,7 @@ object MnemonicPasswordGenerator {
                 else -> listOf(0, 1, 2)
             }
             
+            // Перебираем приоритетные позиции, а затем все остальные в этом же слове
             val candidatePositions = priorityPositions + (translit.indices.filter { it !in priorityPositions })
             
             for (pos in candidatePositions) {
@@ -252,7 +251,6 @@ object MnemonicPasswordGenerator {
             if (!anchorFound) return null
         }
 
-        // 2. Пересчитываем квоты с учётом existingChars + anchors
         val totalUpper = existingChars.count { it.isUpperCase() } + anchors.count { it.isUpperCase() }
         val totalLower = existingChars.count { it.isLowerCase() } + anchors.count { it.isLowerCase() }
         val totalDigits = existingChars.count { it.isDigit() } + anchors.count { it.isDigit() }
@@ -263,7 +261,6 @@ object MnemonicPasswordGenerator {
         val needMoreDigits = maxOf(0, 2 - totalDigits)
         val needMoreSpecials = maxOf(0, 2 - totalSpecials)
 
-        // 3. Собираем доступные символы
         val anchorLowerSet = anchors.map { it.lowercaseChar() }.toSet()
         val availableDigits = mutableListOf<Char>()
         val availableSpecials = mutableListOf<Char>()
@@ -318,12 +315,10 @@ object MnemonicPasswordGenerator {
         val totalAvailable = availableDigits.size + availableSpecials.size + availableLowers.size + availableUppers.size
         if (totalAvailable < lettersToTake) return null
 
-        // 4. ИСПРАВЛЕНИЕ: selectedUsed инициализируется ТОЛЬКО usedChars + anchors
         val selected = mutableListOf<Char>()
         val selectedUsed = usedChars.toMutableSet()
         anchors.forEach { selectedUsed.add(it.lowercaseChar()) }
 
-        // Берём обязательные символы
         for (i in 0 until needMoreUpper) {
             val ch = availableUppers[i]
             selected.add(ch)
@@ -345,7 +340,6 @@ object MnemonicPasswordGenerator {
             selectedUsed.add(ch.lowercaseChar())
         }
 
-        // Добираем оставшимися
         val allAvailable = availableUppers + availableDigits + availableSpecials + availableLowers
         for (ch in allAvailable) {
             if (selected.size >= lettersToTake) break
@@ -357,7 +351,6 @@ object MnemonicPasswordGenerator {
 
         if (selected.size < lettersToTake) return null
 
-        // 5. Формируем результат и финальная проверка
         val result = StringBuilder()
         for (anchor in anchors) result.append(anchor)
         for (ch in selected) result.append(ch)
@@ -380,13 +373,14 @@ object MnemonicPasswordGenerator {
         return Pair(result.toString(), explanation.toString())
     }
 
+    //  ИСПРАВЛЕНО: Корректная обработка английских букв
     private fun transliterateWord(word: String): String {
         val result = StringBuilder()
         var i = 0
         while (i < word.length) {
             val c = word[i]
-            val translit = translitMap[c]
-            if (translit != null) result.append(translit)
+            val translit = translitMap[c] ?: if (c.isLetter()) c.toString() else ""
+            if (translit.isNotEmpty()) result.append(translit)
             i++
         }
         return result.toString()
