@@ -54,7 +54,9 @@ fun EntryEditorScreen(
     var isLoading by remember { mutableStateOf(id != null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
-    val currentProfileId = profileId ?: 0
+    // ИСПРАВЛЕНО: Берем profileId из ViewModel, если он не передан явно
+    val currentProfileIdState by viewModel.currentProfileId.collectAsState()
+    val targetProfileId = profileId ?: currentProfileIdState ?: 0
 
     LaunchedEffect(id) {
         if (id != null) {
@@ -96,7 +98,6 @@ fun EntryEditorScreen(
                 OutlinedTextField(value = service, onValueChange = { service = it }, label = { Text("Сервис *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Логин / Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-                //  Поле пароля с кнопкой генерации и скрытия
                 OutlinedTextField(
                     value = password,
                     onValueChange = { 
@@ -108,12 +109,8 @@ fun EntryEditorScreen(
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     trailingIcon = {
                         Row {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть")
-                            }
-                            IconButton(onClick = { showGeneratorDialog = true }) {
-                                Icon(Icons.Default.AutoAwesome, "Сгенерировать")
-                            }
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть") }
+                            IconButton(onClick = { showGeneratorDialog = true }) { Icon(Icons.Default.AutoAwesome, "Сгенерировать") }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -130,7 +127,6 @@ fun EntryEditorScreen(
                     Text("Добавить в избранное", fontSize = 14.sp)
                 }
 
-                //  Настройка периода ротации
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = rotationEnabled, onCheckedChange = { rotationEnabled = it })
                     Text("Включить авто-ротацию", fontSize = 14.sp)
@@ -140,51 +136,39 @@ fun EntryEditorScreen(
                     var expandedRotation by remember { mutableStateOf(false) }
                     val periods = listOf(1, 3, 6, 12)
                     ExposedDropdownMenuBox(expanded = expandedRotation, onExpandedChange = { expandedRotation = !expandedRotation }) {
-                        OutlinedTextField(
-                            readOnly = true,
-                            value = "$rotationPeriodMonths мес.",
-                            onValueChange = {},
-                            label = { Text("Период ротации") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedRotation) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
+                        OutlinedTextField(readOnly = true, value = "$rotationPeriodMonths мес.", onValueChange = {}, label = { Text("Период ротации") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedRotation) }, modifier = Modifier.menuAnchor().fillMaxWidth())
                         ExposedDropdownMenu(expanded = expandedRotation, onDismissRequest = { expandedRotation = false }) {
-                            periods.forEach { period ->
-                                DropdownMenuItem(text = { Text("$period мес.") }, onClick = { rotationPeriodMonths = period; expandedRotation = false })
-                            }
+                            periods.forEach { period -> DropdownMenuItem(text = { Text("$period мес.") }, onClick = { rotationPeriodMonths = period; expandedRotation = false }) }
                         }
                     }
                 }
 
-                //  Настройка режима доступа
                 var expandedAccess by remember { mutableStateOf(false) }
                 val accessModes = AccessMode.values().map { it.value }
                 ExposedDropdownMenuBox(expanded = expandedAccess, onExpandedChange = { expandedAccess = !expandedAccess }) {
-                    OutlinedTextField(
-                        readOnly = true,
-                        value = accessModes.firstOrNull { it == passwordAccessMode } ?: AccessMode.INHERIT.value,
-                        onValueChange = {},
-                        label = { Text("Режим доступа к паролю") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
+                    OutlinedTextField(readOnly = true, value = accessModes.firstOrNull { it == passwordAccessMode } ?: AccessMode.INHERIT.value, onValueChange = {}, label = { Text("Режим доступа к паролю") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) }, modifier = Modifier.menuAnchor().fillMaxWidth())
                     ExposedDropdownMenu(expanded = expandedAccess, onDismissRequest = { expandedAccess = false }) {
-                        accessModes.forEach { mode ->
-                            DropdownMenuItem(text = { Text(mode) }, onClick = { passwordAccessMode = mode; expandedAccess = false })
-                        }
+                        accessModes.forEach { mode -> DropdownMenuItem(text = { Text(mode) }, onClick = { passwordAccessMode = mode; expandedAccess = false }) }
                     }
                 }
 
                 if (errorMessage != null) {
-                    Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+                    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                    }
                 }
 
                 Spacer(Modifier.weight(1f))
 
                 Button(
                     onClick = {
+                        errorMessage = null // Сброс ошибки
                         if (service.isBlank() || password.isBlank()) {
                             errorMessage = "Сервис и пароль обязательны для заполнения"
+                            return@Button
+                        }
+                        if (targetProfileId <= 0) {
+                            errorMessage = "Ошибка: профиль не выбран"
                             return@Button
                         }
 
@@ -200,7 +184,7 @@ fun EntryEditorScreen(
 
                         if (id == null) {
                             val newEntry = Entry.create(
-                                service = service, username = username, password = password, profileId = currentProfileId,
+                                service = service, username = username, password = password, profileId = targetProfileId,
                                 passwordFingerprint = fingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                 rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                                 isFavorite = isFavorite, generationType = if (passwordChangedManually) "manual" else "random",
@@ -254,7 +238,6 @@ fun EntryEditorScreen(
         }
     }
 
-    //  Диалог генератора паролей
     if (showGeneratorDialog) {
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
