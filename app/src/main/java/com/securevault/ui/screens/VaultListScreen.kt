@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
+import com.securevault.ui.components.PasswordViewDialog //  Импорт диалога
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
@@ -61,9 +62,10 @@ fun VaultListScreen(
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
-    //  БЛОК 9: Состояние для текстового поиска
-    var searchQuery by remember { mutableStateOf("") }
+    //  Восстановлено: Диалог просмотра записи
+    var entryToView by remember { mutableStateOf<Entry?>(null) }
     
+    var searchQuery by remember { mutableStateOf("") }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
 
     if (profileId == null) {
@@ -75,25 +77,18 @@ fun VaultListScreen(
         viewModel.setCurrentProfile(profileId)
     }
 
-    //  БЛОК 9: Сбор всех уникальных тегов для фильтрации
     val allTags = remember(entries) {
-        entries
-            .flatMap { it.tags }
-            .distinctBy { it.lowercase() }
-            .sorted()
+        entries.flatMap { it.tags }.distinctBy { it.lowercase() }.sorted()
     }
     var selectedTag by remember { mutableStateOf<String?>(null) }
     
-    //  БЛОК 9: Комплексная фильтрация: по тексту (сервис, логин, теги) И по выбранному тегу
     val filteredEntries = remember(entries, searchQuery, selectedTag) {
         entries.filter { entry ->
             val matchesSearch = searchQuery.isBlank() || 
                 entry.service.contains(searchQuery, ignoreCase = true) ||
                 entry.username.contains(searchQuery, ignoreCase = true) ||
                 entry.tags.any { it.contains(searchQuery, ignoreCase = true) }
-            
             val matchesTag = selectedTag == null || selectedTag in entry.tags
-            
             matchesSearch && matchesTag
         }
     }
@@ -120,10 +115,7 @@ fun VaultListScreen(
                         selectionMode = !selectionMode
                         if (!selectionMode) selectedEntryIds = emptySet()
                     }) {
-                        Icon(
-                            if (selectionMode) Icons.Default.Close else Icons.Default.CheckBox,
-                            if (selectionMode) "Отменить выбор" else "Выбрать записи"
-                        )
+                        Icon(if (selectionMode) Icons.Default.Close else Icons.Default.CheckBox, if (selectionMode) "Отменить выбор" else "Выбрать записи")
                     }
                     
                     var showMenu by remember { mutableStateOf(false) }
@@ -131,88 +123,55 @@ fun VaultListScreen(
                         Icon(Icons.Default.MoreVert, "Меню")
                     }
                     
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Сканировать QR") },
-                            onClick = { showMenu = false; onNavigateToQrScanner() },
-                            leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Мнемонический генератор") },
-                            onClick = { showMenu = false; onNavigateToMnemonicGenerator() },
-                            leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Удалить все пароли профиля") },
-                            onClick = { showMenu = false; showDeleteAllDialog = true },
-                            leadingIcon = { Icon(Icons.Default.DeleteSweep, null) }
-                        )
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(text = { Text("Новая запись") }, onClick = { showMenu = false; onNavigateToNewEntry() }, leadingIcon = { Icon(Icons.Default.Add, null) })
+                        DropdownMenuItem(text = { Text("Сканировать QR") }, onClick = { showMenu = false; onNavigateToQrScanner() }, leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) })
+                        DropdownMenuItem(text = { Text("Мнемонический генератор") }, onClick = { showMenu = false; onNavigateToMnemonicGenerator() }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) })
+                        Divider()
+                        DropdownMenuItem(text = { Text("Проверка безопасности (Аудит)") }, onClick = { showMenu = false; onNavigateToAudit() }, leadingIcon = { Icon(Icons.Default.Security, null) })
+                        DropdownMenuItem(text = { Text("Ротация паролей") }, onClick = { showMenu = false; onNavigateToRotation() }, leadingIcon = { Icon(Icons.Default.Sync, null) })
+                        DropdownMenuItem(text = { Text("Журнал ротации") }, onClick = { showMenu = false; onNavigateToRotationJournal() }, leadingIcon = { Icon(Icons.Default.History, null) })
+                        DropdownMenuItem(text = { Text("Экспорт / Импорт") }, onClick = { showMenu = false; onNavigateToExport() }, leadingIcon = { Icon(Icons.Default.SwapVert, null) })
+                        DropdownMenuItem(text = { Text("Настройки профиля") }, onClick = { showMenu = false; onNavigateToSettings() }, leadingIcon = { Icon(Icons.Default.Settings, null) })
+                        Divider()
+                        DropdownMenuItem(text = { Text("Удалить все пароли профиля") }, onClick = { showMenu = false; showDeleteAllDialog = true }, leadingIcon = { Icon(Icons.Default.DeleteSweep, null) })
                     }
                     LockActionButton(onLock = onLock)
                 }
             )
         },
+        floatingActionButton = {
+            // Восстановлена кнопка добавления записи
+            FloatingActionButton(onClick = onNavigateToNewEntry) {
+                Icon(Icons.Default.Add, "Добавить запись")
+            }
+        },
         snackbarHost = {
             operationMessage?.let { msg ->
-                Snackbar(
-                    modifier = Modifier.padding(16.dp),
-                    action = { TextButton(onClick = { operationMessage = null }) { Text("OK") } }
-                ) { Text(msg) }
+                Snackbar(modifier = Modifier.padding(16.dp), action = { TextButton(onClick = { operationMessage = null }) { Text("OK") } }) { Text(msg) }
             }
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            //  БЛОК 9: Поле поиска
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Поиск по сервису, логину или тегам...") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, "Очистить")
-                        }
-                    }
-                },
+                trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Clear, "Очистить") } },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = favoritesOnly,
-                    onCheckedChange = { viewModel.toggleFavoritesOnly() }
-                )
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = favoritesOnly, onCheckedChange = { viewModel.toggleFavoritesOnly() })
                 Text("Только избранное", fontSize = 14.sp)
             }
             
-            //  БЛОК 9: Горизонтальный ряд фильтров по тегам
             if (allTags.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    item {
-                        FilterChip(
-                            selected = selectedTag == null,
-                            onClick = { selectedTag = null },
-                            label = { Text("Все") }
-                        )
-                    }
-                    items(allTags) { tag ->
-                        FilterChip(
-                            selected = selectedTag == tag,
-                            onClick = { selectedTag = if (selectedTag == tag) null else tag },
-                            label = { Text(tag) }
-                        )
-                    }
+                LazyRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { FilterChip(selected = selectedTag == null, onClick = { selectedTag = null }, label = { Text("Все") }) }
+                    items(allTags) { tag -> FilterChip(selected = selectedTag == tag, onClick = { selectedTag = if (selectedTag == tag) null else tag }, label = { Text(tag) }) }
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -223,11 +182,7 @@ fun VaultListScreen(
                         pendingDeleteAction = {
                             viewModel.deleteEntries(selectedEntryIds.toList(), profileId) { result ->
                                 when (result) {
-                                    is PasswordOperationResult.Success -> {
-                                        operationMessage = result.message
-                                        selectedEntryIds = emptySet()
-                                        selectionMode = false
-                                    }
+                                    is PasswordOperationResult.Success -> { operationMessage = result.message; selectedEntryIds = emptySet(); selectionMode = false }
                                     is PasswordOperationResult.Error -> operationMessage = result.message
                                 }
                             }
@@ -253,27 +208,20 @@ fun VaultListScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(filteredEntries) { entry ->
                         EntryCard(
                             entry = entry,
                             selectionMode = selectionMode,
                             isSelected = entry.id in selectedEntryIds,
                             onToggleSelection = {
-                                if (entry.id in selectedEntryIds) selectedEntryIds -= entry.id
-                                else selectedEntryIds += entry.id
+                                if (entry.id in selectedEntryIds) selectedEntryIds -= entry.id else selectedEntryIds += entry.id
                             },
                             onToggleFavorite = {
-                                viewModel.toggleFavorite(entry) { result ->
-                                    if (result is PasswordOperationResult.Error) operationMessage = result.message
-                                }
+                                viewModel.toggleFavorite(entry) { result -> if (result is PasswordOperationResult.Error) operationMessage = result.message }
                             },
                             onDelete = { entryToDelete = entry },
-                            onOpen = { onNavigateToEntry(entry.id) }, // Открытие записи
+                            onOpen = { entryToView = entry }, //  Открываем диалог просмотра, а не редактор
                             dateFormat = dateFormat
                         )
                     }
@@ -282,7 +230,22 @@ fun VaultListScreen(
         }
     }
 
-    // Диалоги удаления и мастер-пароля (без изменений)
+    //  Диалог просмотра записи (безопасный, без расшифровки в редакторе)
+    if (entryToView != null) {
+        PasswordViewDialog(
+            entry = entryToView!!,
+            onDismiss = { entryToView = null },
+            onEdit = { 
+                entryToView = null
+                onNavigateToEntry(entryToView!!.id) 
+            },
+            onDelete = {
+                entryToView = null
+                entryToDelete = entryToView // Передаем в диалог удаления
+            }
+        )
+    }
+
     if (entryToDelete != null) {
         AlertDialog(
             onDismissRequest = { entryToDelete = null },
@@ -342,9 +305,10 @@ fun VaultListScreen(
             onConfirm = { password ->
                 showMasterPasswordDialog = false
                 val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val storedHash = prefs.getString("master_password_hash", "") ?: ""
-                val storedSalt = prefs.getString("master_password_salt", "") ?: ""
-                val iterations = prefs.getInt("master_password_iterations", 10000)
+                //  ИСПРАВЛЕНО: Правильные ключи мастер-пароля
+                val storedHash = prefs.getString("master_hash", "") ?: ""
+                val storedSalt = prefs.getString("master_salt", "") ?: ""
+                val iterations = prefs.getInt("master_iterations", 100000)
                 
                 if (MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
                     pendingDeleteAction?.invoke()
@@ -353,10 +317,7 @@ fun VaultListScreen(
                     operationMessage = "Неверный мастер-пароль"
                 }
             },
-            onDismiss = {
-                showMasterPasswordDialog = false
-                pendingDeleteAction = null
-            }
+            onDismiss = { showMasterPasswordDialog = false; pendingDeleteAction = null }
         )
     }
 }
@@ -369,75 +330,42 @@ private fun EntryCard(
     onToggleSelection: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
-    onOpen: () -> Unit, //  Добавлен колбэк для открытия
+    onOpen: () -> Unit,
     dateFormat: SimpleDateFormat
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !selectionMode) { onOpen() },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-        )
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !selectionMode) { onOpen() },
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             if (selectionMode) {
                 Checkbox(checked = isSelected, onCheckedChange = { onToggleSelection() })
                 Spacer(Modifier.width(8.dp))
             }
-            
             Column(modifier = Modifier.weight(1f)) {
                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                
-                //  БЛОК 9: Отображение тегов короткой строкой в карточке
                 if (entry.tags.isNotEmpty()) {
-                    Text(
-                        entry.tags.joinToString(", "),
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1
-                    )
+                    Text(entry.tags.joinToString(", "), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                 }
-                
                 if (entry.rotationEnabled && entry.nextRotationDate != null) {
-                    Text(
-                        "Ротация: ${dateFormat.format(Date(entry.nextRotationDate))}",
-                        fontSize = 10.sp,
-                        color = if (entry.nextRotationDate <= System.currentTimeMillis()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Ротация: ${dateFormat.format(Date(entry.nextRotationDate))}", fontSize = 10.sp, color = if (entry.nextRotationDate <= System.currentTimeMillis()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            
             IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                    null,
-                    tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Icon(if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder, null, tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            
             if (!selectionMode) {
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, "Удалить", tint = MaterialTheme.colorScheme.error)
-                }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Удалить", tint = MaterialTheme.colorScheme.error) }
             }
         }
     }
 }
 
 @Composable
-private fun MasterPasswordDialog(
-    context: Context,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun MasterPasswordDialog(context: Context, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Подтверждение") },
@@ -451,17 +379,11 @@ private fun MasterPasswordDialog(
                     label = { Text("Мастер-пароль") },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null)
-                        }
-                    }
+                    trailingIcon = { IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, null) } }
                 )
             }
         },
-        confirmButton = {
-            Button(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Подтвердить") }
-        },
+        confirmButton = { Button(onClick = { onConfirm(password) }, enabled = password.isNotEmpty()) { Text("Подтвердить") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
     )
 }
