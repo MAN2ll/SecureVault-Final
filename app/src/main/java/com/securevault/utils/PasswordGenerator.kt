@@ -3,9 +3,6 @@ package com.securevault.utils
 import java.security.SecureRandom
 
 object PasswordGenerator {
-    // ДОБАВЛЕНО: enum Strength для совместимости с UI
-    enum class Strength { WEAK, MEDIUM, STRONG, VERY_STRONG }
-
     private const val LOWER = "abcdefghijklmnopqrstuvwxyz"
     private const val UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     private const val DIGITS = "0123456789"
@@ -13,87 +10,19 @@ object PasswordGenerator {
 
     private val secureRandom = SecureRandom()
 
-    data class GenerationResult(
-        val password: String,
-        val explanation: String = ""
-    )
+    enum class Strength { WEAK, MEDIUM, STRONG, VERY_STRONG }
+
+    data class GenerationResult(val password: String, val explanation: String = "")
+    data class AnchorGenerationResult(val password: String, val explanation: String)
+    private data class AnchorBuildResult(val chars: List<Char>, val usedLower: Set<Char>, val explanation: String)
 
     fun generate(
-        length: Int,
-        useLower: Boolean,
-        useUpper: Boolean,
-        useDigits: Boolean,
-        useSpecials: Boolean
+        length: Int, useLower: Boolean, useUpper: Boolean, useDigits: Boolean, useSpecials: Boolean
     ): Result<GenerationResult> {
         val enabledCount = listOf(useLower, useUpper, useDigits, useSpecials).count { it }
-        
-        if (length < enabledCount) {
-            return Result.failure(IllegalArgumentException("Длина пароля не может быть меньше количества выбранных категорий"))
-        }
-        
-        if (length > 56) {
-            return Result.failure(IllegalArgumentException("Максимальная длина без повторов — 56 символов"))
-        }
+        if (length < enabledCount) return Result.failure(IllegalArgumentException("Длина меньше количества категорий"))
+        if (length > 56) return Result.failure(IllegalArgumentException("Максимальная длина без повторов — 56"))
 
-        val selectedChars = mutableListOf<Char>()
-        val usedLowerChars = mutableSetOf<Char>()
-
-        fun addRandomChar(charSet: String): Boolean {
-            val available = charSet.filter { !usedLowerChars.contains(it.lowercaseChar()) }
-            if (available.isEmpty()) return false
-            
-            val randomChar = available[secureRandom.nextInt(available.length)]
-            usedLowerChars.add(randomChar.lowercaseChar())
-            selectedChars.add(randomChar)
-            return true
-        }
-
-        if (useLower && !addRandomChar(LOWER)) return Result.failure(IllegalArgumentException("Недостаточно уникальных строчных букв"))
-        if (useUpper && !addRandomChar(UPPER)) return Result.failure(IllegalArgumentException("Недостаточно уникальных заглавных букв"))
-        if (useDigits && !addRandomChar(DIGITS)) return Result.failure(IllegalArgumentException("Недостаточно уникальных цифр"))
-        if (useSpecials && !addRandomChar(SPECIALS)) return Result.failure(IllegalArgumentException("Недостаточно уникальных спецсимволов"))
-
-        val allEnabledChars = buildString {
-            if (useLower) append(LOWER)
-            if (useUpper) append(UPPER)
-            if (useDigits) append(DIGITS)
-            if (useSpecials) append(SPECIALS)
-        }
-
-        while (selectedChars.size < length) {
-            val available = allEnabledChars.filter { !usedLowerChars.contains(it.lowercaseChar()) }
-            if (available.isEmpty()) {
-                return Result.failure(IllegalArgumentException("Невозможно создать пароль заданной длины без повторов"))
-            }
-            val randomChar = available[secureRandom.nextInt(available.length)]
-            usedLowerChars.add(randomChar.lowercaseChar())
-            selectedChars.add(randomChar)
-        }
-
-        selectedChars.shuffle(secureRandom)
-        return Result.success(GenerationResult(selectedChars.joinToString("")))
-    }
-
-    fun generateTwoPart(
-        length: Int,
-        useLower: Boolean,
-        useUpper: Boolean,
-        useDigits: Boolean,
-        useSpecials: Boolean
-    ): Result<GenerationResult> {
-        if (length % 2 != 0) {
-            return Result.failure(IllegalArgumentException("Длина для двух частей должна быть чётной"))
-        }
-        return generateGlobalUnique(length, useLower, useUpper, useDigits, useSpecials)
-    }
-
-    private fun generateGlobalUnique(
-        length: Int,
-        useLower: Boolean,
-        useUpper: Boolean,
-        useDigits: Boolean,
-        useSpecials: Boolean
-    ): Result<GenerationResult> {
         val selectedChars = mutableListOf<Char>()
         val usedLowerChars = mutableSetOf<Char>()
 
@@ -106,15 +35,12 @@ object PasswordGenerator {
             return true
         }
 
-        val enabledCount = listOf(useLower, useUpper, useDigits, useSpecials).count { it }
-        if (length < enabledCount || length > 56) return Result.failure(IllegalArgumentException("Недопустимая длина"))
+        if (useLower && !addRandomChar(LOWER)) return Result.failure(IllegalArgumentException("Нет строчных"))
+        if (useUpper && !addRandomChar(UPPER)) return Result.failure(IllegalArgumentException("Нет заглавных"))
+        if (useDigits && !addRandomChar(DIGITS)) return Result.failure(IllegalArgumentException("Нет цифр"))
+        if (useSpecials && !addRandomChar(SPECIALS)) return Result.failure(IllegalArgumentException("Нет спецсимволов"))
 
-        if (useLower && !addRandomChar(LOWER)) return Result.failure(IllegalArgumentException("Ошибка генерации"))
-        if (useUpper && !addRandomChar(UPPER)) return Result.failure(IllegalArgumentException("Ошибка генерации"))
-        if (useDigits && !addRandomChar(DIGITS)) return Result.failure(IllegalArgumentException("Ошибка генерации"))
-        if (useSpecials && !addRandomChar(SPECIALS)) return Result.failure(IllegalArgumentException("Ошибка генерации"))
-
-        val allEnabledChars = buildString {
+        val allEnabled = buildString {
             if (useLower) append(LOWER)
             if (useUpper) append(UPPER)
             if (useDigits) append(DIGITS)
@@ -122,7 +48,7 @@ object PasswordGenerator {
         }
 
         while (selectedChars.size < length) {
-            val available = allEnabledChars.filter { !usedLowerChars.contains(it.lowercaseChar()) }
+            val available = allEnabled.filter { !usedLowerChars.contains(it.lowercaseChar()) }
             if (available.isEmpty()) return Result.failure(IllegalArgumentException("Невозможно создать пароль без повторов"))
             val randomChar = available[secureRandom.nextInt(available.length)]
             usedLowerChars.add(randomChar.lowercaseChar())
@@ -133,26 +59,78 @@ object PasswordGenerator {
         return Result.success(GenerationResult(selectedChars.joinToString("")))
     }
 
-    data class AnchorGenerationResult(val password: String, val explanation: String)
+    //  ИСПРАВЛЕНО: Строгое разделение на две независимые половины с проверкой квот в каждой
+    fun generateTwoPart(
+        length: Int, useLower: Boolean, useUpper: Boolean, useDigits: Boolean, useSpecials: Boolean
+    ): Result<GenerationResult> {
+        if (length % 2 != 0) return Result.failure(IllegalArgumentException("Длина должна быть чётной"))
+        val half = length / 2
+
+        // Генерируем первую половину
+        val part1 = generateStrictHalf(half, useLower, useUpper, useDigits, useSpecials, emptySet()) 
+            ?: return Result.failure(IllegalArgumentException("Не удалось сгенерировать первую часть"))
+
+        // Генерируем вторую половину, передавая использованные символы первой, чтобы избежать повторов между частями
+        val part2 = generateStrictHalf(half, useLower, useUpper, useDigits, useSpecials, part1.usedLower) 
+            ?: return Result.failure(IllegalArgumentException("Не удалось сгенерировать вторую часть без повторов"))
+
+        return Result.success(GenerationResult(part1.password + part2.password))
+    }
+
+    private data class HalfResult(val password: String, val usedLower: Set<Char>)
+
+    private fun generateStrictHalf(
+        length: Int, useLower: Boolean, useUpper: Boolean, useDigits: Boolean, useSpecials: Boolean, existingUsed: Set<Char>
+    ): HalfResult? {
+        val selected = mutableListOf<Char>()
+        val used = existingUsed.toMutableSet()
+
+        fun addChar(charSet: String): Char? {
+            val available = charSet.filter { !used.contains(it.lowercaseChar()) }
+            if (available.isEmpty()) return null
+            val ch = available[secureRandom.nextInt(available.length)]
+            used.add(ch.lowercaseChar())
+            selected.add(ch)
+            return ch
+        }
+
+        // Гарантируем минимумы
+        if (useLower && addChar(LOWER) == null) return null
+        if (useUpper && addChar(UPPER) == null) return null
+        if (useDigits && addChar(DIGITS) == null) return null
+        if (useSpecials && addChar(SPECIALS) == null) return null
+
+        val allEnabled = buildString {
+            if (useLower) append(LOWER)
+            if (useUpper) append(UPPER)
+            if (useDigits) append(DIGITS)
+            if (useSpecials) append(SPECIALS)
+        }
+
+        while (selected.size < length) {
+            val available = allEnabled.filter { !used.contains(it.lowercaseChar()) }
+            if (available.isEmpty()) return null // Не хватает уникальных символов для этой половины
+            val ch = available[secureRandom.nextInt(available.length)]
+            used.add(ch.lowercaseChar())
+            selected.add(ch)
+        }
+
+        // Финальная проверка квот для этой половины
+        if (selected.count { it.isUpperCase() } < 2) return null
+        if (selected.count { it.isLowerCase() } < 2) return null
+        if (selected.count { it.isDigit() } < 2) return null
+        if (selected.count { !it.isLetterOrDigit() } < 2) return null
+
+        selected.shuffle(secureRandom)
+        return HalfResult(selected.joinToString(""), used)
+    }
 
     fun generateWithAnchor(
-        anchorWord: String,
-        totalLength: Int,
-        useLower: Boolean,
-        useUpper: Boolean,
-        useDigits: Boolean,
-        useSpecials: Boolean,
-        addService: Boolean = false,
-        serviceName: String = "",
-        addYear: Boolean = false,
-        year: Int = 2026
+        anchorWord: String, totalLength: Int, useLower: Boolean, useUpper: Boolean, useDigits: Boolean, useSpecials: Boolean,
+        addService: Boolean = false, serviceName: String = "", addYear: Boolean = false, year: Int = 2026
     ): Result<AnchorGenerationResult> {
-        if (anchorWord.isBlank()) {
-            return Result.failure(IllegalArgumentException("Якорное слово не может быть пустым"))
-        }
-        if (anchorWord.length > totalLength) {
-            return Result.failure(IllegalArgumentException("Якорное слово длиннее заданной длины пароля"))
-        }
+        if (anchorWord.isBlank()) return Result.failure(IllegalArgumentException("Якорь пуст"))
+        if (anchorWord.length > totalLength) return Result.failure(IllegalArgumentException("Якорь длиннее пароля"))
 
         val usedLowerChars = mutableSetOf<Char>()
         val resultChars = mutableListOf<Char>()
@@ -193,7 +171,7 @@ object PasswordGenerator {
             }
         }
 
-        val allEnabledChars = buildString {
+        val allEnabled = buildString {
             if (useLower) append(LOWER)
             if (useUpper) append(UPPER)
             if (useDigits) append(DIGITS)
@@ -201,10 +179,8 @@ object PasswordGenerator {
         }
 
         while (resultChars.size < totalLength) {
-            val available = allEnabledChars.filter { !usedLowerChars.contains(it.lowercaseChar()) }
-            if (available.isEmpty()) {
-                return Result.failure(IllegalArgumentException("Невозможно дополнить якорь без повторов"))
-            }
+            val available = allEnabled.filter { !usedLowerChars.contains(it.lowercaseChar()) }
+            if (available.isEmpty()) return Result.failure(IllegalArgumentException("Невозможно дополнить якорь без повторов"))
             val randomChar = available[secureRandom.nextInt(available.length)]
             usedLowerChars.add(randomChar.lowercaseChar())
             resultChars.add(randomChar)
@@ -213,8 +189,7 @@ object PasswordGenerator {
         return Result.success(AnchorGenerationResult(resultChars.joinToString(""), explanation))
     }
 
-    private data class AnchorBuildResult(val chars: List<Char>, val usedLower: Set<Char>, val explanation: String)
-
+    //  ИСПРАВЛЕНО: Первая буква якоря ВСЕГДА заглавная, leet применяется только к последующим
     private fun buildAnchor(word: String, currentUsed: Set<Char>): AnchorBuildResult {
         val translitMap = mapOf(
             'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e",
@@ -230,9 +205,12 @@ object PasswordGenerator {
         val explanation = StringBuilder()
 
         var i = 0
+        var isFirstCharOfAnchor = true
+
         while (i < word.length) {
             val c = word[i]
-            val translit = translitMap[c.lowercaseChar()] ?: c.toString()
+            //  Поддержка английских букв: если нет в карте, оставляем как есть
+            val translit = translitMap[c.lowercaseChar()] ?: if (c.isLetter()) c.toString() else ""
             
             var j = 0
             while (j < translit.length) {
@@ -243,10 +221,14 @@ object PasswordGenerator {
                 val key = if (isCh) "ch" else lowerT.toString()
                 val replacement = leetMap[key]
 
-                val finalChar = if (replacement != null && !usedLower.contains(replacement.first().lowercaseChar())) {
+                val finalChar: Char? = if (isFirstCharOfAnchor) {
+                    // Первая буква якоря ВСЕГДА заглавная, без leet-замены
+                    val upper = tChar.uppercaseChar()
+                    if (!usedLower.contains(upper.lowercaseChar())) upper else null
+                } else if (replacement != null && !usedLower.contains(replacement.first().lowercaseChar())) {
                     replacement.first()
                 } else if (!usedLower.contains(lowerT)) {
-                    if (chars.isEmpty()) tChar.uppercaseChar() else tChar
+                    tChar
                 } else {
                     null
                 }
@@ -255,6 +237,7 @@ object PasswordGenerator {
                     chars.add(finalChar)
                     usedLower.add(finalChar.lowercaseChar())
                     explanation.append(finalChar)
+                    isFirstCharOfAnchor = false // После первого символа флаг сбрасывается
                     if (isCh) j++
                 }
                 j++
