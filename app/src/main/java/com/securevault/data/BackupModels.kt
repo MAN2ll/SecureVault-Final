@@ -86,7 +86,7 @@ data class BackupEntry(
     val passwordFingerprint: String? = null,
     val portableHistory: List<PortableHistoryItem>? = null,
     val passwordAccessMode: String? = null,
-    val tagsCsv: String = "" //  БЛОК 10: Добавлено поле тегов
+    val tagsCsv: String = "" //  БЛОК 10: Поле тегов
 ) {
     fun toJson(): JSONObject {
         val obj = JSONObject()
@@ -109,7 +109,7 @@ data class BackupEntry(
         if (passwordFingerprint != null) obj.put("passwordFingerprint", passwordFingerprint)
         if (passwordAccessMode != null) obj.put("passwordAccessMode", passwordAccessMode)
         obj.put("tagsCsv", tagsCsv) //  БЛОК 10: Сериализация тегов
-        
+    
         if (portableHistory != null) {
             val historyArray = JSONArray()
             for (item in portableHistory) {
@@ -171,7 +171,7 @@ data class BackupEntry(
                 passwordFingerprint = obj.optString("passwordFingerprint", null),
                 portableHistory = portableHistory,
                 passwordAccessMode = obj.optString("passwordAccessMode", null),
-                tagsCsv = obj.optString("tagsCsv", "") //  БЛОК 10: Десериализация (пустая строка для старых бэкапов)
+                tagsCsv = obj.optString("tagsCsv", "") // БЛОК 10: Десериализация
             )
         }
     }
@@ -187,9 +187,31 @@ data class PortableHistoryItem(
     val passwordFingerprint: String? = null
 )
 
+//  ИСПРАВЛЕНИЕ: Добавлены toJson() и fromJson() именно сюда, чтобы ExportImportScreen.kt скомпилировался без изменений!
 data class EncryptedBackup(
     val salt: String,
     val iv: String,
     val ciphertext: String,
     val iterations: Int = 200000
-)
+) {
+    fun toJson(): String {
+        val obj = JSONObject()
+        obj.put("salt", salt)
+        obj.put("iv", iv)
+        obj.put("ciphertext", ciphertext)
+        obj.put("iterations", iterations)
+        return obj.toString()
+    }
+
+    companion object {
+        fun fromJson(jsonString: String): EncryptedBackup {
+            val obj = JSONObject(jsonString)
+            return EncryptedBackup(
+                salt = obj.getString("salt"),
+                iv = obj.getString("iv"),
+                ciphertext = obj.getString("ciphertext"),
+                iterations = obj.optInt("iterations", 200000)
+            )
+        }
+    }
+}
