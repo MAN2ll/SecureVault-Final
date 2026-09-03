@@ -120,7 +120,8 @@ object BackupManager {
                     passwordHistoryJson = entry.passwordHistoryJson,
                     passwordFingerprint = entry.passwordFingerprint,
                     portableHistory = portableHistory,
-                    passwordAccessMode = entry.passwordAccessMode
+                    passwordAccessMode = entry.passwordAccessMode,
+                    tagsCsv = entry.tagsCsv //  БЛОК 10: Добавлено при экспорте
                 )
             }
             BackupProfile(
@@ -234,7 +235,6 @@ object BackupManager {
                         val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
                             ?: backupEntry.passwordHistoryJson
 
-                        //  Явное вычисление fingerprint и безопасные значения по умолчанию для String
                         val pwdFingerprint = backupEntry.passwordFingerprint 
                             ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context)
 
@@ -250,10 +250,11 @@ object BackupManager {
                             isFavorite = backupEntry.isFavorite,
                             rotationEnabled = backupEntry.rotationEnabled,
                             rotationPeriodMonths = backupEntry.rotationPeriodMonths,
-                            generationType = backupEntry.generationType ?: "random", // ✅ ИСПРАВЛЕНО
+                            generationType = backupEntry.generationType ?: "random",
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
                             mnemonicOptionsJson = backupEntry.mnemonicOptionsJson,
-                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value // ✅ ИСПРАВЛЕНО
+                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value,
+                            tagsCsv = backupEntry.tagsCsv //  БЛОК 10: Добавлено при импорте
                         ).copy(
                             nextRotationDate = backupEntry.nextRotationDate,
                             createdAt = backupEntry.createdAt,
