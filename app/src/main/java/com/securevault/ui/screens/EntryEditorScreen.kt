@@ -27,7 +27,7 @@ import com.securevault.viewmodel.VaultViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryEditorScreen(
-    id: String? = null,
+    id: String? = null, // Может быть null, "new" или реальный UUID
     profileId: Int?,
     onBack: () -> Unit,
     onLock: () -> Unit = {},
@@ -51,16 +51,20 @@ fun EntryEditorScreen(
     var originalPassword by remember { mutableStateOf("") }
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(id != null) }
+    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
-    // ИСПРАВЛЕНО: Берем profileId из ViewModel, если он не передан явно
+    //  Гарантированно получаем валидный profileId
     val currentProfileIdState by viewModel.currentProfileId.collectAsState()
     val targetProfileId = profileId ?: currentProfileIdState ?: 0
 
+    //  Исправлено: загружаем данные только если это реальный ID (не null и не "new")
+    val isEditMode = id != null && id != "new"
+    
     LaunchedEffect(id) {
-        if (id != null) {
-            val entry = viewModel.findEntryById(id)
+        if (isEditMode) {
+            isLoading = true
+            val entry = viewModel.findEntryById(id!!)
             if (entry != null) {
                 service = entry.service
                 username = entry.username
@@ -73,9 +77,12 @@ fun EntryEditorScreen(
                 rotationEnabled = entry.rotationEnabled
                 rotationPeriodMonths = entry.rotationPeriodMonths
                 passwordAccessMode = entry.passwordAccessMode
+            } else {
+                errorMessage = "Запись не найдена"
             }
             isLoading = false
         } else {
+            // Режим создания: поля уже пусты по умолчанию, isLoading = false
             isLoading = false
         }
     }
@@ -83,13 +90,15 @@ fun EntryEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (id == null) "Новая запись" else "Редактирование", fontWeight = FontWeight.Bold) },
+                title = { Text(if (isEditMode) "Редактирование" else "Новая запись", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } }
             )
         }
     ) { padding ->
         if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { 
+                CircularProgressIndicator() 
+            }
         } else {
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -162,13 +171,13 @@ fun EntryEditorScreen(
 
                 Button(
                     onClick = {
-                        errorMessage = null // Сброс ошибки
+                        errorMessage = null
                         if (service.isBlank() || password.isBlank()) {
                             errorMessage = "Сервис и пароль обязательны для заполнения"
                             return@Button
                         }
                         if (targetProfileId <= 0) {
-                            errorMessage = "Ошибка: профиль не выбран"
+                            errorMessage = "Ошибка: профиль не выбран. Вернитесь к списку профилей."
                             return@Button
                         }
 
@@ -182,7 +191,8 @@ fun EntryEditorScreen(
 
                         val fingerprint = PasswordValidator.buildPasswordFingerprint(password, context)
 
-                        if (id == null) {
+                        if (!isEditMode) {
+                            //  СОЗДАНИЕ НОВОЙ ЗАПИСИ
                             val newEntry = Entry.create(
                                 service = service, username = username, password = password, profileId = targetProfileId,
                                 passwordFingerprint = fingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
@@ -197,7 +207,8 @@ fun EntryEditorScreen(
                                 }
                             }
                         } else {
-                            val oldEntry = viewModel.findEntryById(id) ?: return@Button
+                            //  ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕЙ ЗАПИСИ
+                            val oldEntry = viewModel.findEntryById(id!!) ?: return@Button
                             var finalHistoryJson = oldEntry.passwordHistoryJson
                             if (password != oldEntry.password) {
                                 val updatedEntryWithHistory = oldEntry.addToPasswordHistory(
