@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
 import com.securevault.data.Profile
+import com.securevault.ui.screens.QrCodeDialog // ДОБАВЛЕН ПРАВИЛЬНЫЙ ИМПОРТ
 import com.securevault.utils.CryptoUtils
 import java.text.SimpleDateFormat
 import java.util.Locale
