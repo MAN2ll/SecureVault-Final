@@ -22,7 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
-import com.securevault.ui.components.PasswordViewDialog //  Импорт диалога
+import com.securevault.ui.components.PasswordViewDialog
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 import java.text.SimpleDateFormat
@@ -53,6 +53,9 @@ fun VaultListScreen(
     val entries by viewModel.entries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     
+    //  Добавлено: получаем текущий профиль для передачи в диалог QR-кода
+    val currentProfile by viewModel.currentProfile.collectAsState()
+    
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
@@ -62,7 +65,7 @@ fun VaultListScreen(
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
     var pendingDeleteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     
-    //  Восстановлено: Диалог просмотра записи
+    // Восстановлено: Диалог просмотра записи
     var entryToView by remember { mutableStateOf<Entry?>(null) }
     
     var searchQuery by remember { mutableStateOf("") }
@@ -221,7 +224,7 @@ fun VaultListScreen(
                                 viewModel.toggleFavorite(entry) { result -> if (result is PasswordOperationResult.Error) operationMessage = result.message }
                             },
                             onDelete = { entryToDelete = entry },
-                            onOpen = { entryToView = entry }, //  Открываем диалог просмотра, а не редактор
+                            onOpen = { entryToView = entry }, // Открываем диалог просмотра, а не редактор
                             dateFormat = dateFormat
                         )
                     }
@@ -230,18 +233,21 @@ fun VaultListScreen(
         }
     }
 
-    //  Диалог просмотра записи (безопасный, без расшифровки в редакторе)
-    if (entryToView != null) {
+    //  Диалог просмотра записи (обновлённый вызов с передачей profile)
+    if (entryToView != null && currentProfile != null) {
         PasswordViewDialog(
             entry = entryToView!!,
+            profile = currentProfile!!, //  Передаём профиль для QR-кода
             onDismiss = { entryToView = null },
             onEdit = { 
+                val id = entryToView!!.id
                 entryToView = null
-                onNavigateToEntry(entryToView!!.id) 
+                onNavigateToEntry(id) 
             },
             onDelete = {
+                val entry = entryToView!!
                 entryToView = null
-                entryToDelete = entryToView // Передаем в диалог удаления
+                entryToDelete = entry
             }
         )
     }
@@ -305,7 +311,7 @@ fun VaultListScreen(
             onConfirm = { password ->
                 showMasterPasswordDialog = false
                 val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                //  ИСПРАВЛЕНО: Правильные ключи мастер-пароля
+                // ИСПРАВЛЕНО: Правильные ключи мастер-пароля
                 val storedHash = prefs.getString("master_hash", "") ?: ""
                 val storedSalt = prefs.getString("master_salt", "") ?: ""
                 val iterations = prefs.getInt("master_iterations", 100000)
