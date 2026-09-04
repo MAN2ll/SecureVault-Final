@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
+import com.securevault.data.Profile
 import com.securevault.utils.CryptoUtils
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -25,12 +26,14 @@ import java.util.Locale
 @Composable
 fun PasswordViewDialog(
     entry: Entry,
+    profile: Profile, //  Добавлено для передачи в QrCodeDialog
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
+    var showQrDialog by remember { mutableStateOf(false) } //  Добавлено
     
     val decryptedPassword = remember(entry.encryptedPassword) {
         try { CryptoUtils.decrypt(entry.encryptedPassword) } catch (e: Exception) { "Ошибка расшифровки" }
@@ -43,7 +46,7 @@ fun PasswordViewDialog(
         title = { Text(entry.service, fontWeight = FontWeight.Bold) },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), //  Импорты добавлены
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 InfoRow("Логин", entry.username)
@@ -59,12 +62,15 @@ fun PasswordViewDialog(
                     }) {
                         Icon(Icons.Default.ContentCopy, "Копировать")
                     }
+                    //  ДОБАВЛЕНО: Кнопка генерации QR-кода
+                    IconButton(onClick = { showQrDialog = true }) {
+                        Icon(Icons.Default.QrCode, "Показать QR-код")
+                    }
                 }
 
                 if (entry.url?.isNotBlank() == true) InfoRow("URL", entry.url)
                 if (entry.notes?.isNotBlank() == true) InfoRow("Заметки", entry.notes)
 
-                //  БЛОК 9: Отображение тегов
                 if (entry.tags.isNotEmpty()) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text("Теги: ", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.width(80.dp))
@@ -91,6 +97,15 @@ fun PasswordViewDialog(
             }
         }
     )
+
+    //  Вызов твоего существующего QrCodeDialog
+    if (showQrDialog) {
+        QrCodeDialog(
+            entry = entry,
+            profile = profile,
+            onDismiss = { showQrDialog = false }
+        )
+    }
 }
 
 @Composable
