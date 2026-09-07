@@ -37,14 +37,12 @@ class VaultViewModel @Inject constructor(
     private val _currentProfileId = MutableStateFlow<Int?>(null)
     val currentProfileId: StateFlow<Int?> = _currentProfileId.asStateFlow()
 
-    // Блок 1.2: Состояние фильтра избранного
     private val _favoritesOnly = MutableStateFlow(false)
     val favoritesOnly: StateFlow<Boolean> = _favoritesOnly.asStateFlow()
 
     val allEntries: StateFlow<List<Entry>> = repository.allEntries
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    // Учитывает фильтр избранного
     val entries: StateFlow<List<Entry>> = combine(
         allEntries, currentProfileId, favoritesOnly
     ) { entries, profileId, favOnly ->
@@ -90,17 +88,14 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Блок 1.1: Принимает Int? для выхода из профиля
     fun setCurrentProfile(profileId: Int?) {
         _currentProfileId.value = profileId
     }
 
-    // Блок 1.3: Переключение фильтра избранного
     fun toggleFavoritesOnly() {
         _favoritesOnly.value = !_favoritesOnly.value
     }
 
-    // Блок 1.3: Переключение избранного для записи
     fun toggleFavorite(entry: Entry, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
@@ -115,6 +110,11 @@ class VaultViewModel @Inject constructor(
 
     fun findEntryById(entryId: String): Entry? {
         return allEntries.value.find { it.id == entryId }
+    }
+
+    //  Прямая загрузка записи из репозитория
+    suspend fun getEntryById(entryId: String): Entry? {
+        return repository.getById(entryId)
     }
 
     fun insert(entry: Entry, onResult: (PasswordOperationResult) -> Unit = {}) {
@@ -143,7 +143,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Блок 1.4: Удаление с проверкой профиля
     fun deleteEntry(
         entryId: String,
         expectedProfileId: Int,
@@ -168,7 +167,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Блок 1.5: Массовое удаление
     fun deleteEntries(
         entryIds: List<String>,
         expectedProfileId: Int,
@@ -191,8 +189,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    //  ИСПРАВЛЕНО: Блок 1.6 — безопасное удаление всех записей профиля
-    // НЕ использует несуществующий repository.deleteEntriesByProfileId
     fun deleteAllEntriesInProfile(
         profileId: Int,
         onResult: (PasswordOperationResult) -> Unit
@@ -216,7 +212,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    // Резервный метод удаления (если вызывается без expectedProfileId)
     fun deleteEntry(entryId: String, onResult: (PasswordOperationResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
@@ -260,8 +255,6 @@ class VaultViewModel @Inject constructor(
             }
         }
     }
-
-    // === Перегрузки replacePassword (сохраняем совместимость) ===
 
     fun replacePassword(
         entry: Entry,
