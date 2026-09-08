@@ -18,10 +18,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.ui.components.LockActionButton
+import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.ui.components.UnifiedPasswordGeneratorDialog
 import com.securevault.utils.AccessMode
+import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
+import com.securevault.utils.resolveAccess
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
@@ -38,17 +41,13 @@ fun EntryEditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
+    //  РАЗДЕЛЕНИЕ СОСТОЯНИЙ
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var formError by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+    
     var service by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
-    
-    // Храним зашифрованный пароль отдельно. Не расшифровываем при загрузке!
-    var encryptedPasswordState by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var originalPassword by remember { mutableStateOf("") }
-    var isPasswordDecrypted by remember { mutableStateOf(false) }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var passwordChangedManually by remember { mutableStateOf(false) }
-
     var url by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var tagsCsv by remember { mutableStateOf("") }
@@ -58,17 +57,31 @@ fun EntryEditorScreen(
     var rotationPeriodMonths by remember { mutableIntStateOf(6) }
     var passwordAccessMode by remember { mutableStateOf(AccessMode.INHERIT.value) }
     
+    // Состояния пароля
+    var passwordDraft by remember { mutableStateOf("") }
+    var passwordChanged by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var decryptedOriginalPassword by remember { mutableStateOf<String?>(null) }
+    
+    var generationType by remember { mutableStateOf("random") }
+    var textHint by remember { mutableStateOf<String?>(null) }
+    var mnemonicPhraseHint by remember { mutableStateOf<String?>(null) }
+    var mnemonicOptionsJson by remember { mutableStateOf<String?>(null) }
+    
     var showGeneratorDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     
+    // Состояния для диалога доступа
+    var showAccessDialog by remember { mutableStateOf(false) }
+    var requireBiometricForAccess by remember { mutableStateOf(false) }
+
     val currentProfileIdState by viewModel.currentProfileId.collectAsState()
     val targetProfileId = profileId ?: currentProfileIdState ?: 0
+    val currentProfile by viewModel.currentProfile.collectAsState()
 
-    // Считаем новой, если id == null или id == "new"
     val isEditMode = id != null && id != "new"
-    
-    // Загрузка через прямой запрос к репозиторию
+
+    //  ПРЯМАЯ ЗАГРУЗКА ЗАПИСИ
     LaunchedEffect(id) {
         if (isEditMode) {
             isLoading = true
@@ -76,7 +89,6 @@ fun EntryEditorScreen(
             if (entry != null) {
                 service = entry.service
                 username = entry.username
-                encryptedPasswordState = entry.encryptedPassword
                 url = entry.url ?: ""
                 notes = entry.notes ?: ""
                 tagsCsv = entry.tagsCsv
@@ -84,13 +96,98 @@ fun EntryEditorScreen(
                 rotationEnabled = entry.rotationEnabled
                 rotationPeriodMonths = entry.rotationPeriodMonths
                 passwordAccessMode = entry.passwordAccessMode
+                generationType = entry.generationType
+                textHint = entry.textHint
+                mnemonicPhraseHint = entry.mnemonicPhraseHint
+                mnemonicOptionsJson = entry.mnemonicOptionsJson
+                
+                // Пароль НЕ расшифровываем здесь!
+                decryptedOriginalPassword = null
+                passwordDraft = "" 
             } else {
-                errorMessage = "Запись не найдена в базе данных"
+                loadError = "Запись не найдена в базе данных"
             }
             isLoading = false
         } else {
             isLoading = false
         }
+    }
+
+    //  ОБРАБОТКА ТЕГОВ
+    fun processTags(input: String): String {
+        return input.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }
+            .joinToString(",")
+    }
+
+    //  ЗАПРОС ДОСТУПА К ПАРОЛЮ
+    fun requestPasswordAccess() {
+        formError = null
+        if (currentProfile == null) {
+            formError = "Ошибка: профиль не загружен"
+            return
+        }
+        
+        val result = resolveAccess(
+            Entry(
+                id = id ?: "", service = service, username = username, 
+                encryptedPassword = "", profileId = targetProfileId,
+                passwordAccessMode = passwordAccessMode
+            ), 
+            currentProfile!!
+        )
+        
+        when (result) {
+            is AccessResult.Granted -> {
+                decryptAndEnablePassword()
+            }
+            is AccessResult.PinRequired -> {
+                requireBiometricForAccess = false
+                showAccessDialog = true
+            }
+            is AccessResult.BiometricOrPin -> {
+                requireBiometricForAccess = true
+                showAccessDialog = true
+            }
+            is AccessResult.PinNotSet -> {
+                formError = "Для редактирования пароля необходимо задать PIN в настройках профиля."
+            }
+        }
+    }
+
+    fun decryptAndEnablePassword() {
+        scope.launch {
+            try {
+                // Загружаем актуальную запись для расшифровки
+                val entry = viewModel.getEntryById(id!!)
+                if (entry != null) {
+                    val decrypted = CryptoUtils.decrypt(entry.encryptedPassword)
+                    decryptedOriginalPassword = decrypted
+                    passwordDraft = decrypted
+                    passwordVisible = true
+                    // При первом раскрытии не считаем это изменением, пока пользователь не начнёт печатать
+                }
+            } catch (e: Exception) {
+                formError = "Ошибка расшифровки: ${e.message}"
+            }
+        }
+    }
+
+    //  ПРОВЕРКА ПОХОЖЕСТВА ПАРОЛЯ (минимум 60% отличий)
+    fun isPasswordDifferentEnough(oldPwd: String, newPwd: String): Boolean {
+        if (oldPwd == newPwd) return false
+        val maxLength = maxOf(oldPwd.length, newPwd.length)
+        if (maxLength == 0) return true
+        
+        var matches = 0
+        val minLen = minOf(oldPwd.length, newPwd.length)
+        for (i in 0 until minLen) {
+            if (oldPwd[i] == newPwd[i]) matches++
+        }
+        val similarity = matches.toDouble() / maxLength
+        return similarity <= 0.4 // То есть отличий >= 60%
     }
 
     Scaffold(
@@ -99,13 +196,12 @@ fun EntryEditorScreen(
                 title = { Text(if (isEditMode) "Редактирование" else "Новая запись", fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
                 actions = {
-                    // Кнопка блокировки в верхней панели
                     LockActionButton(onLock = { 
                         onLock()
-                        // Очищаем открытый пароль из состояния при блокировке
-                        password = ""
-                        isPasswordDecrypted = false
+                        passwordDraft = ""
+                        decryptedOriginalPassword = null
                         passwordVisible = false
+                        passwordChanged = false
                     })
                 }
             )
@@ -115,10 +211,9 @@ fun EntryEditorScreen(
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { 
                 CircularProgressIndicator() 
             }
-        } else if (errorMessage != null && isEditMode) {
-            // Показываем ошибку и кнопку возврата, если запись не найдена
+        } else if (loadError != null) {
             Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 16.sp)
+                Text(loadError!!, color = MaterialTheme.colorScheme.error, fontSize = 16.sp)
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = onBack) { Text("Вернуться назад") }
             }
@@ -130,31 +225,45 @@ fun EntryEditorScreen(
                 OutlinedTextField(value = service, onValueChange = { service = it }, label = { Text("Сервис *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Логин / Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-                // Поле пароля с отложенной расшифровкой
+                //  ПОЛЕ ПАРОЛЯ С ОТЛОЖЕННОЙ РАСШИФРОВКОЙ
                 OutlinedTextField(
-                    value = password,
-                    onValueChange = { 
-                        password = it
-                        if (isPasswordDecrypted && it != originalPassword) passwordChangedManually = true
+                    value = passwordDraft,
+                    onValueChange = { newPwd ->
+                        passwordDraft = newPwd
+                        if (!isEditMode) {
+                            // Для новой записи ручной ввод сразу устанавливает флаги
+                            passwordChanged = true
+                            generationType = "manual"
+                        } else {
+                            // Для существующей записи проверяем, отличается ли от оригинала
+                            if (decryptedOriginalPassword != null) {
+                                passwordChanged = (newPwd != decryptedOriginalPassword)
+                            }
+                        }
                     },
                     label = { Text("Пароль *") },
                     singleLine = true,
+                    readOnly = isEditMode && decryptedOriginalPassword == null, // Нельзя редактировать, пока не подтверждён доступ
+                    placeholder = { 
+                        if (isEditMode && decryptedOriginalPassword == null) {
+                            Text("••••••••••••", fontSize = 16.sp) 
+                        }
+                    },
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     trailingIcon = {
                         Row {
-                            IconButton(onClick = {
-                                if (!isPasswordDecrypted) {
-                                    password = try { CryptoUtils.decrypt(encryptedPasswordState) } catch(e: Exception) { "" }
-                                    originalPassword = password
-                                    isPasswordDecrypted = true
-                                    passwordVisible = true
-                                } else {
-                                    passwordVisible = !passwordVisible
+                            if (isEditMode && decryptedOriginalPassword == null) {
+                                IconButton(onClick = { requestPasswordAccess() }) { 
+                                    Icon(Icons.Default.Visibility, "Показать/изменить пароль") 
                                 }
-                            }) { 
-                                Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть") 
+                            } else {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) { 
+                                    Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть") 
+                                }
                             }
-                            IconButton(onClick = { showGeneratorDialog = true }) { Icon(Icons.Default.AutoAwesome, "Сгенерировать") }
+                            IconButton(onClick = { showGeneratorDialog = true }) { 
+                                Icon(Icons.Default.AutoAwesome, "Сгенерировать") 
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -187,93 +296,148 @@ fun EntryEditorScreen(
                     }
                 }
 
+                //  ВЫПАДАЮЩИЙ СПИСОК С РУССКИМИ ПОДПИСЯМИ
                 var expandedAccess by remember { mutableStateOf(false) }
-                val accessModes = AccessMode.values().map { it.value }
+                val accessModeLabels = mapOf(
+                    AccessMode.INHERIT.value to "Как в профиле",
+                    AccessMode.NO_CONFIRMATION.value to "Без подтверждения",
+                    AccessMode.PIN_REQUIRED.value to "Только PIN профиля",
+                    AccessMode.BIOMETRIC_OR_PIN.value to "Биометрия или PIN"
+                )
+                val currentAccessLabel = accessModeLabels[passwordAccessMode] ?: "Как в профиле"
+                
                 ExposedDropdownMenuBox(expanded = expandedAccess, onExpandedChange = { expandedAccess = !expandedAccess }) {
-                    OutlinedTextField(readOnly = true, value = accessModes.firstOrNull { it == passwordAccessMode } ?: AccessMode.INHERIT.value, onValueChange = {}, label = { Text("Режим доступа к паролю") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) }, modifier = Modifier.menuAnchor().fillMaxWidth())
+                    OutlinedTextField(
+                        readOnly = true, 
+                        value = currentAccessLabel, 
+                        onValueChange = {}, 
+                        label = { Text("Режим доступа к паролю") }, 
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) }, 
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
                     ExposedDropdownMenu(expanded = expandedAccess, onDismissRequest = { expandedAccess = false }) {
-                        accessModes.forEach { mode -> DropdownMenuItem(text = { Text(mode) }, onClick = { passwordAccessMode = mode; expandedAccess = false }) }
+                        accessModeLabels.forEach { (modeValue, label) ->
+                            DropdownMenuItem(text = { Text(label) }, onClick = { passwordAccessMode = modeValue; expandedAccess = false })
+                        }
                     }
                 }
 
-                if (errorMessage != null) {
+                // ОШИБКА ФОРМЫ НАД КНОПКОЙ (не заменяет весь экран)
+                if (formError != null) {
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                        Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                        Text(text = formError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
                     }
                 }
 
                 Spacer(Modifier.weight(1f))
 
+                //  КНОПКА СОХРАНЕНИЯ С ЗАЩИТОЙ isSaving
                 Button(
                     onClick = {
                         scope.launch {
-                            errorMessage = null
-                            if (service.isBlank() || password.isBlank()) {
-                                errorMessage = "Сервис и пароль обязательны для заполнения"
+                            formError = null
+                            isSaving = true
+                            
+                            if (service.isBlank() || passwordDraft.isBlank()) {
+                                formError = "Сервис и пароль обязательны для заполнения"
+                                isSaving = false
                                 return@launch
                             }
                             if (targetProfileId <= 0) {
-                                errorMessage = "Ошибка: профиль не выбран"
+                                formError = "Ошибка: профиль не выбран"
+                                isSaving = false
                                 return@launch
                             }
 
-                            if (passwordChangedManually) {
-                                val uniqueCheck = PasswordValidator.validateUniqueCharacters(password)
-                                if (!uniqueCheck.isValid) {
-                                    errorMessage = uniqueCheck.errorMessage
-                                    return@launch
-                                }
-                            }
-
-                            val fingerprint = PasswordValidator.buildPasswordFingerprint(password, context)
+                            val finalTags = processTags(tagsCsv)
+                            val fingerprint = PasswordValidator.buildPasswordFingerprint(passwordDraft, context)
 
                             if (!isEditMode) {
-                                // СОЗДАНИЕ НОВОЙ ЗАПИСИ
+                                // === СОЗДАНИЕ НОВОЙ ЗАПИСИ ===
                                 val newEntry = Entry.create(
-                                    service = service, username = username, password = password, profileId = targetProfileId,
+                                    service = service, username = username, password = passwordDraft, profileId = targetProfileId,
                                     passwordFingerprint = fingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                                    isFavorite = isFavorite, generationType = if (passwordChangedManually) "manual" else "random",
-                                    tagsCsv = tagsCsv, passwordAccessMode = passwordAccessMode
+                                    isFavorite = isFavorite, generationType = generationType,
+                                    tagsCsv = finalTags, passwordAccessMode = passwordAccessMode,
+                                    textHint = textHint, mnemonicPhraseHint = mnemonicPhraseHint, mnemonicOptionsJson = mnemonicOptionsJson
                                 )
                                 viewModel.insert(newEntry) { result ->
                                     when (result) {
                                         is PasswordOperationResult.Success -> onBack()
-                                        is PasswordOperationResult.Error -> errorMessage = result.message
+                                        is PasswordOperationResult.Error -> { formError = result.message; isSaving = false }
                                     }
                                 }
                             } else {
-                                // ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕЙ ЗАПИСИ
-                                val oldEntry = viewModel.getEntryById(id!!) ?: return@launch
-                                
-                                //  учитываем и ручной ввод, и генерацию
-                                val isPasswordChanged = isPasswordDecrypted && (passwordChangedManually || password != originalPassword)
+                                // === ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕЙ ЗАПИСИ ===
+                                val oldEntry = viewModel.getEntryById(id!!) ?: run {
+                                    formError = "Запись не найдена"
+                                    isSaving = false
+                                    return@launch
+                                }
 
                                 var finalEncryptedPassword = oldEntry.encryptedPassword
                                 var finalHistoryJson = oldEntry.passwordHistoryJson
                                 var finalFingerprint = oldEntry.passwordFingerprint
-                                var finalNextRotationDate = oldEntry.nextRotationDate
                                 var finalGenerationType = oldEntry.generationType
+                                var finalLastChanged = oldEntry.lastChanged
+                                var finalNextRotationDate = oldEntry.nextRotationDate
 
-                                if (isPasswordChanged) {
-                                    finalEncryptedPassword = CryptoUtils.encrypt(password)
+                                if (passwordChanged && decryptedOriginalPassword != null) {
+                                    // 1. Проверка отсутствия повторяющихся символов
+                                    val uniqueCheck = PasswordValidator.validateUniqueCharacters(passwordDraft)
+                                    if (!uniqueCheck.isValid) {
+                                        formError = uniqueCheck.errorMessage
+                                        isSaving = false
+                                        return@launch
+                                    }
+
+                                    // 2. Проверка отличия от текущего пароля минимум на 60%
+                                    if (!isPasswordDifferentEnough(decryptedOriginalPassword!!, passwordDraft)) {
+                                        formError = "Новый пароль должен отличаться от текущего минимум на 60%"
+                                        isSaving = false
+                                        return@launch
+                                    }
+
+                                    // 3. Проверка отсутствия в истории (упрощённая: сравниваем с расшифрованными, если нужно, или полагаемся на fingerprint)
+                                    // Для надёжности проверяем, не совпадает ли fingerprint с текущим
+                                    if (fingerprint == oldEntry.passwordFingerprint) {
+                                        formError = "Этот пароль уже использовался"
+                                        isSaving = false
+                                        return@launch
+                                    }
+
+                                    // Шифруем новый пароль
+                                    finalEncryptedPassword = CryptoUtils.encrypt(passwordDraft)
                                     finalFingerprint = fingerprint
-                                    finalGenerationType = if (passwordChangedManually) "manual" else oldEntry.generationType
+                                    
+                                    // Если пароль сгенерирован, тип обновляется в callback генератора. Если вручную - "manual"
+                                    // (generationType уже обновлён при вводе или выборе генератора)
+                                    finalGenerationType = generationType
 
-                                    // Добавляем старый пароль в историю
+                                    // Добавляем предыдущий пароль в историю с указанием СТАРОГО generationType
                                     val updatedWithHistory = oldEntry.addToPasswordHistory(
-                                        oldPassword = originalPassword,
-                                        generationType = finalGenerationType,
+                                        oldPassword = decryptedOriginalPassword!!,
+                                        generationType = oldEntry.generationType, // Старый тип
                                         oldPasswordFingerprint = oldEntry.passwordFingerprint ?: ""
                                     )
                                     finalHistoryJson = updatedWithHistory.passwordHistoryJson
-
-                                    // Пересчитываем nextRotationDate
-                                    if (rotationEnabled) {
-                                        finalNextRotationDate = System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                                    }
+                                    
+                                    // Обновляем lastChanged
+                                    finalLastChanged = System.currentTimeMillis()
                                 }
-                                // Если пароль не менялся, все вышеуказанные переменные остаются старыми
+                                // Если пароль не изменялся, все переменные выше остаются старыми (включая lastChanged)
+
+                                //  РАСЧЁТ nextRotationDate
+                                finalNextRotationDate = if (!rotationEnabled) {
+                                    null
+                                } else if (!oldEntry.rotationEnabled || rotationPeriodMonths != oldEntry.rotationPeriodMonths || passwordChanged) {
+                                    // Ротация включена впервые, изменён период или изменён пароль
+                                    System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                                } else {
+                                    // Остальные случаи — сохраняем прежнюю дату
+                                    oldEntry.nextRotationDate
+                                }
 
                                 val updatedEntry = oldEntry.copy(
                                     service = service,
@@ -281,7 +445,7 @@ fun EntryEditorScreen(
                                     encryptedPassword = finalEncryptedPassword,
                                     url = url.ifBlank { null },
                                     notes = notes.ifBlank { null },
-                                    tagsCsv = tagsCsv,
+                                    tagsCsv = finalTags,
                                     isFavorite = isFavorite,
                                     rotationEnabled = rotationEnabled,
                                     rotationPeriodMonths = rotationPeriodMonths,
@@ -290,36 +454,59 @@ fun EntryEditorScreen(
                                     passwordFingerprint = finalFingerprint,
                                     nextRotationDate = finalNextRotationDate,
                                     passwordAccessMode = passwordAccessMode,
-                                    lastChanged = System.currentTimeMillis()
+                                    lastChanged = finalLastChanged,
+                                    textHint = textHint,
+                                    mnemonicPhraseHint = mnemonicPhraseHint,
+                                    mnemonicOptionsJson = mnemonicOptionsJson
                                 )
                                 
                                 viewModel.updateEntry(updatedEntry) { result ->
                                     when (result) {
                                         is PasswordOperationResult.Success -> onBack()
-                                        is PasswordOperationResult.Error -> errorMessage = result.message
+                                        is PasswordOperationResult.Error -> { formError = result.message; isSaving = false }
                                     }
                                 }
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSaving //  Отключаем кнопку во время сохранения
                 ) {
-                    Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(4.dp))
+                    if (isSaving) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        Spacer(Modifier.size(8.dp))
+                    } else {
+                        Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.size(4.dp))
+                    }
                     Text("Сохранить")
                 }
             }
         }
     }
 
+    //  ДИАЛОГ ДОСТУПА (PIN / Биометрия)
+    if (showAccessDialog && currentProfile != null) {
+        ProfileAccessDialog(
+            profile = currentProfile!!,
+            requireBiometric = requireBiometricForAccess,
+            onDismiss = { showAccessDialog = false },
+            onGranted = {
+                showAccessDialog = false
+                decryptAndEnablePassword()
+            }
+        )
+    }
+
+    //  ДИАЛОГ ГЕНЕРАТОРА
     if (showGeneratorDialog) {
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
-            onGenerated = { pwd, _, _ ->
-                password = pwd
-                //  Не перезаписываем originalPassword, чтобы система поняла, что пароль изменился
-                isPasswordDecrypted = true
-                passwordChangedManually = true
+            onGenerated = { pwd, hint, type ->
+                passwordDraft = pwd
+                generationType = type //  Сохраняем настоящий тип (например, "ampg_v1", "random")
+                textHint = hint
+                passwordChanged = true
                 showGeneratorDialog = false
             },
             initialServiceName = service
