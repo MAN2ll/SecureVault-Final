@@ -3,8 +3,6 @@
 package com.securevault.ui.screens
 
 import android.content.Context
-import com.securevault.utils.AccessResult
-import com.securevault.utils.resolveProfileAccess
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,19 +15,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.data.PasswordHistoryItem
 import com.securevault.data.Profile
-import com.securevault.security.ProfilePasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.utils.resolveAccess // используем единую функцию
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -121,7 +117,10 @@ fun RotationJournalScreen(
                                             historyItemToShow = entry to item
                                             revealedHistoryPassword = null
                                             
-                                            val result = PasswordAccessPolicy.resolve(entry, currentProfile ?: Profile(0, "", "", "")) // Fallback для типа
+                                            // ✅ ИСПРАВЛЕНО: используем resolveAccess вместо PasswordAccessPolicy.resolve
+                                            val fallbackProfile = currentProfile ?: Profile(0, "", "", "")
+                                            val result = resolveAccess(entry, fallbackProfile)
+                                            
                                             when (result) {
                                                 is AccessResult.Granted -> {
                                                     revealedHistoryPassword = try { item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно" } catch (e: Exception) { "Ошибка расшифровки" }
