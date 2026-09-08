@@ -9,8 +9,13 @@ enum class AccessMode(val value: String) {
     BIOMETRIC_OR_PIN("biometric_or_pin")
 }
 
-// МОСТ СОВМЕСТИМОСТИ: связывает старый код с новой PasswordAccessPolicy
-typealias AccessResult = PasswordAccessPolicy.Result
+// ЯВНО ОБЪЯВЛЯЕМ AccessResult, чтобы AccessResult.Granted работало везде
+sealed class AccessResult {
+    object Granted : AccessResult()
+    object PinRequired : AccessResult()
+    object BiometricOrPin : AccessResult()
+    object PinNotSet : AccessResult()
+}
 
 fun resolveProfileAccess(profile: Profile): AccessResult {
     return when (profile.profileAccessMode) {
