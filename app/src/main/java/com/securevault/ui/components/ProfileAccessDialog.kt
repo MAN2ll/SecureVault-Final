@@ -1,116 +1,134 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.securevault.ui.components
 
+import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
+import java.util.concurrent.Executor
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileAccessDialog(
     profile: Profile,
-    title: String,
-    subtitle: String,
-    allowBiometric: Boolean,
-    onConfirmed: () -> Unit,
-    onDismiss: () -> Unit
+    requireBiometric: Boolean,
+    onDismiss: () -> Unit,
+    onGranted: () -> Unit
 ) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
-    
-    var showPinInput by remember { mutableStateOf(!allowBiometric) }
-    var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
+    val activity = context as? ComponentActivity
+    var pinInput by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isVerifying by remember { mutableStateOf(false) }
+
+    fun verifyPin() {
+        if (pinInput.isBlank()) {
+            errorMessage = "Введите PIN"
+            return
+        }
+        isVerifying = true
+        val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
+        isVerifying = false
+        
+        if (isValid) {
+            onGranted()
+        } else {
+            errorMessage = "Неверный PIN"
+            pinInput = ""
+        }
+    }
+
+    fun launchBiometric() {
+        if (activity == null) {
+            verifyPin() // Fallback
+            return
+        }
+        
+        val executor: Executor = ContextCompat.getMainExecutor(activity)
+        val biometricPrompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    onGranted()
+                }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    // При ошибке или отмене биометрии предлагаем ввести PIN
+                }
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    errorMessage = "Биометрия не распознана. Введите PIN."
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Доступ к паролю")
+            .setSubtitle("Подтвердите личность для просмотра")
+            .setNegativeButtonText("Использовать PIN")
+            .build()
+
+        biometricPrompt.authenticate(promptInfo)
+    }
 
     LaunchedEffect(Unit) {
-        if (allowBiometric && activity != null) {
+        if (requireBiometric) {
             val biometricManager = BiometricManager.from(context)
-            
-            // ✅ ИСПРАВЛЕНО: Используем ТОЛЬКО BIOMETRIC_STRONG. 
-            // DEVICE_CREDENTIAL удалён, чтобы системный PIN телефона не подменял собой PIN профиля.
-            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            
+            val canAuthenticate = biometricManager.canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
             if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                val executor = ContextCompat.getMainExecutor(context)
-                val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
-                        onConfirmed()
-                    }
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        showPinInput = true
-                    }
-                    override fun onAuthenticationFailed() {
-                        super.onAuthenticationFailed()
-                        showPinInput = true
-                    }
-                })
-
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle(title)
-                    .setSubtitle("Используйте отпечаток пальца или лицо")
-                    .setNegativeButtonText("Ввести PIN профиля")
-                    .build()
-
-                biometricPrompt.authenticate(promptInfo)
-                return@LaunchedEffect
+                launchBiometric()
             }
         }
-        // Если биометрия недоступна или запрещена (allowBiometric == false), показываем PIN
-        showPinInput = true
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Требуется подтверждение") },
         text = {
-            if (showPinInput) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(subtitle, fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = pin,
-                        onValueChange = { pin = it; error = null },
-                        label = { Text("PIN профиля") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = error != null
-                    )
-                    if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Введите PIN профиля для доступа к паролю:")
+                OutlinedTextField(
+                    value = pinInput,
+                    onValueChange = { 
+                        pinInput = it.filter { char -> char.isDigit() }.take(8)
+                        errorMessage = null 
+                    },
+                    label = { Text("PIN") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = errorMessage != null
+                )
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
-            } else {
-                Text("Ожидание биометрии...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
-            if (showPinInput) {
-                Button(onClick = {
-                    if (pin.isBlank()) {
-                        error = "Введите PIN профиля"
-                        return@Button
-                    }
-                    if (ProfilePasswordHasher.verify(pin, profile.passwordHash, profile.passwordSalt)) {
-                        onConfirmed()
-                    } else {
-                        error = "Неверный PIN профиля"
-                    }
-                }) { Text("Подтвердить") }
+            Button(onClick = { verifyPin() }, enabled = pinInput.isNotEmpty() && !isVerifying) {
+                if (isVerifying) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("Подтвердить")
+                }
             }
         },
         dismissButton = {
