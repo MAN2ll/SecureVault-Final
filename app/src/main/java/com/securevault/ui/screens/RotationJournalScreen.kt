@@ -3,6 +3,8 @@
 package com.securevault.ui.screens
 
 import android.content.Context
+import com.securevault.utils.AccessResult
+import com.securevault.utils.resolveProfileAccess
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
