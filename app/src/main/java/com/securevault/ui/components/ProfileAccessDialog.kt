@@ -1,7 +1,5 @@
 package com.securevault.ui.components
 
-import android.content.Context
-import androidx.activity.ComponentActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
@@ -9,65 +7,91 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.securevault.data.Profile
 import com.securevault.security.ProfilePasswordHasher
 import java.util.concurrent.Executor
 
 @Composable
 fun ProfileAccessDialog(
-    profile: Profile,
-    requireBiometric: Boolean,
+    // Новые параметры (для PasswordViewDialog)
+    profile: Profile? = null,
+    requireBiometric: Boolean = false,
     onDismiss: () -> Unit,
-    onGranted: () -> Unit
+    onGranted: () -> Unit = {},
+    
+    //  Старые параметры для совместимости (для ProfileListScreen, QrScannerScreen и др.)
+    title: String? = null,
+    subtitle: String? = null,
+    allowBiometric: Boolean? = null,
+    onConfirmed: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val activity = context as? ComponentActivity
+    val activity = context as? FragmentActivity
     var pinInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isVerifying by remember { mutableStateOf(false) }
+
+    val isLegacyMode = onConfirmed != null
+    val dialogTitle = title ?: "Требуется подтверждение"
+    val dialogSubtitle = subtitle ?: "Введите PIN профиля для доступа к паролю:"
 
     fun verifyPin() {
         if (pinInput.isBlank()) {
             errorMessage = "Введите PIN"
             return
         }
-        isVerifying = true
-        val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
-        isVerifying = false
         
-        if (isValid) {
-            onGranted()
-        } else {
-            errorMessage = "Неверный PIN"
-            pinInput = ""
+        if (isLegacyMode) {
+            // В старом режиме мы просто отдаем PIN вызывающему коду для самостоятельной проверки
+            onConfirmed?.invoke(pinInput)
+            return
+        }
+
+        // В новом режиме проверяем сами
+        if (profile != null) {
+            isVerifying = true
+            val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
+            isVerifying = false
+            
+            if (isValid) {
+                onGranted()
+            } else {
+                errorMessage = "Неверный PIN"
+                pinInput = ""
+            }
         }
     }
 
     fun launchBiometric() {
         if (activity == null) {
-            verifyPin() // Fallback
+            verifyPin()
             return
         }
         
         val executor: Executor = ContextCompat.getMainExecutor(activity)
         val biometricPrompt = BiometricPrompt(
-            activity,
+            activity, //  Теперь используется FragmentActivity, что удовлетворяет конструктор
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    onGranted()
+                    if (isLegacyMode) {
+                        onConfirmed?.invoke("BIOMETRIC_SUCCESS")
+                    } else {
+                        onGranted()
+                    }
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    // При ошибке или отмене биометрии предлагаем ввести PIN
                 }
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
@@ -77,8 +101,8 @@ fun ProfileAccessDialog(
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Доступ к паролю")
-            .setSubtitle("Подтвердите личность для просмотра")
+            .setTitle(dialogTitle)
+            .setSubtitle(dialogSubtitle)
             .setNegativeButtonText("Использовать PIN")
             .build()
 
@@ -86,7 +110,8 @@ fun ProfileAccessDialog(
     }
 
     LaunchedEffect(Unit) {
-        if (requireBiometric) {
+        val shouldUseBiometric = requireBiometric || (allowBiometric == true)
+        if (shouldUseBiometric && activity != null) {
             val biometricManager = BiometricManager.from(context)
             val canAuthenticate = biometricManager.canAuthenticate(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -100,10 +125,10 @@ fun ProfileAccessDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Требуется подтверждение") },
+        title = { Text(dialogTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Введите PIN профиля для доступа к паролю:")
+                Text(dialogSubtitle)
                 OutlinedTextField(
                     value = pinInput,
                     onValueChange = { 
@@ -112,13 +137,13 @@ fun ProfileAccessDialog(
                     },
                     label = { Text("PIN") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), //  Импорт добавлен
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = errorMessage != null
                 )
                 if (errorMessage != null) {
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) //  Импорт sp добавлен
                 }
             }
         },
