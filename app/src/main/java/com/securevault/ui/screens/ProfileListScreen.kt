@@ -24,7 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Profile
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
-import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.utils.resolveProfileAccess
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
