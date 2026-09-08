@@ -3,8 +3,6 @@
 package com.securevault.ui.screens
 
 import android.Manifest
-import com.securevault.utils.AccessResult
-import com.securevault.utils.resolveProfileAccess
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
@@ -39,7 +37,7 @@ import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.utils.resolveAccess //  используем единую функцию
 import com.securevault.utils.SecureQrManager
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
@@ -55,7 +53,7 @@ fun QrScannerScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel() // 
+    authViewModel: AuthViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -75,7 +73,6 @@ fun QrScannerScreen(
     var showProfileAccessDialog by remember { mutableStateOf(false) }
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
-
 
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
@@ -97,8 +94,9 @@ fun QrScannerScreen(
         }
     }
 
+    //  используем resolveAccess вместо PasswordAccessPolicy.resolve
     fun requestAccess(entry: com.securevault.data.Entry, profile: Profile) {
-        when (val result = PasswordAccessPolicy.resolve(entry, profile)) {
+        when (val result = resolveAccess(entry, profile)) {
             is AccessResult.Granted -> {
                 showPassword = true
                 decryptedPassword = entry.password
