@@ -18,8 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
 import com.securevault.data.Profile
-import com.securevault.ui.screens.QrCodeDialog //  Правильный импорт для QR
+import com.securevault.ui.screens.QrCodeDialog
 import com.securevault.utils.CryptoUtils
+import com.securevault.utils.PasswordAccessPolicy
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -33,17 +34,53 @@ fun PasswordViewDialog(
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
-    var passwordVisible by remember { mutableStateOf(false) }
-    var showQrDialog by remember { mutableStateOf(false) }
     
-    val decryptedPassword = remember(entry.encryptedPassword) {
-        try { CryptoUtils.decrypt(entry.encryptedPassword) } catch (e: Exception) { "Ошибка расшифровки" }
-    }
-
+    //  Изначально plaintext-пароля в состоянии быть не должно
+    var decryptedPassword by remember { mutableStateOf<String?>(null) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    var showAccessDialog by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
+    var showQrDialog by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
+    //  Функция запроса доступа перед любым действием с паролем
+    fun requestAccess(action: () -> Unit) {
+        errorMessage = null
+        val policy = PasswordAccessPolicy.resolve(entry, profile)
+        
+        when (policy) {
+            is PasswordAccessPolicy.Result.Granted -> {
+                action()
+            }
+            is PasswordAccessPolicy.Result.PinRequired -> {
+                pendingAction = action
+                showAccessDialog = true
+            }
+            is PasswordAccessPolicy.Result.BiometricOrPin -> {
+                pendingAction = action
+                showAccessDialog = true
+            }
+            is PasswordAccessPolicy.Result.PinNotSet -> {
+                errorMessage = "Для просмотра пароля необходимо установить PIN в настройках профиля."
+            }
+        }
+    }
+
+    //  Очистка состояний при закрытии диалога или блокировке
+    val safeOnDismiss = {
+        decryptedPassword = null
+        passwordVisible = false
+        errorMessage = null
+        showAccessDialog = false
+        pendingAction = null
+        onDismiss()
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = safeOnDismiss,
         title = { Text(entry.service, fontWeight = FontWeight.Bold) },
         text = {
             Column(
@@ -51,21 +88,63 @@ fun PasswordViewDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 InfoRow("Логин", entry.username)
-                InfoRow("Пароль", decryptedPassword, isPassword = true, visible = passwordVisible)
+                
+                InfoRow(
+                    label = "Пароль", 
+                    value = decryptedPassword ?: "••••••••", 
+                    isPassword = true, 
+                    visible = passwordVisible
+                )
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть")
-                    }
+                    // Кнопка "Глаз"
                     IconButton(onClick = {
-                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", decryptedPassword))
+                        if (decryptedPassword == null) {
+                            requestAccess {
+                                try {
+                                    decryptedPassword = CryptoUtils.decrypt(entry.encryptedPassword)
+                                    passwordVisible = true
+                                } catch (e: Exception) {
+                                    errorMessage = "Ошибка расшифровки: ${e.message}"
+                                }
+                            }
+                        } else {
+                            passwordVisible = !passwordVisible
+                        }
+                    }) {
+                        Icon(
+                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, 
+                            "Показать/скрыть"
+                        )
+                    }
+                    
+                    // Кнопка "Копировать"
+                    IconButton(onClick = {
+                        requestAccess {
+                            val pwdToCopy = decryptedPassword ?: try {
+                                CryptoUtils.decrypt(entry.encryptedPassword).also { decryptedPassword = it }
+                            } catch (e: Exception) {
+                                errorMessage = "Ошибка расшифровки: ${e.message}"
+                                null
+                            }
+                            
+                            if (pwdToCopy != null) {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", pwdToCopy))
+                            }
+                        }
                     }) {
                         Icon(Icons.Default.ContentCopy, "Копировать")
                     }
+                    
+                    // Кнопка "QR" (доступна всегда)
                     IconButton(onClick = { showQrDialog = true }) {
                         Icon(Icons.Default.QrCode, "Показать QR-код")
                     }
+                }
+
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
 
                 if (entry.url?.isNotBlank() == true) InfoRow("URL", entry.url)
@@ -98,6 +177,26 @@ fun PasswordViewDialog(
         }
     )
 
+    //  Диалог проверки доступа (PIN / Биометрия)
+    if (showAccessDialog) {
+        val requireBiometric = PasswordAccessPolicy.resolve(entry, profile) is PasswordAccessPolicy.Result.BiometricOrPin
+        
+        ProfileAccessDialog(
+            profile = profile,
+            requireBiometric = requireBiometric,
+            onDismiss = { 
+                showAccessDialog = false
+                pendingAction = null
+            },
+            onGranted = {
+                showAccessDialog = false
+                pendingAction?.invoke()
+                pendingAction = null
+            }
+        )
+    }
+
+    //  Диалог QR-кода (доступен всегда)
     if (showQrDialog) {
         QrCodeDialog(
             entry = entry,
