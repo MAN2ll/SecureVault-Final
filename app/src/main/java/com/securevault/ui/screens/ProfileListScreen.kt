@@ -3,8 +3,6 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.clickable
-import com.securevault.utils.AccessResult
-import com.securevault.utils.resolveProfileAccess
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -83,17 +81,18 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            val accessResult = PasswordAccessPolicy.resolveProfileAccess(profile)
+                            //  ИСПРАВЛЕНО: используем resolveProfileAccess напрямую
+                            val accessResult = resolveProfileAccess(profile)
                             when (accessResult) {
-                                is com.securevault.utils.AccessResult.Granted -> {
+                                is AccessResult.Granted -> {
                                     vaultViewModel.setCurrentProfile(profile.id)
                                     onProfileSelected(profile.id)
                                 }
-                                is com.securevault.utils.AccessResult.PinRequired, 
-                                is com.securevault.utils.AccessResult.BiometricOrPin -> {
+                                is AccessResult.PinRequired, 
+                                is AccessResult.BiometricOrPin -> {
                                     selectedProfile = profile
                                 }
-                                is com.securevault.utils.AccessResult.PinNotSet -> {
+                                is AccessResult.PinNotSet -> {
                                     operationError = "PIN профиля не задан"
                                 }
                             }
@@ -134,8 +133,9 @@ fun ProfileListScreen(
     }
 
     if (selectedProfile != null) {
-        val accessResult = PasswordAccessPolicy.resolveProfileAccess(selectedProfile!!)
-        val allowBiometric = accessResult is com.securevault.utils.AccessResult.BiometricOrPin
+        //  ИСПРАВЛЕНО: используем resolveProfileAccess напрямую
+        val accessResult = resolveProfileAccess(selectedProfile!!)
+        val allowBiometric = accessResult is AccessResult.BiometricOrPin
         
         val dialogTitle = "Вход в профиль"
         val dialogSubtitle = if (allowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
