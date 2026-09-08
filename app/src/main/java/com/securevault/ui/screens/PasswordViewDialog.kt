@@ -19,8 +19,9 @@ import androidx.compose.ui.unit.sp
 import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.ui.screens.QrCodeDialog
+import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.PasswordAccessPolicy
+import com.securevault.utils.resolveAccess
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -35,7 +36,6 @@ fun PasswordViewDialog(
 ) {
     val context = LocalContext.current
     
-    //  Изначально plaintext-пароля в состоянии быть не должно
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -46,30 +46,26 @@ fun PasswordViewDialog(
     var showQrDialog by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
-    //  Функция запроса доступа перед любым действием с паролем
     fun requestAccess(action: () -> Unit) {
         errorMessage = null
-        val policy = PasswordAccessPolicy.resolve(entry, profile)
+        val policy = resolveAccess(entry, profile) //  Используем единую функцию
         
         when (policy) {
-            is PasswordAccessPolicy.Result.Granted -> {
-                action()
-            }
-            is PasswordAccessPolicy.Result.PinRequired -> {
+            is AccessResult.Granted -> action()
+            is AccessResult.PinRequired -> {
                 pendingAction = action
                 showAccessDialog = true
             }
-            is PasswordAccessPolicy.Result.BiometricOrPin -> {
+            is AccessResult.BiometricOrPin -> {
                 pendingAction = action
                 showAccessDialog = true
             }
-            is PasswordAccessPolicy.Result.PinNotSet -> {
+            is AccessResult.PinNotSet -> {
                 errorMessage = "Для просмотра пароля необходимо установить PIN в настройках профиля."
             }
         }
     }
 
-    //  Очистка состояний при закрытии диалога или блокировке
     val safeOnDismiss = {
         decryptedPassword = null
         passwordVisible = false
@@ -97,7 +93,6 @@ fun PasswordViewDialog(
                 )
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    // Кнопка "Глаз"
                     IconButton(onClick = {
                         if (decryptedPassword == null) {
                             requestAccess {
@@ -112,13 +107,9 @@ fun PasswordViewDialog(
                             passwordVisible = !passwordVisible
                         }
                     }) {
-                        Icon(
-                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, 
-                            "Показать/скрыть"
-                        )
+                        Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть")
                     }
                     
-                    // Кнопка "Копировать"
                     IconButton(onClick = {
                         requestAccess {
                             val pwdToCopy = decryptedPassword ?: try {
@@ -137,7 +128,6 @@ fun PasswordViewDialog(
                         Icon(Icons.Default.ContentCopy, "Копировать")
                     }
                     
-                    // Кнопка "QR" (доступна всегда)
                     IconButton(onClick = { showQrDialog = true }) {
                         Icon(Icons.Default.QrCode, "Показать QR-код")
                     }
@@ -177,9 +167,8 @@ fun PasswordViewDialog(
         }
     )
 
-    //  Диалог проверки доступа (PIN / Биометрия)
     if (showAccessDialog) {
-        val requireBiometric = PasswordAccessPolicy.resolve(entry, profile) is PasswordAccessPolicy.Result.BiometricOrPin
+        val requireBiometric = resolveAccess(entry, profile) is AccessResult.BiometricOrPin
         
         ProfileAccessDialog(
             profile = profile,
@@ -196,7 +185,6 @@ fun PasswordViewDialog(
         )
     }
 
-    //  Диалог QR-кода (доступен всегда)
     if (showQrDialog) {
         QrCodeDialog(
             entry = entry,
