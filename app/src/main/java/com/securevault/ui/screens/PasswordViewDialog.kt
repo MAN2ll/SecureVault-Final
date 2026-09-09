@@ -22,6 +22,7 @@ import com.securevault.ui.screens.QrCodeDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.resolveAccess
+import com.securevault.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -32,7 +33,8 @@ fun PasswordViewDialog(
     profile: Profile,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    authViewModel: AuthViewModel 
 ) {
     val context = LocalContext.current
     
@@ -46,9 +48,20 @@ fun PasswordViewDialog(
     var showQrDialog by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
+    
+    LaunchedEffect(Unit) {
+        authViewModel.clearSensitiveEvent.collect {
+            decryptedPassword = null
+            passwordVisible = false
+            errorMessage = null
+            showAccessDialog = false
+            pendingAction = null
+        }
+    }
+
     fun requestAccess(action: () -> Unit) {
         errorMessage = null
-        val policy = resolveAccess(entry, profile) //  Используем единую функцию
+        val policy = resolveAccess(entry, profile)
         
         when (policy) {
             is AccessResult.Granted -> action()
