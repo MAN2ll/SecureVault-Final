@@ -25,6 +25,7 @@ import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.PasswordValidator
 import com.securevault.utils.resolveAccess
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.launch
@@ -36,6 +37,7 @@ fun EntryEditorScreen(
     profileId: Int?,
     onBack: () -> Unit,
     onLock: () -> Unit = {},
+    authViewModel: AuthViewModel, 
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -78,6 +80,16 @@ fun EntryEditorScreen(
 
     val isEditMode = id != null && id != "new"
 
+    LaunchedEffect(Unit) {
+        authViewModel.clearSensitiveEvent.collect {
+            passwordDraft = ""
+            decryptedOriginalPassword = null
+            passwordVisible = false
+            passwordChanged = false
+            formError = null
+        }
+    }
+
     LaunchedEffect(id) {
         if (isEditMode) {
             isLoading = true
@@ -116,7 +128,6 @@ fun EntryEditorScreen(
             .joinToString(",")
     }
 
-    //  ЛОГИКА РАСШИФРОВКИ ВСТРОЕНА ПРЯМО СЮДА
     fun requestPasswordAccess() {
         formError = null
         if (currentProfile == null) {
@@ -448,7 +459,6 @@ fun EntryEditorScreen(
         }
     }
 
-    //  ДИАЛОГ ДОСТУПА С ВСТРОЕННОЙ ЛОГИКОЙ РАСШИФРОВКИ
     if (showAccessDialog && currentProfile != null) {
         ProfileAccessDialog(
             profile = currentProfile!!,
