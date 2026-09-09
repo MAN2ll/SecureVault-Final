@@ -88,7 +88,8 @@ fun SecureVaultNavHost(
                             popUpTo("vault/$profileId") { inclusive = true }
                         }
                     },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel // 
                 )
             }
 
@@ -109,7 +110,8 @@ fun SecureVaultNavHost(
                     id = entryId,
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel // 
                 )
             }
 
