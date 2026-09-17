@@ -25,7 +25,7 @@ import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.resolveAccess // используем единую функцию
+import com.securevault.utils.resolveAccess
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -117,7 +117,6 @@ fun RotationJournalScreen(
                                             historyItemToShow = entry to item
                                             revealedHistoryPassword = null
                                             
-                                            // ✅ ИСПРАВЛЕНО: используем resolveAccess вместо PasswordAccessPolicy.resolve
                                             val fallbackProfile = currentProfile ?: Profile(0, "", "", "")
                                             val result = resolveAccess(entry, fallbackProfile)
                                             
@@ -152,17 +151,15 @@ fun RotationJournalScreen(
     }
 
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
-        val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+ 
         ProfileAccessDialog(
             profile = currentProfile,
-            title = "Подтверждение доступа",
-            subtitle = dialogSubtitle,
             allowBiometric = currentAccessAllowBiometric,
-            onConfirmed = {
+            onDismiss = { showProfileAccessDialog = false },
+            onGranted = {
                 revealedHistoryPassword = try { historyItemToShow!!.second.encryptedOldPassword?.let { CryptoUtils.decrypt(it) } ?: "Недоступно" } catch (e: Exception) { "Ошибка расшифровки" }
                 showProfileAccessDialog = false
-            },
-            onDismiss = { showProfileAccessDialog = false }
+            }
         )
     }
 
