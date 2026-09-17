@@ -48,7 +48,6 @@ fun PasswordViewDialog(
     var showQrDialog by remember { mutableStateOf(false) }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
 
-    
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             decryptedPassword = null
@@ -183,9 +182,10 @@ fun PasswordViewDialog(
     if (showAccessDialog) {
         val requireBiometric = resolveAccess(entry, profile) is AccessResult.BiometricOrPin
         
+    
         ProfileAccessDialog(
             profile = profile,
-            requireBiometric = requireBiometric,
+            allowBiometric = requireBiometric,
             onDismiss = { 
                 showAccessDialog = false
                 pendingAction = null
