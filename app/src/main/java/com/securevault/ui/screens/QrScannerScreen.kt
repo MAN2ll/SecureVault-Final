@@ -37,7 +37,7 @@ import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.resolveAccess //  используем единую функцию
+import com.securevault.utils.resolveAccess
 import com.securevault.utils.SecureQrManager
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
@@ -94,7 +94,6 @@ fun QrScannerScreen(
         }
     }
 
-    //  используем resolveAccess вместо PasswordAccessPolicy.resolve
     fun requestAccess(entry: com.securevault.data.Entry, profile: Profile) {
         when (val result = resolveAccess(entry, profile)) {
             is AccessResult.Granted -> {
@@ -235,18 +234,16 @@ fun QrScannerScreen(
     if (showProfileAccessDialog && scannedEntryId != null && currentProfile != null) {
         val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
-            val dialogSubtitle = if (currentAccessAllowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
+           
             ProfileAccessDialog(
                 profile = currentProfile,
-                title = "Подтверждение доступа",
-                subtitle = dialogSubtitle,
                 allowBiometric = currentAccessAllowBiometric,
-                onConfirmed = {
+                onDismiss = { showProfileAccessDialog = false },
+                onGranted = {
                     showPassword = true
                     decryptedPassword = entry.password
                     showProfileAccessDialog = false
-                },
-                onDismiss = { showProfileAccessDialog = false }
+                }
             )
         }
     }
