@@ -39,7 +39,7 @@ fun ProfileAccessDialog(
             return
         }
         isVerifying = true
-        // ✅ СТРОГАЯ ПРОВЕРКА PIN
+        //  СТРОГАЯ ПРОВЕРКА PIN
         val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
         isVerifying = false
         
@@ -53,7 +53,7 @@ fun ProfileAccessDialog(
 
     fun launchBiometric() {
         if (activity == null) {
-            verifyPin() // Fallback, если Activity недоступен
+            verifyPin()
             return
         }
         
@@ -68,7 +68,6 @@ fun ProfileAccessDialog(
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    // При ошибке или отмене просто ничего не делаем, пользователь может ввести PIN
                 }
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
@@ -77,6 +76,7 @@ fun ProfileAccessDialog(
             }
         )
 
+        //  ТОЛЬКО BIOMETRIC_STRONG, БЕЗ DEVICE_CREDENTIAL
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Подтверждение доступа")
             .setSubtitle("Используйте отпечаток пальца")
