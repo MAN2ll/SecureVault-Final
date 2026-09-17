@@ -81,7 +81,6 @@ fun ProfileListScreen(
                 items(profiles) { profile ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable {
-                            //  ИСПРАВЛЕНО: используем resolveProfileAccess напрямую
                             val accessResult = resolveProfileAccess(profile)
                             when (accessResult) {
                                 is AccessResult.Granted -> {
@@ -104,7 +103,7 @@ fun ProfileListScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(profile.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 Text(
-                                    if (profile.passwordHash.isBlank()) "Без PIN" else "Защищено PIN",
+                                    if (profile.passwordHash.isNullOrBlank()) "Без PIN" else "Защищено PIN",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -133,24 +132,19 @@ fun ProfileListScreen(
     }
 
     if (selectedProfile != null) {
-        //  ИСПРАВЛЕНО: используем resolveProfileAccess напрямую
         val accessResult = resolveProfileAccess(selectedProfile!!)
         val allowBiometric = accessResult is AccessResult.BiometricOrPin
-        
-        val dialogTitle = "Вход в профиль"
-        val dialogSubtitle = if (allowBiometric) "Используйте отпечаток или введите PIN профиля" else "Введите PIN профиля"
 
+    
         ProfileAccessDialog(
             profile = selectedProfile!!,
-            title = dialogTitle,
-            subtitle = dialogSubtitle,
             allowBiometric = allowBiometric,
-            onConfirmed = {
+            onDismiss = { selectedProfile = null },
+            onGranted = {
                 vaultViewModel.setCurrentProfile(selectedProfile!!.id)
                 onProfileSelected(selectedProfile!!.id)
                 selectedProfile = null
-            },
-            onDismiss = { selectedProfile = null }
+            }
         )
     }
 
