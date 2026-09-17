@@ -460,9 +460,10 @@ fun EntryEditorScreen(
     }
 
     if (showAccessDialog && currentProfile != null) {
+
         ProfileAccessDialog(
             profile = currentProfile!!,
-            requireBiometric = requireBiometricForAccess,
+            allowBiometric = requireBiometricForAccess,
             onDismiss = { showAccessDialog = false },
             onGranted = {
                 showAccessDialog = false
