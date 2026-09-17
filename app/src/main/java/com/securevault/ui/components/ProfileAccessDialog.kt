@@ -9,7 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -22,17 +22,10 @@ import java.util.concurrent.Executor
 
 @Composable
 fun ProfileAccessDialog(
-    // Новые параметры (для PasswordViewDialog)
-    profile: Profile? = null,
-    requireBiometric: Boolean = false,
+    profile: Profile,
+    allowBiometric: Boolean,
     onDismiss: () -> Unit,
-    onGranted: () -> Unit = {},
-    
-    //  Старые параметры для совместимости (для ProfileListScreen, QrScannerScreen и др.)
-    title: String? = null,
-    subtitle: String? = null,
-    allowBiometric: Boolean? = null,
-    onConfirmed: ((String) -> Unit)? = null
+    onGranted: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -40,58 +33,42 @@ fun ProfileAccessDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isVerifying by remember { mutableStateOf(false) }
 
-    val isLegacyMode = onConfirmed != null
-    val dialogTitle = title ?: "Требуется подтверждение"
-    val dialogSubtitle = subtitle ?: "Введите PIN профиля для доступа к паролю:"
-
     fun verifyPin() {
         if (pinInput.isBlank()) {
             errorMessage = "Введите PIN"
             return
         }
+        isVerifying = true
+        // ✅ СТРОГАЯ ПРОВЕРКА PIN
+        val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
+        isVerifying = false
         
-        if (isLegacyMode) {
-            // В старом режиме мы просто отдаем PIN вызывающему коду для самостоятельной проверки
-            onConfirmed?.invoke(pinInput)
-            return
-        }
-
-        // В новом режиме проверяем сами
-        if (profile != null) {
-            isVerifying = true
-            val isValid = ProfilePasswordHasher.verify(pinInput, profile.passwordHash ?: "", profile.passwordSalt ?: "")
-            isVerifying = false
-            
-            if (isValid) {
-                onGranted()
-            } else {
-                errorMessage = "Неверный PIN"
-                pinInput = ""
-            }
+        if (isValid) {
+            onGranted()
+        } else {
+            errorMessage = "Неверный PIN"
+            pinInput = ""
         }
     }
 
     fun launchBiometric() {
         if (activity == null) {
-            verifyPin()
+            verifyPin() // Fallback, если Activity недоступен
             return
         }
         
         val executor: Executor = ContextCompat.getMainExecutor(activity)
         val biometricPrompt = BiometricPrompt(
-            activity, //  Теперь используется FragmentActivity, что удовлетворяет конструктор
+            activity,
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    if (isLegacyMode) {
-                        onConfirmed?.invoke("BIOMETRIC_SUCCESS")
-                    } else {
-                        onGranted()
-                    }
+                    onGranted()
                 }
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
+                    // При ошибке или отмене просто ничего не делаем, пользователь может ввести PIN
                 }
                 override fun onAuthenticationFailed() {
                     super.onAuthenticationFailed()
@@ -101,8 +78,8 @@ fun ProfileAccessDialog(
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(dialogTitle)
-            .setSubtitle(dialogSubtitle)
+            .setTitle("Подтверждение доступа")
+            .setSubtitle("Используйте отпечаток пальца")
             .setNegativeButtonText("Использовать PIN")
             .build()
 
@@ -110,12 +87,9 @@ fun ProfileAccessDialog(
     }
 
     LaunchedEffect(Unit) {
-        val shouldUseBiometric = requireBiometric || (allowBiometric == true)
-        if (shouldUseBiometric && activity != null) {
+        if (allowBiometric && activity != null) {
             val biometricManager = BiometricManager.from(context)
-            val canAuthenticate = biometricManager.canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
+            val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
                 launchBiometric()
             }
@@ -125,10 +99,10 @@ fun ProfileAccessDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text(dialogTitle) },
+        title = { Text("Требуется подтверждение") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(dialogSubtitle)
+                Text("Введите PIN профиля для доступа:")
                 OutlinedTextField(
                     value = pinInput,
                     onValueChange = { 
@@ -137,13 +111,13 @@ fun ProfileAccessDialog(
                     },
                     label = { Text("PIN") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), //  Импорт добавлен
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = errorMessage != null
                 )
                 if (errorMessage != null) {
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) //  Импорт sp добавлен
+                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             }
         },
