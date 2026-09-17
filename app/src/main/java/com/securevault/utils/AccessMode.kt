@@ -7,10 +7,27 @@ enum class AccessMode(val value: String) {
     INHERIT("inherit"),
     NO_CONFIRMATION("no_confirmation"),
     PIN_REQUIRED("pin_required"),
-    BIOMETRIC_OR_PIN("biometric_or_pin")
+    BIOMETRIC_OR_PIN("biometric_or_pin");
+
+    companion object {
+        /**
+         * Безопасный парсинг режима доступа без учёта регистра.
+         * Если значение null или неизвестно, возвращается INHERIT как наиболее безопасный вариант 
+         * (который затем заставит проверить настройки профиля).
+         */
+        fun fromString(mode: String?): AccessMode {
+            return when (mode?.lowercase()) {
+                "inherit" -> INHERIT
+                "no_confirmation" -> NO_CONFIRMATION
+                "pin_required" -> PIN_REQUIRED
+                "biometric_or_pin" -> BIOMETRIC_OR_PIN
+                // Неизвестные или пустые значения безопасно fallback-ятся на INHERIT
+                else -> INHERIT
+            }
+        }
+    }
 }
 
-//  ЕДИНЫЙ sealed class для всех экранов
 sealed class AccessResult {
     object Granted : AccessResult()
     object PinRequired : AccessResult()
@@ -18,42 +35,73 @@ sealed class AccessResult {
     object PinNotSet : AccessResult()
 }
 
-// Для проверки доступа к КОНКРЕТНОЙ ЗАПИСИ (учитывает наследование от профиля)
+/**
+ * Определяет право доступа к КОНКРЕТНОЙ ЗАПИСИ.
+ * Никогда не возвращает Granted для неизвестных режимов.
+ */
 fun resolveAccess(entry: Entry, profile: Profile): AccessResult {
-    val mode = when (entry.passwordAccessMode) {
-        AccessMode.INHERIT.value -> profile.passwordAccessMode
-        else -> entry.passwordAccessMode
+    // Безопасно парсим режим записи (учитывает регистр)
+    val entryMode = AccessMode.fromString(entry.passwordAccessMode)
+    
+    // Если запись наследует режим, берем режим профиля (также с безопасным парсингом)
+    val effectiveMode = when (entryMode) {
+        AccessMode.INHERIT -> AccessMode.fromString(profile.passwordAccessMode)
+        else -> entryMode
     }
 
-    return when (mode) {
-        AccessMode.NO_CONFIRMATION.value -> AccessResult.Granted
-        AccessMode.PIN_REQUIRED.value -> {
+    return when (effectiveMode) {
+        AccessMode.NO_CONFIRMATION -> AccessResult.Granted
+        
+        AccessMode.PIN_REQUIRED -> {
             if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) {
                 AccessResult.PinNotSet
             } else {
                 AccessResult.PinRequired
             }
         }
-        AccessMode.BIOMETRIC_OR_PIN.value -> {
+        
+        AccessMode.BIOMETRIC_OR_PIN -> {
             if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) {
                 AccessResult.PinNotSet
             } else {
                 AccessResult.BiometricOrPin
             }
         }
-        else -> AccessResult.Granted
+        
+        //  БЕЗОПАСНЫЙ FALLBACK: Если режим всё ещё INHERIT (например, профиль тоже был INHERIT) 
+        // или попал сюда как неизвестный, мы ТРЕБУЕМ PIN. Никакого автоматического Granted.
+        AccessMode.INHERIT -> AccessResult.PinRequired
     }
 }
 
-//  Для проверки доступа к САМОМУ ПРОФИЛЮ (используется в ProfileListScreen, QrScannerScreen и т.д.)
+/**
+ * Определяет право доступа к САМОМУ ПРОФИЛЮ.
+ * Никогда не возвращает Granted для неизвестных режимов.
+ */
 fun resolveProfileAccess(profile: Profile): AccessResult {
-    return when (profile.profileAccessMode) {
-        AccessMode.BIOMETRIC_OR_PIN.value -> {
-            if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) AccessResult.PinNotSet else AccessResult.BiometricOrPin
+    val profileMode = AccessMode.fromString(profile.profileAccessMode)
+
+    return when (profileMode) {
+        AccessMode.NO_CONFIRMATION -> AccessResult.Granted
+        
+        AccessMode.PIN_REQUIRED -> {
+            if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) {
+                AccessResult.PinNotSet
+            } else {
+                AccessResult.PinRequired
+            }
         }
-        AccessMode.PIN_REQUIRED.value -> {
-            if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) AccessResult.PinNotSet else AccessResult.PinRequired
+        
+        AccessMode.BIOMETRIC_OR_PIN -> {
+            if (profile.passwordHash.isNullOrBlank() || profile.passwordSalt.isNullOrBlank()) {
+                AccessResult.PinNotSet
+            } else {
+                AccessResult.BiometricOrPin
+            }
         }
-        else -> AccessResult.Granted
+        
+        //  БЕЗОПАСНЫЙ FALLBACK: Профиль не может "наследовать". 
+        // Если режим неизвестен, null или случайно установлен в INHERIT, мы ТРЕБУЕМ PIN.
+        AccessMode.INHERIT -> AccessResult.PinRequired
     }
 }
