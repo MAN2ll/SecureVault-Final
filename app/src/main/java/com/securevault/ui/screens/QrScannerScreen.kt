@@ -234,7 +234,7 @@ fun QrScannerScreen(
     if (showProfileAccessDialog && scannedEntryId != null && currentProfile != null) {
         val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
-           
+            // ✅ ИСПРАВЛЕННЫЙ ВЫЗОВ
             ProfileAccessDialog(
                 profile = currentProfile,
                 allowBiometric = currentAccessAllowBiometric,
