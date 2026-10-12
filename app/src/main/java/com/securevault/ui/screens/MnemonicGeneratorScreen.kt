@@ -92,7 +92,7 @@ fun MnemonicGeneratorScreen(
                     
                     InfoItem("1. Введите фразу", "Например: 'это был обычный август'")
                     InfoItem("2. Выберите режим", "Один пользователь или два пользователя")
-                    InfoItem("3. Получите 3 варианта", "Все варианты валидны и объяснимы")
+                    InfoItem("3. Получите варианты", "Все варианты валидны и объяснимы")
                     InfoItem("4. Выберите пароль", "Нажмите на вариант для копирования")
                     
                     Spacer(Modifier.height(16.dp))
@@ -135,7 +135,8 @@ fun MnemonicGeneratorScreen(
     if (showGeneratorDialog) {
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
-            onGenerated = { pwd, hint, type ->
+            //  ОБНОВЛЁННАЯ СИГНАТУРА: 5 параметров
+            onGenerated = { pwd, type, hint, mnemonicHint, mnemonicJson ->
                 clipboardManager.setText(AnnotatedString(pwd))
                 showGeneratorDialog = false
             },
