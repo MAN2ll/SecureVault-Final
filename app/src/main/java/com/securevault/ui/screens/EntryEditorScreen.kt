@@ -63,9 +63,8 @@ fun EntryEditorScreen(
     var mnemonicPhraseHint by remember { mutableStateOf<String?>(null) }
     var mnemonicOptionsJson by remember { mutableStateOf<String?>(null) }
     
-    // НОВОЕ УПРАВЛЕНИЕ ПАРОЛЕМ
     var originalEntry by remember { mutableStateOf<Entry?>(null) }
-    var newPassword by remember { mutableStateOf<String?>(null) } // null = не меняется
+    var newPassword by remember { mutableStateOf<String?>(null) }
     var decryptedPassword by remember { mutableStateOf<String?>(null) }
     var passwordVisible by remember { mutableStateOf(false) }
     
@@ -132,7 +131,6 @@ fun EntryEditorScreen(
             .joinToString(",")
     }
 
-    // ПРОВЕРКА ДОСТУПА ИСПОЛЬЗУЕТ ПРОФИЛЬ ЗАПИСИ, А НЕ currentProfile
     fun requestPasswordAccess(action: () -> Unit) {
         formError = null
         val accessProfileId = originalEntry?.profileId ?: targetProfileId
@@ -216,7 +214,6 @@ fun EntryEditorScreen(
                 OutlinedTextField(value = service, onValueChange = { service = it }, label = { Text("Сервис *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Логин / Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-                //  ПОЛЕ ПАРОЛЯ: ЧИТАЕМОЕ ТОЛЬКО ПОСЛЕ РАЗБЛОКИРОВКИ
                 OutlinedTextField(
                     value = if (isEditMode && decryptedPassword == null) "" else (newPassword ?: ""),
                     onValueChange = { newPwd ->
@@ -336,7 +333,6 @@ fun EntryEditorScreen(
                                 return@launch
                             }
                             
-                            //  ПРОВЕРКА ПАРОЛЯ ТОЛЬКО ДЛЯ НОВОЙ ЗАПИСИ ИЛИ РЕАЛЬНОЙ ЗАМЕНЫ
                             if (!isEditMode && newPassword.isNullOrBlank()) {
                                 formError = "Пароль обязателен для новой записи"
                                 isSaving = false
@@ -358,9 +354,11 @@ fun EntryEditorScreen(
                             var finalNextRotationDate = originalEntry?.nextRotationDate
                             var finalGenerationType = generationType
 
-                            // ✅ ОБРАБОТКА ТОЛЬКО ПРИ РЕАЛЬНОЙ ЗАМЕНЕ ИЛИ СОЗДАНИИ
+                            //  ЯВНОЕ ПРИВЕДЕНИЕ ТИПА ДЛЯ ГАРАНТИИ String
                             if (newPassword != null) {
-                                val uniqueCheck = PasswordValidator.validateUniqueCharacters(newPassword!!)
+                                val pwd = newPassword!! 
+                                
+                                val uniqueCheck = PasswordValidator.validateUniqueCharacters(pwd)
                                 if (!uniqueCheck.isValid) {
                                     formError = uniqueCheck.errorMessage
                                     isSaving = false
@@ -368,21 +366,21 @@ fun EntryEditorScreen(
                                 }
 
                                 if (isEditMode && decryptedPassword != null) {
-                                    if (!isPasswordDifferentEnough(decryptedPassword!!, newPassword!!)) {
+                                    if (!isPasswordDifferentEnough(decryptedPassword!!, pwd)) {
                                         formError = "Новый пароль должен отличаться от текущего минимум на 60%"
                                         isSaving = false
                                         return@launch
                                     }
                                 }
 
-                                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword!!, context)
+                                val newFingerprint = PasswordValidator.buildPasswordFingerprint(pwd, context)
                                 if (isEditMode && newFingerprint == originalEntry?.passwordFingerprint) {
                                     formError = "Этот пароль уже использовался"
                                     isSaving = false
                                     return@launch
                                 }
 
-                                finalEncryptedPassword = CryptoUtils.encrypt(newPassword!!)
+                                finalEncryptedPassword = CryptoUtils.encrypt(pwd)
                                 finalFingerprint = newFingerprint
                                 finalLastChanged = System.currentTimeMillis()
 
@@ -401,8 +399,9 @@ fun EntryEditorScreen(
                             }
 
                             if (!isEditMode) {
+                                val pwd = newPassword ?: ""
                                 val newEntry = Entry.create(
-                                    service = service, username = username, password = newPassword!!, profileId = targetProfileIdForSave,
+                                    service = service, username = username, password = pwd, profileId = targetProfileIdForSave,
                                     passwordFingerprint = finalFingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                                     isFavorite = isFavorite, generationType = finalGenerationType,
@@ -493,8 +492,6 @@ fun EntryEditorScreen(
                 showGeneratorDialog = false
             },
             initialServiceName = service,
-            //  Для редактирования передаем профиль, чтобы генератор мог (при желании) использовать его контекст, 
-            // но главное - мы уже прошли проверку доступа до открытия этого диалога
             profile = profile 
         )
     }
