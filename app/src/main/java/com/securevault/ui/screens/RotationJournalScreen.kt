@@ -151,7 +151,7 @@ fun RotationJournalScreen(
     }
 
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
- 
+       
         ProfileAccessDialog(
             profile = currentProfile,
             allowBiometric = currentAccessAllowBiometric,
