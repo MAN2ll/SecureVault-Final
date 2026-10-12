@@ -216,7 +216,7 @@ fun EntryEditorScreen(
                 OutlinedTextField(value = service, onValueChange = { service = it }, label = { Text("Сервис *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Логин / Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-                // ПОЛЕ ПАРОЛЯ: ЧИТАЕМОЕ ТОЛЬКО ПОСЛЕ РАЗБЛОКИРОВКИ
+                //  ПОЛЕ ПАРОЛЯ: ЧИТАЕМОЕ ТОЛЬКО ПОСЛЕ РАЗБЛОКИРОВКИ
                 OutlinedTextField(
                     value = if (isEditMode && decryptedPassword == null) "" else (newPassword ?: ""),
                     onValueChange = { newPwd ->
@@ -336,7 +336,7 @@ fun EntryEditorScreen(
                                 return@launch
                             }
                             
-                            // ПРОВЕРКА ПАРОЛЯ ТОЛЬКО ДЛЯ НОВОЙ ЗАПИСИ ИЛИ РЕАЛЬНОЙ ЗАМЕНЫ
+                            //  ПРОВЕРКА ПАРОЛЯ ТОЛЬКО ДЛЯ НОВОЙ ЗАПИСИ ИЛИ РЕАЛЬНОЙ ЗАМЕНЫ
                             if (!isEditMode && newPassword.isNullOrBlank()) {
                                 formError = "Пароль обязателен для новой записи"
                                 isSaving = false
@@ -493,7 +493,7 @@ fun EntryEditorScreen(
                 showGeneratorDialog = false
             },
             initialServiceName = service,
-            // Для редактирования передаем профиль, чтобы генератор мог (при желании) использовать его контекст, 
+            //  Для редактирования передаем профиль, чтобы генератор мог (при желании) использовать его контекст, 
             // но главное - мы уже прошли проверку доступа до открытия этого диалога
             profile = profile 
         )
