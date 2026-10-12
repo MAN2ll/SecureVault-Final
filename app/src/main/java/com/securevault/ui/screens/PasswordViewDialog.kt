@@ -182,7 +182,7 @@ fun PasswordViewDialog(
     if (showAccessDialog) {
         val requireBiometric = resolveAccess(entry, profile) is AccessResult.BiometricOrPin
         
-    
+        
         ProfileAccessDialog(
             profile = profile,
             allowBiometric = requireBiometric,
