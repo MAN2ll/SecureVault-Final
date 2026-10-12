@@ -21,8 +21,10 @@ import com.securevault.utils.PasswordGenerator
 @Composable
 fun UnifiedPasswordGeneratorDialog(
     onDismiss: () -> Unit,
-    onGenerated: (String, String?, String) -> Unit,
-    initialServiceName: String = ""
+    // ✅ ОБНОВЛЁННАЯ СИГНАТУРА: password, type, textHint, mnemonicPhraseHint, mnemonicOptionsJson
+    onGenerated: (String, String, String?, String?, String?) -> Unit,
+    initialServiceName: String = "",
+    profile: com.securevault.data.Profile? = null
 ) {
     var selectedMode by remember { mutableIntStateOf(0) }
 
@@ -44,10 +46,15 @@ fun UnifiedPasswordGeneratorDialog(
                 }
 
                 when (selectedMode) {
-                    0 -> RandomGeneratorContent(onGenerated)
-                    1 -> TwoPartGeneratorContent(onGenerated)
-                    2 -> AnchorGeneratorContent(onGenerated, initialServiceName)
-                    3 -> AmpgGeneratorContent(onGenerated, initialServiceName)
+                    // ✅ Случайные пароли очищают мнемонические поля (передают null)
+                    0 -> RandomGeneratorContent { pwd -> onGenerated(pwd, "random", null, null, null) }
+                    1 -> TwoPartGeneratorContent { pwd -> onGenerated(pwd, "random_two_part", null, null, null) }
+                    // ✅ Якорь передаёт подсказку как textHint
+                    2 -> AnchorGeneratorContent({ pwd, hint -> onGenerated(pwd, "random_anchor", hint, null, null) }, initialServiceName)
+                    // ✅ AMPG корректно передаёт mnemonicPhraseHint
+                    3 -> AmpgGeneratorContent({ pwd, type, mnemonicHint -> 
+                        onGenerated(pwd, type, null, mnemonicHint, null) 
+                    }, initialServiceName)
                 }
             }
         },
@@ -57,7 +64,7 @@ fun UnifiedPasswordGeneratorDialog(
 }
 
 @Composable
-private fun RandomGeneratorContent(onGenerated: (String, String?, String) -> Unit) {
+private fun RandomGeneratorContent(onGenerated: (String) -> Unit) {
     var length by remember { mutableIntStateOf(16) }
     var useLower by remember { mutableStateOf(true) }
     var useUpper by remember { mutableStateOf(true) }
@@ -81,12 +88,12 @@ private fun RandomGeneratorContent(onGenerated: (String, String?, String) -> Uni
             Text("Длина: $length", modifier = Modifier.weight(1f))
             Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 8f..32f, modifier = Modifier.weight(2f))
         }
-        Button(onClick = { onGenerated(generatedPassword, null, "random") }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
+        Button(onClick = { onGenerated(generatedPassword) }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
     }
 }
 
 @Composable
-private fun TwoPartGeneratorContent(onGenerated: (String, String?, String) -> Unit) {
+private fun TwoPartGeneratorContent(onGenerated: (String) -> Unit) {
     val allowedLengths = listOf(16, 18, 20)
     var lengthIndex by remember { mutableIntStateOf(0) }
     var length by remember { mutableIntStateOf(16) }
@@ -110,11 +117,11 @@ private fun TwoPartGeneratorContent(onGenerated: (String, String?, String) -> Un
             FilterChip(selected = lengthIndex == index, onClick = { lengthIndex = index; length = len }, label = { Text("$len", modifier = Modifier.weight(1f)) })
         }
     }
-    Button(onClick = { onGenerated(generatedPassword, null, "random_two_part") }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
+    Button(onClick = { onGenerated(generatedPassword) }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
 }
 
 @Composable
-private fun AnchorGeneratorContent(onGenerated: (String, String?, String) -> Unit, initialService: String) {
+private fun AnchorGeneratorContent(onGenerated: (String, String?) -> Unit, initialService: String) {
     var anchor by remember { mutableStateOf("") }
     var length by remember { mutableIntStateOf(16) }
     var addService by remember { mutableStateOf(false) }
@@ -141,13 +148,12 @@ private fun AnchorGeneratorContent(onGenerated: (String, String?, String) -> Uni
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 12f..32f, modifier = Modifier.weight(1f))
-        Button(onClick = { onGenerated(generatedPassword, anchor, "random_anchor") }, enabled = generatedPassword.isNotEmpty()) { Text("Выбрать") }
+        Button(onClick = { onGenerated(generatedPassword, anchor) }, enabled = generatedPassword.isNotEmpty()) { Text("Выбрать") }
     }
 }
 
-//  ПОЛНОСТЬЮ ВОССТАНОВЛЕННЫЙ AMPG ИНТЕРФЕЙС (БЕЗ ЗАГЛУШЕК)
 @Composable
-private fun AmpgGeneratorContent(onGenerated: (String, String?, String) -> Unit, initialService: String) {
+private fun AmpgGeneratorContent(onGenerated: (String, String, String?) -> Unit, initialService: String) {
     var phrase1 by remember { mutableStateOf("") }
     var phrase2 by remember { mutableStateOf("") }
     var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
@@ -223,7 +229,8 @@ private fun AmpgGeneratorContent(onGenerated: (String, String?, String) -> Unit,
             Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             variants.forEachIndexed { index, variant ->
                 Card(modifier = Modifier.fillMaxWidth().clickable { 
-                    onGenerated(variant.password, variant.mnemonicHint, "ampg_${variant.variantOffset}") 
+                    //  Передаём пароль, тип и mnemonicHint
+                    onGenerated(variant.password, "ampg_v${variant.variantOffset}", variant.mnemonicHint) 
                 }) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(variant.password, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
