@@ -37,7 +37,7 @@ fun EntryEditorScreen(
     profileId: Int?,
     onBack: () -> Unit,
     onLock: () -> Unit = {},
-    authViewModel: AuthViewModel, 
+    authViewModel: AuthViewModel,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -58,35 +58,38 @@ fun EntryEditorScreen(
     var rotationPeriodMonths by remember { mutableIntStateOf(6) }
     var passwordAccessMode by remember { mutableStateOf(AccessMode.INHERIT.value) }
     
-    var passwordDraft by remember { mutableStateOf("") }
-    var passwordChanged by remember { mutableStateOf(false) }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var decryptedOriginalPassword by remember { mutableStateOf<String?>(null) }
-    
     var generationType by remember { mutableStateOf("random") }
     var textHint by remember { mutableStateOf<String?>(null) }
     var mnemonicPhraseHint by remember { mutableStateOf<String?>(null) }
     var mnemonicOptionsJson by remember { mutableStateOf<String?>(null) }
+    
+    // НОВОЕ УПРАВЛЕНИЕ ПАРОЛЕМ
+    var originalEntry by remember { mutableStateOf<Entry?>(null) }
+    var newPassword by remember { mutableStateOf<String?>(null) } // null = не меняется
+    var decryptedPassword by remember { mutableStateOf<String?>(null) }
+    var passwordVisible by remember { mutableStateOf(false) }
     
     var showGeneratorDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     
     var showAccessDialog by remember { mutableStateOf(false) }
     var requireBiometricForAccess by remember { mutableStateOf(false) }
+    var pendingAccessAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val currentProfileIdState by viewModel.currentProfileId.collectAsState()
     val targetProfileId = profileId ?: currentProfileIdState ?: 0
-    val currentProfile by viewModel.currentProfile.collectAsState()
+    val profiles by viewModel.profiles.collectAsState()
 
     val isEditMode = id != null && id != "new"
 
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
-            passwordDraft = ""
-            decryptedOriginalPassword = null
+            newPassword = null
+            decryptedPassword = null
             passwordVisible = false
-            passwordChanged = false
             formError = null
+            showAccessDialog = false
+            pendingAccessAction = null
         }
     }
 
@@ -95,6 +98,7 @@ fun EntryEditorScreen(
             isLoading = true
             val entry = viewModel.getEntryById(id!!)
             if (entry != null) {
+                originalEntry = entry
                 service = entry.service
                 username = entry.username
                 url = entry.url ?: ""
@@ -109,8 +113,8 @@ fun EntryEditorScreen(
                 mnemonicPhraseHint = entry.mnemonicPhraseHint
                 mnemonicOptionsJson = entry.mnemonicOptionsJson
                 
-                decryptedOriginalPassword = null
-                passwordDraft = "" 
+                newPassword = null
+                decryptedPassword = null
             } else {
                 loadError = "Запись не найдена в базе данных"
             }
@@ -128,43 +132,35 @@ fun EntryEditorScreen(
             .joinToString(",")
     }
 
-    fun requestPasswordAccess() {
+    // ПРОВЕРКА ДОСТУПА ИСПОЛЬЗУЕТ ПРОФИЛЬ ЗАПИСИ, А НЕ currentProfile
+    fun requestPasswordAccess(action: () -> Unit) {
         formError = null
-        if (currentProfile == null) {
-            formError = "Ошибка: профиль не загружен"
+        val accessProfileId = originalEntry?.profileId ?: targetProfileId
+        val profile = profiles.find { it.id == accessProfileId }
+        
+        if (profile == null) {
+            formError = "Ошибка: профиль записи не найден"
             return
         }
         
-        val result = resolveAccess(
-            Entry(
-                id = id ?: "", service = service, username = username, 
-                encryptedPassword = "", profileId = targetProfileId,
-                passwordAccessMode = passwordAccessMode
-            ), 
-            currentProfile!!
+        val dummyEntry = originalEntry ?: Entry(
+            id = id ?: "", service = service, username = username, 
+            encryptedPassword = "", profileId = accessProfileId,
+            passwordAccessMode = passwordAccessMode
         )
         
+        val result = resolveAccess(dummyEntry, profile)
+        
         when (result) {
-            is AccessResult.Granted -> {
-                scope.launch {
-                    try {
-                        val entry = viewModel.getEntryById(id!!)
-                        if (entry != null) {
-                            decryptedOriginalPassword = CryptoUtils.decrypt(entry.encryptedPassword)
-                            passwordDraft = decryptedOriginalPassword!!
-                            passwordVisible = true
-                        }
-                    } catch (e: Exception) {
-                        formError = "Ошибка расшифровки: ${e.message}"
-                    }
-                }
-            }
+            is AccessResult.Granted -> action()
             is AccessResult.PinRequired -> {
                 requireBiometricForAccess = false
+                pendingAccessAction = action
                 showAccessDialog = true
             }
             is AccessResult.BiometricOrPin -> {
                 requireBiometricForAccess = true
+                pendingAccessAction = action
                 showAccessDialog = true
             }
             is AccessResult.PinNotSet -> {
@@ -183,8 +179,7 @@ fun EntryEditorScreen(
         for (i in 0 until minLen) {
             if (oldPwd[i] == newPwd[i]) matches++
         }
-        val similarity = matches.toDouble() / maxLength
-        return similarity <= 0.4
+        return (matches.toDouble() / maxLength) <= 0.4
     }
 
     Scaffold(
@@ -195,10 +190,9 @@ fun EntryEditorScreen(
                 actions = {
                     LockActionButton(onLock = { 
                         onLock()
-                        passwordDraft = ""
-                        decryptedOriginalPassword = null
+                        newPassword = null
+                        decryptedPassword = null
                         passwordVisible = false
-                        passwordChanged = false
                     })
                 }
             )
@@ -222,40 +216,51 @@ fun EntryEditorScreen(
                 OutlinedTextField(value = service, onValueChange = { service = it }, label = { Text("Сервис *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Логин / Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
+                // ПОЛЕ ПАРОЛЯ: ЧИТАЕМОЕ ТОЛЬКО ПОСЛЕ РАЗБЛОКИРОВКИ
                 OutlinedTextField(
-                    value = passwordDraft,
+                    value = if (isEditMode && decryptedPassword == null) "" else (newPassword ?: ""),
                     onValueChange = { newPwd ->
-                        passwordDraft = newPwd
+                        newPassword = newPwd
                         if (!isEditMode) {
-                            passwordChanged = true
                             generationType = "manual"
-                        } else {
-                            if (decryptedOriginalPassword != null) {
-                                passwordChanged = (newPwd != decryptedOriginalPassword)
-                            }
+                            textHint = null
+                            mnemonicPhraseHint = null
+                            mnemonicOptionsJson = null
                         }
                     },
                     label = { Text("Пароль *") },
                     singleLine = true,
-                    readOnly = isEditMode && decryptedOriginalPassword == null,
+                    readOnly = isEditMode && decryptedPassword == null,
                     placeholder = { 
-                        if (isEditMode && decryptedOriginalPassword == null) {
+                        if (isEditMode && decryptedPassword == null) {
                             Text("••••••••••••", fontSize = 16.sp) 
                         }
                     },
                     visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     trailingIcon = {
                         Row {
-                            if (isEditMode && decryptedOriginalPassword == null) {
-                                IconButton(onClick = { requestPasswordAccess() }) { 
-                                    Icon(Icons.Default.Visibility, "Показать/изменить пароль") 
+                            if (isEditMode && decryptedPassword == null) {
+                                IconButton(onClick = { requestPasswordAccess { 
+                                    scope.launch {
+                                        decryptedPassword = CryptoUtils.decrypt(originalEntry!!.encryptedPassword)
+                                        newPassword = decryptedPassword
+                                        passwordVisible = true
+                                    }
+                                }}) { 
+                                    Icon(Icons.Default.Visibility, "Разблокировать для изменения") 
                                 }
                             } else {
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) { 
                                     Icon(if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff, "Показать/скрыть") 
                                 }
                             }
-                            IconButton(onClick = { showGeneratorDialog = true }) { 
+                            IconButton(onClick = { 
+                                if (isEditMode && decryptedPassword == null) {
+                                    requestPasswordAccess { showGeneratorDialog = true }
+                                } else {
+                                    showGeneratorDialog = true
+                                }
+                            }) { 
                                 Icon(Icons.Default.AutoAwesome, "Сгенерировать") 
                             }
                         }
@@ -301,12 +306,8 @@ fun EntryEditorScreen(
                 
                 ExposedDropdownMenuBox(expanded = expandedAccess, onExpandedChange = { expandedAccess = !expandedAccess }) {
                     OutlinedTextField(
-                        readOnly = true, 
-                        value = currentAccessLabel, 
-                        onValueChange = {}, 
-                        label = { Text("Режим доступа к паролю") }, 
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) }, 
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                        readOnly = true, value = currentAccessLabel, onValueChange = {}, label = { Text("Режим доступа к паролю") }, 
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expandedAccess) }, modifier = Modifier.menuAnchor().fillMaxWidth()
                     )
                     ExposedDropdownMenu(expanded = expandedAccess, onDismissRequest = { expandedAccess = false }) {
                         accessModeLabels.forEach { (modeValue, label) ->
@@ -329,26 +330,82 @@ fun EntryEditorScreen(
                             formError = null
                             isSaving = true
                             
-                            if (service.isBlank() || passwordDraft.isBlank()) {
-                                formError = "Сервис и пароль обязательны для заполнения"
+                            if (service.isBlank()) {
+                                formError = "Сервис обязателен для заполнения"
                                 isSaving = false
                                 return@launch
                             }
-                            if (targetProfileId <= 0) {
-                                formError = "Ошибка: профиль не выбран"
+                            
+                            // ПРОВЕРКА ПАРОЛЯ ТОЛЬКО ДЛЯ НОВОЙ ЗАПИСИ ИЛИ РЕАЛЬНОЙ ЗАМЕНЫ
+                            if (!isEditMode && newPassword.isNullOrBlank()) {
+                                formError = "Пароль обязателен для новой записи"
+                                isSaving = false
+                                return@launch
+                            }
+                            if (isEditMode && newPassword != null && newPassword.isNullOrBlank()) {
+                                formError = "Пароль не может быть пустым"
                                 isSaving = false
                                 return@launch
                             }
 
                             val finalTags = processTags(tagsCsv)
-                            val fingerprint = PasswordValidator.buildPasswordFingerprint(passwordDraft, context)
+                            val targetProfileIdForSave = originalEntry?.profileId ?: targetProfileId
+
+                            var finalEncryptedPassword = originalEntry?.encryptedPassword ?: ""
+                            var finalFingerprint = originalEntry?.passwordFingerprint
+                            var finalHistoryJson = originalEntry?.passwordHistoryJson
+                            var finalLastChanged = originalEntry?.lastChanged ?: System.currentTimeMillis()
+                            var finalNextRotationDate = originalEntry?.nextRotationDate
+                            var finalGenerationType = generationType
+
+                            // ✅ ОБРАБОТКА ТОЛЬКО ПРИ РЕАЛЬНОЙ ЗАМЕНЕ ИЛИ СОЗДАНИИ
+                            if (newPassword != null) {
+                                val uniqueCheck = PasswordValidator.validateUniqueCharacters(newPassword!!)
+                                if (!uniqueCheck.isValid) {
+                                    formError = uniqueCheck.errorMessage
+                                    isSaving = false
+                                    return@launch
+                                }
+
+                                if (isEditMode && decryptedPassword != null) {
+                                    if (!isPasswordDifferentEnough(decryptedPassword!!, newPassword!!)) {
+                                        formError = "Новый пароль должен отличаться от текущего минимум на 60%"
+                                        isSaving = false
+                                        return@launch
+                                    }
+                                }
+
+                                val newFingerprint = PasswordValidator.buildPasswordFingerprint(newPassword!!, context)
+                                if (isEditMode && newFingerprint == originalEntry?.passwordFingerprint) {
+                                    formError = "Этот пароль уже использовался"
+                                    isSaving = false
+                                    return@launch
+                                }
+
+                                finalEncryptedPassword = CryptoUtils.encrypt(newPassword!!)
+                                finalFingerprint = newFingerprint
+                                finalLastChanged = System.currentTimeMillis()
+
+                                if (isEditMode && decryptedPassword != null) {
+                                    val updatedWithHistory = originalEntry!!.addToPasswordHistory(
+                                        oldPassword = decryptedPassword!!,
+                                        generationType = originalEntry!!.generationType,
+                                        oldPasswordFingerprint = originalEntry!!.passwordFingerprint ?: ""
+                                    )
+                                    finalHistoryJson = updatedWithHistory.passwordHistoryJson
+                                }
+
+                                if (rotationEnabled && (originalEntry == null || !originalEntry!!.rotationEnabled || rotationPeriodMonths != originalEntry!!.rotationPeriodMonths)) {
+                                    finalNextRotationDate = System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                                }
+                            }
 
                             if (!isEditMode) {
                                 val newEntry = Entry.create(
-                                    service = service, username = username, password = passwordDraft, profileId = targetProfileId,
-                                    passwordFingerprint = fingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
+                                    service = service, username = username, password = newPassword!!, profileId = targetProfileIdForSave,
+                                    passwordFingerprint = finalFingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                                    isFavorite = isFavorite, generationType = generationType,
+                                    isFavorite = isFavorite, generationType = finalGenerationType,
                                     tagsCsv = finalTags, passwordAccessMode = passwordAccessMode,
                                     textHint = textHint, mnemonicPhraseHint = mnemonicPhraseHint, mnemonicOptionsJson = mnemonicOptionsJson
                                 )
@@ -359,70 +416,12 @@ fun EntryEditorScreen(
                                     }
                                 }
                             } else {
-                                val oldEntry = viewModel.getEntryById(id!!) ?: run {
-                                    formError = "Запись не найдена"
-                                    isSaving = false
-                                    return@launch
-                                }
-
-                                var finalEncryptedPassword = oldEntry.encryptedPassword
-                                var finalHistoryJson = oldEntry.passwordHistoryJson
-                                var finalFingerprint = oldEntry.passwordFingerprint
-                                var finalGenerationType = oldEntry.generationType
-                                var finalLastChanged = oldEntry.lastChanged
-                                var finalNextRotationDate = oldEntry.nextRotationDate
-
-                                if (passwordChanged && decryptedOriginalPassword != null) {
-                                    val uniqueCheck = PasswordValidator.validateUniqueCharacters(passwordDraft)
-                                    if (!uniqueCheck.isValid) {
-                                        formError = uniqueCheck.errorMessage
-                                        isSaving = false
-                                        return@launch
-                                    }
-
-                                    if (!isPasswordDifferentEnough(decryptedOriginalPassword!!, passwordDraft)) {
-                                        formError = "Новый пароль должен отличаться от текущего минимум на 60%"
-                                        isSaving = false
-                                        return@launch
-                                    }
-
-                                    if (fingerprint == oldEntry.passwordFingerprint) {
-                                        formError = "Этот пароль уже использовался"
-                                        isSaving = false
-                                        return@launch
-                                    }
-
-                                    finalEncryptedPassword = CryptoUtils.encrypt(passwordDraft)
-                                    finalFingerprint = fingerprint
-                                    finalGenerationType = generationType
-
-                                    val updatedWithHistory = oldEntry.addToPasswordHistory(
-                                        oldPassword = decryptedOriginalPassword!!,
-                                        generationType = oldEntry.generationType,
-                                        oldPasswordFingerprint = oldEntry.passwordFingerprint ?: ""
-                                    )
-                                    finalHistoryJson = updatedWithHistory.passwordHistoryJson
-                                    finalLastChanged = System.currentTimeMillis()
-                                }
-
-                                finalNextRotationDate = if (!rotationEnabled) {
-                                    null
-                                } else if (!oldEntry.rotationEnabled || rotationPeriodMonths != oldEntry.rotationPeriodMonths || passwordChanged) {
-                                    System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                                } else {
-                                    oldEntry.nextRotationDate
-                                }
-
-                                val updatedEntry = oldEntry.copy(
-                                    service = service,
-                                    username = username,
+                                val updatedEntry = originalEntry!!.copy(
+                                    service = service, username = username,
                                     encryptedPassword = finalEncryptedPassword,
-                                    url = url.ifBlank { null },
-                                    notes = notes.ifBlank { null },
-                                    tagsCsv = finalTags,
-                                    isFavorite = isFavorite,
-                                    rotationEnabled = rotationEnabled,
-                                    rotationPeriodMonths = rotationPeriodMonths,
+                                    url = url.ifBlank { null }, notes = notes.ifBlank { null },
+                                    tagsCsv = finalTags, isFavorite = isFavorite,
+                                    rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
                                     passwordHistoryJson = finalHistoryJson,
                                     generationType = finalGenerationType,
                                     passwordFingerprint = finalFingerprint,
@@ -459,41 +458,44 @@ fun EntryEditorScreen(
         }
     }
 
-    if (showAccessDialog && currentProfile != null) {
-     
-        ProfileAccessDialog(
-            profile = currentProfile!!,
-            allowBiometric = requireBiometricForAccess,
-            onDismiss = { showAccessDialog = false },
-            onGranted = {
-                showAccessDialog = false
-                scope.launch {
-                    try {
-                        val entry = viewModel.getEntryById(id!!)
-                        if (entry != null) {
-                            decryptedOriginalPassword = CryptoUtils.decrypt(entry.encryptedPassword)
-                            passwordDraft = decryptedOriginalPassword!!
-                            passwordVisible = true
-                        }
-                    } catch (e: Exception) {
-                        formError = "Ошибка расшифровки: ${e.message}"
-                    }
+    if (showAccessDialog) {
+        val accessProfileId = originalEntry?.profileId ?: targetProfileId
+        val profile = profiles.find { it.id == accessProfileId }
+        if (profile != null) {
+            ProfileAccessDialog(
+                profile = profile,
+                allowBiometric = requireBiometricForAccess,
+                onDismiss = { 
+                    showAccessDialog = false
+                    pendingAccessAction = null
+                },
+                onGranted = {
+                    showAccessDialog = false
+                    pendingAccessAction?.invoke()
+                    pendingAccessAction = null
                 }
-            }
-        )
+            )
+        }
     }
 
     if (showGeneratorDialog) {
+        val accessProfileId = originalEntry?.profileId ?: targetProfileId
+        val profile = profiles.find { it.id == accessProfileId }
+        
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
-            onGenerated = { pwd, hint, type ->
-                passwordDraft = pwd
+            onGenerated = { pwd, type, hint, mnemonicHint, mnemonicJson ->
+                newPassword = pwd
                 generationType = type
                 textHint = hint
-                passwordChanged = true
+                mnemonicPhraseHint = mnemonicHint
+                mnemonicOptionsJson = mnemonicJson
                 showGeneratorDialog = false
             },
-            initialServiceName = service
+            initialServiceName = service,
+            // Для редактирования передаем профиль, чтобы генератор мог (при желании) использовать его контекст, 
+            // но главное - мы уже прошли проверку доступа до открытия этого диалога
+            profile = profile 
         )
     }
 }
