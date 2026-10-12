@@ -135,7 +135,7 @@ fun ProfileListScreen(
         val accessResult = resolveProfileAccess(selectedProfile!!)
         val allowBiometric = accessResult is AccessResult.BiometricOrPin
 
-    
+        // ✅ ИСПРАВЛЕННЫЙ ВЫЗОВ
         ProfileAccessDialog(
             profile = selectedProfile!!,
             allowBiometric = allowBiometric,
