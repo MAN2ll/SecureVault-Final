@@ -349,12 +349,12 @@ fun EntryEditorScreen(
 
                             var finalEncryptedPassword = originalEntry?.encryptedPassword ?: ""
                             var finalFingerprint = originalEntry?.passwordFingerprint
-                            var finalHistoryJson = originalEntry?.passwordHistoryJson
+                            // гарантируем String, а не String?
+                            var finalHistoryJson = originalEntry?.passwordHistoryJson ?: "[]"
                             var finalLastChanged = originalEntry?.lastChanged ?: System.currentTimeMillis()
                             var finalNextRotationDate = originalEntry?.nextRotationDate
                             var finalGenerationType = generationType
 
-                            //  ЯВНОЕ ПРИВЕДЕНИЕ ТИПА ДЛЯ ГАРАНТИИ String
                             if (newPassword != null) {
                                 val pwd = newPassword!! 
                                 
