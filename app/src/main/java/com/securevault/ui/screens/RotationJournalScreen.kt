@@ -24,6 +24,7 @@ import com.securevault.data.Profile
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
+import com.securevault.utils.ClipboardHelper
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.resolveAccess
 import com.securevault.viewmodel.AuthViewModel
@@ -41,7 +42,7 @@ fun RotationJournalScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel //  ЯВНЫЙ ПАРАМЕТР, БЕЗ hiltViewModel()
+    authViewModel: AuthViewModel
 ) {
     val context = LocalContext.current
 
@@ -59,7 +60,6 @@ fun RotationJournalScreen(
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
-    //  ОЧИСТКА ПРИ БЛОКИРОВКЕ
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             revealedHistoryPassword = null
@@ -174,8 +174,13 @@ fun RotationJournalScreen(
                         Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = revealedHistoryPassword!!, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             IconButton(onClick = {
-                                context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("old_password", revealedHistoryPassword))
-                                android.widget.Toast.makeText(context, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
+                                // ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
+                                ClipboardHelper.copyWithAutoClear(
+                                    context = context,
+                                    text = revealedHistoryPassword!!,
+                                    label = "old_password"
+                                )
+                                android.widget.Toast.makeText(context, "Скопировано (очищается через 30 сек)", android.widget.Toast.LENGTH_SHORT).show()
                             }) { Icon(Icons.Default.ContentCopy, "Копировать") }
                         }
                     }
