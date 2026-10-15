@@ -6,67 +6,38 @@ import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class ClipboardHelper @Inject constructor(
-    private val context: Context
-) {
-    companion object {
-        private const val AUTO_CLEAR_DELAY = 30_000L // 30 секунд
-    }
-
-    private val clipboard: ClipboardManager by lazy {
-        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    }
-
-    fun copy(text: String, label: String = "SecureVault"): ClipboardResult {
-        return try {
-            val clip = ClipData.newPlainText(label, text)
-            clipboard.setPrimaryClip(clip)
-            ClipboardResult.Success
-        } catch (e: Exception) {
-            ClipboardResult.Error(e.message ?: "Unknown error")
-        }
-    }
+object ClipboardHelper {
+    private const val AUTO_CLEAR_DELAY = 30_000L // 30 секунд
 
     fun copyWithAutoClear(
+        context: Context,
         text: String,
         label: String = "SecureVault",
         delayMs: Long = AUTO_CLEAR_DELAY,
         scope: CoroutineScope,
         onCleared: (() -> Unit)? = null
     ): ClipboardResult {
-        val result = copy(text, label)
-        if (result is ClipboardResult.Success) {
+        return try {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText(label, text)
+            clipboard.setPrimaryClip(clip)
+            
             scope.launch {
                 delay(delayMs)
-                clear()
-                onCleared?.invoke()
+                try {
+                    // Проверяем, что мы всё ещё владеем этим клипом, прежде чем очищать
+                    if (clipboard.hasPrimaryClip() && clipboard.primaryClipDescription?.label == label) {
+                        clipboard.clearPrimaryClip()
+                        onCleared?.invoke()
+                    }
+                } catch (e: Exception) {
+                    // Игнорируем ошибки при очистке
+                }
             }
-        }
-        return result
-    }
-
-    fun clear() {
-        try {
-            clipboard.clearPrimaryClip()
+            ClipboardResult.Success
         } catch (e: Exception) {
-            // Игнорируем ошибки при очистке
-        }
-    }
-
-    fun hasPrimaryClip(): Boolean {
-        return clipboard.hasPrimaryClip()
-    }
-
-    fun getPrimaryClipText(): String? {
-        return try {
-            val item = clipboard.primaryClip?.getItemAt(0)
-            item?.text?.toString()
-        } catch (e: Exception) {
-            null
+            ClipboardResult.Error(e.message ?: "Unknown error")
         }
     }
 
