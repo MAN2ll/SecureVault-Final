@@ -31,7 +31,7 @@ fun MnemonicGeneratorScreen(
     onBack: () -> Unit,
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel //  ЯВНЫЙ ПАРАМЕТР, БЕЗ hiltViewModel()
 ) {
     LaunchedEffect(profileId) {
         if (profileId != null) viewModel.setCurrentProfile(profileId)
@@ -43,6 +43,13 @@ fun MnemonicGeneratorScreen(
     val effectiveProfileId = profileId ?: currentProfileId
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
+
+    //  ОЧИСТКА ПРИ БЛОКИРОВКЕ
+    LaunchedEffect(Unit) {
+        authViewModel.clearSensitiveEvent.collect {
+            showGeneratorDialog = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -135,7 +142,7 @@ fun MnemonicGeneratorScreen(
     if (showGeneratorDialog) {
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
-            //  ОБНОВЛЁННАЯ СИГНАТУРА: 5 параметров
+            //  5 ПАРАМЕТРОВ ДЛЯ КОРРЕКТНОЙ ПЕРЕДАЧИ ПОДСКАЗОК
             onGenerated = { pwd, type, hint, mnemonicHint, mnemonicJson ->
                 clipboardManager.setText(AnnotatedString(pwd))
                 showGeneratorDialog = false
