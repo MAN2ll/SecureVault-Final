@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
+    //  ЕДИНЫЙ ЭКЗЕМПЛЯР на уровне Activity
     private val authViewModel: AuthViewModel by viewModels()
     private var lastBackgroundTime = 0L
 
@@ -36,7 +37,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SecureVaultTheme { SecureVaultNavHost() } }
+        setContent { 
+            SecureVaultTheme { 
+                //  ЯВНАЯ ПЕРЕДАЧА в корень навигации
+                SecureVaultNavHost(authViewModel = authViewModel) 
+            } 
+        }
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             scheduleNotifications()
