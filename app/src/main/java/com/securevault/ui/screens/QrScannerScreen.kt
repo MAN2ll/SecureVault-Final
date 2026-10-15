@@ -53,7 +53,7 @@ fun QrScannerScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel //  ЯВНЫЙ ПАРАМЕТР, БЕЗ hiltViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -74,6 +74,7 @@ fun QrScannerScreen(
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
+    //  ОЧИСТКА ПРИ БЛОКИРОВКЕ
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             showPassword = false
@@ -234,7 +235,6 @@ fun QrScannerScreen(
     if (showProfileAccessDialog && scannedEntryId != null && currentProfile != null) {
         val entry = viewModel.findEntryById(scannedEntryId!!)
         if (entry != null) {
-            // ✅ ИСПРАВЛЕННЫЙ ВЫЗОВ
             ProfileAccessDialog(
                 profile = currentProfile,
                 allowBiometric = currentAccessAllowBiometric,
