@@ -347,9 +347,9 @@ fun EntryEditorScreen(
                             val finalTags = processTags(tagsCsv)
                             val targetProfileIdForSave = originalEntry?.profileId ?: targetProfileId
 
+                            //  ЯВНО УКАЗЫВАЕМ ТИП String С ЗНАЧЕНИЕМ ПО УМОЛЧАНИЮ
                             var finalEncryptedPassword = originalEntry?.encryptedPassword ?: ""
-                            var finalFingerprint = originalEntry?.passwordFingerprint
-                            // гарантируем String, а не String?
+                            var finalFingerprint = originalEntry?.passwordFingerprint ?: ""
                             var finalHistoryJson = originalEntry?.passwordHistoryJson ?: "[]"
                             var finalLastChanged = originalEntry?.lastChanged ?: System.currentTimeMillis()
                             var finalNextRotationDate = originalEntry?.nextRotationDate
