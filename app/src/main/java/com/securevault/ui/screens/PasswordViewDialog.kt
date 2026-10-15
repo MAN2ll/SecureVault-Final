@@ -20,6 +20,7 @@ import com.securevault.data.Entry
 import com.securevault.data.Profile
 import com.securevault.ui.screens.QrCodeDialog
 import com.securevault.utils.AccessResult
+import com.securevault.utils.ClipboardHelper
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.resolveAccess
 import com.securevault.viewmodel.AuthViewModel
@@ -132,8 +133,12 @@ fun PasswordViewDialog(
                             }
                             
                             if (pwdToCopy != null) {
-                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", pwdToCopy))
+                                // ✅ ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
+                                ClipboardHelper.copyWithAutoClear(
+                                    context = context,
+                                    text = pwdToCopy,
+                                    label = "password"
+                                )
                             }
                         }
                     }) {
@@ -181,7 +186,6 @@ fun PasswordViewDialog(
 
     if (showAccessDialog) {
         val requireBiometric = resolveAccess(entry, profile) is AccessResult.BiometricOrPin
-        
         
         ProfileAccessDialog(
             profile = profile,
