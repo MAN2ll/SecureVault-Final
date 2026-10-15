@@ -12,7 +12,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -25,7 +24,7 @@ import com.securevault.viewmodel.AuthViewModel
 @Composable
 fun SecureVaultNavHost(
     navController: NavHostController = rememberNavController(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel 
 ) {
     val authState by authViewModel.authState.collectAsState()
 
@@ -54,7 +53,8 @@ fun SecureVaultNavHost(
                         }
                     },
                     onNavigateToSettings = { navController.navigate("settings") },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel 
                 )
             }
 
@@ -89,7 +89,7 @@ fun SecureVaultNavHost(
                         }
                     },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel // 
+                    authViewModel = authViewModel
                 )
             }
 
@@ -97,10 +97,7 @@ fun SecureVaultNavHost(
                 route = "entry/{entryId}?profileId={profileId}",
                 arguments = listOf(
                     navArgument("entryId") { type = NavType.StringType },
-                    navArgument("profileId") {
-                        type = NavType.IntType
-                        defaultValue = -1
-                    }
+                    navArgument("profileId") { type = NavType.IntType; defaultValue = -1 }
                 )
             ) { backStackEntry ->
                 val entryId = backStackEntry.arguments?.getString("entryId")
@@ -111,7 +108,7 @@ fun SecureVaultNavHost(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel // 
+                    authViewModel = authViewModel
                 )
             }
 
@@ -155,7 +152,8 @@ fun SecureVaultNavHost(
                 RotationJournalScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel 
                 )
             }
 
@@ -184,7 +182,8 @@ fun SecureVaultNavHost(
                 MnemonicGeneratorScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel 
                 )
             }
 
@@ -196,7 +195,8 @@ fun SecureVaultNavHost(
                 QrScannerScreen(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel 
                 )
             }
 
