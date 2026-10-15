@@ -41,7 +41,7 @@ fun RotationJournalScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel() 
+    authViewModel: AuthViewModel //  ЯВНЫЙ ПАРАМЕТР, БЕЗ hiltViewModel()
 ) {
     val context = LocalContext.current
 
@@ -59,6 +59,7 @@ fun RotationJournalScreen(
     var revealedHistoryPassword by remember { mutableStateOf<String?>(null) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
+    //  ОЧИСТКА ПРИ БЛОКИРОВКЕ
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             revealedHistoryPassword = null
@@ -151,7 +152,6 @@ fun RotationJournalScreen(
     }
 
     if (showProfileAccessDialog && historyItemToShow != null && currentProfile != null) {
-       
         ProfileAccessDialog(
             profile = currentProfile,
             allowBiometric = currentAccessAllowBiometric,
