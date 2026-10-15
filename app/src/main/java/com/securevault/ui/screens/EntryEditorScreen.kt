@@ -347,13 +347,17 @@ fun EntryEditorScreen(
                             val finalTags = processTags(tagsCsv)
                             val targetProfileIdForSave = originalEntry?.profileId ?: targetProfileId
 
-                            //  ЯВНО УКАЗЫВАЕМ ТИП String С ЗНАЧЕНИЕМ ПО УМОЛЧАНИЮ
-                            var finalEncryptedPassword = originalEntry?.encryptedPassword ?: ""
-                            var finalFingerprint = originalEntry?.passwordFingerprint ?: ""
-                            var finalHistoryJson = originalEntry?.passwordHistoryJson ?: "[]"
-                            var finalLastChanged = originalEntry?.lastChanged ?: System.currentTimeMillis()
-                            var finalNextRotationDate = originalEntry?.nextRotationDate
-                            var finalGenerationType = generationType
+                            // ЯВНОЕ УКАЗАНИЕ ТИПОВ ДЛЯ ГАРАНТИИ String
+                            val finalEncryptedPassword: String = originalEntry?.encryptedPassword ?: ""
+                            val finalFingerprint: String = if (newPassword != null) {
+                                PasswordValidator.buildPasswordFingerprint(newPassword!!, context)
+                            } else {
+                                originalEntry?.passwordFingerprint ?: ""
+                            }
+                            val finalHistoryJson: String = originalEntry?.passwordHistoryJson ?: "[]"
+                            val finalLastChanged: Long = originalEntry?.lastChanged ?: System.currentTimeMillis()
+                            val finalNextRotationDate: Long? = originalEntry?.nextRotationDate
+                            val finalGenerationType: String = generationType
 
                             if (newPassword != null) {
                                 val pwd = newPassword!! 
@@ -373,16 +377,11 @@ fun EntryEditorScreen(
                                     }
                                 }
 
-                                val newFingerprint = PasswordValidator.buildPasswordFingerprint(pwd, context)
-                                if (isEditMode && newFingerprint == originalEntry?.passwordFingerprint) {
+                                if (isEditMode && finalFingerprint == originalEntry?.passwordFingerprint) {
                                     formError = "Этот пароль уже использовался"
                                     isSaving = false
                                     return@launch
                                 }
-
-                                finalEncryptedPassword = CryptoUtils.encrypt(pwd)
-                                finalFingerprint = newFingerprint
-                                finalLastChanged = System.currentTimeMillis()
 
                                 if (isEditMode && decryptedPassword != null) {
                                     val updatedWithHistory = originalEntry!!.addToPasswordHistory(
@@ -390,12 +389,26 @@ fun EntryEditorScreen(
                                         generationType = originalEntry!!.generationType,
                                         oldPasswordFingerprint = originalEntry!!.passwordFingerprint ?: ""
                                     )
-                                    finalHistoryJson = updatedWithHistory.passwordHistoryJson
+                                    // finalHistoryJson обновляется только при реальной замене
+                                    // Но переменная уже объявлена как val, поэтому переназначим логику ниже через copy
                                 }
+                            }
 
-                                if (rotationEnabled && (originalEntry == null || !originalEntry!!.rotationEnabled || rotationPeriodMonths != originalEntry!!.rotationPeriodMonths)) {
-                                    finalNextRotationDate = System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
-                                }
+                            // Формируем итоговые значения для обновления
+                            val historyJsonToSave = if (newPassword != null && isEditMode && decryptedPassword != null) {
+                                originalEntry!!.addToPasswordHistory(
+                                    oldPassword = decryptedPassword!!,
+                                    generationType = originalEntry!!.generationType,
+                                    oldPasswordFingerprint = originalEntry!!.passwordFingerprint ?: ""
+                                ).passwordHistoryJson
+                            } else {
+                                finalHistoryJson
+                            }
+
+                            val nextRotationDateToSave = if (newPassword != null && rotationEnabled && (originalEntry == null || !originalEntry!!.rotationEnabled || rotationPeriodMonths != originalEntry!!.rotationPeriodMonths)) {
+                                System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
+                            } else {
+                                finalNextRotationDate
                             }
 
                             if (!isEditMode) {
@@ -417,16 +430,16 @@ fun EntryEditorScreen(
                             } else {
                                 val updatedEntry = originalEntry!!.copy(
                                     service = service, username = username,
-                                    encryptedPassword = finalEncryptedPassword,
+                                    encryptedPassword = if (newPassword != null) CryptoUtils.encrypt(newPassword!!) else finalEncryptedPassword,
                                     url = url.ifBlank { null }, notes = notes.ifBlank { null },
                                     tagsCsv = finalTags, isFavorite = isFavorite,
                                     rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                                    passwordHistoryJson = finalHistoryJson,
+                                    passwordHistoryJson = historyJsonToSave,
                                     generationType = finalGenerationType,
                                     passwordFingerprint = finalFingerprint,
-                                    nextRotationDate = finalNextRotationDate,
+                                    nextRotationDate = nextRotationDateToSave,
                                     passwordAccessMode = passwordAccessMode,
-                                    lastChanged = finalLastChanged,
+                                    lastChanged = if (newPassword != null) System.currentTimeMillis() else finalLastChanged,
                                     textHint = textHint,
                                     mnemonicPhraseHint = mnemonicPhraseHint,
                                     mnemonicOptionsJson = mnemonicOptionsJson
