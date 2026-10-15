@@ -8,8 +8,6 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -36,6 +34,7 @@ import com.securevault.data.Profile
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
+import com.securevault.utils.ClipboardHelper
 import com.securevault.utils.CryptoUtils
 import com.securevault.utils.resolveAccess
 import com.securevault.utils.SecureQrManager
@@ -53,7 +52,7 @@ fun QrScannerScreen(
     onLock: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
     profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel //  ЯВНЫЙ ПАРАМЕТР, БЕЗ hiltViewModel()
+    authViewModel: AuthViewModel
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
@@ -74,7 +73,6 @@ fun QrScannerScreen(
     var currentAccessAllowBiometric by remember { mutableStateOf(false) }
     var showPinNotSetDialog by remember { mutableStateOf(false) }
 
-    //  ОЧИСТКА ПРИ БЛОКИРОВКЕ
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             showPassword = false
@@ -209,9 +207,15 @@ fun QrScannerScreen(
                                                 }
                                             } else {
                                                 IconButton(onClick = {
-                                                    context.getSystemService(android.content.ClipboardManager::class.java)
-                                                        .setPrimaryClip(android.content.ClipData.newPlainText("qr_password", decryptedPassword))
-                                                    android.widget.Toast.makeText(context, "Скопировано", android.widget.Toast.LENGTH_SHORT).show()
+                                                    if (decryptedPassword != null) {
+                                                        // ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
+                                                        ClipboardHelper.copyWithAutoClear(
+                                                            context = context,
+                                                            text = decryptedPassword!!,
+                                                            label = "qr_password"
+                                                        )
+                                                        android.widget.Toast.makeText(context, "Скопировано (очищается через 30 сек)", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }) {
                                                     Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary)
                                                 }
