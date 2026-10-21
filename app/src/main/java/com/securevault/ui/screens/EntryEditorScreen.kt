@@ -83,6 +83,7 @@ fun EntryEditorScreen(
 
     val isEditMode = id != null && id != "new"
 
+    // Сброс всех чувствительных данных и диалогов при блокировке
     LaunchedEffect(Unit) {
         authViewModel.clearSensitiveEvent.collect {
             originalPassword = null
@@ -97,6 +98,7 @@ fun EntryEditorScreen(
         }
     }
 
+    // Обработка ошибок при загрузке с finally
     LaunchedEffect(id) {
         if (isEditMode) {
             isLoading = true
@@ -372,7 +374,7 @@ fun EntryEditorScreen(
                                     return@launch
                                 }
 
-                                //  КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Локальная val переменная устраняет Smart Cast ошибку
+                                // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Локальная val переменная устраняет Smart Cast ошибку
                                 val currentOriginalEntry = originalEntry
                                 val originalAccessMode = currentOriginalEntry?.passwordAccessMode ?: AccessMode.INHERIT.value
                                 
@@ -384,15 +386,22 @@ fun EntryEditorScreen(
                                     return@launch
                                 }
 
-                                val finalTags = processTags(tagsCsv)
-                                val targetProfileIdForSave = currentOriginalEntry?.profileId ?: targetProfileId
+                                // ЖЁСТКОЕ УКАЗАНИЕ ТИПОВ ДЛЯ ИСКЛЮЧЕНИЯ ОШИБОК
+                                val finalTags: String = processTags(tagsCsv)
+                                val targetProfileIdForSave: Int = currentOriginalEntry?.profileId ?: targetProfileId
 
-                                var finalEncryptedPassword = currentOriginalEntry?.encryptedPassword ?: ""
-                                var finalFingerprint = currentOriginalEntry?.passwordFingerprint ?: ""
-                                var finalHistoryJson = currentOriginalEntry?.passwordHistoryJson ?: "[]"
-                                var finalLastChanged = currentOriginalEntry?.lastChanged ?: System.currentTimeMillis()
-                                var finalNextRotationDate = currentOriginalEntry?.nextRotationDate
-                                val finalGenerationType = generationType
+                                val finalEncryptedPassword: String = currentOriginalEntry?.encryptedPassword ?: ""
+                                val finalFingerprint: String = currentOriginalEntry?.passwordFingerprint ?: ""
+                                val finalHistoryJson: String = currentOriginalEntry?.passwordHistoryJson ?: "[]"
+                                val finalLastChanged: Long = currentOriginalEntry?.lastChanged ?: System.currentTimeMillis()
+                                val finalNextRotationDate: Long? = currentOriginalEntry?.nextRotationDate
+                                val finalGenerationType: String = generationType
+
+                                var historyJsonToSave = finalHistoryJson
+                                var nextRotationDateToSave = finalNextRotationDate
+                                var lastChangedToSave = finalLastChanged
+                                var encryptedPasswordToSave = finalEncryptedPassword
+                                var fingerprintToSave = finalFingerprint
 
                                 if (isPasswordChanged && !passwordDraft.isNullOrBlank()) {
                                     val pwd = passwordDraft!!
@@ -416,9 +425,9 @@ fun EntryEditorScreen(
                                         return@launch
                                     }
 
-                                    finalEncryptedPassword = CryptoUtils.encrypt(pwd)
-                                    finalFingerprint = newFingerprint
-                                    finalLastChanged = System.currentTimeMillis()
+                                    encryptedPasswordToSave = CryptoUtils.encrypt(pwd)
+                                    fingerprintToSave = newFingerprint
+                                    lastChangedToSave = System.currentTimeMillis()
 
                                     if (currentOriginalEntry != null && originalPassword != null) {
                                         val updatedWithHistory = currentOriginalEntry.addToPasswordHistory(
@@ -426,28 +435,39 @@ fun EntryEditorScreen(
                                             generationType = currentOriginalEntry.generationType,
                                             oldPasswordFingerprint = currentOriginalEntry.passwordFingerprint ?: ""
                                         )
-                                        finalHistoryJson = updatedWithHistory.passwordHistoryJson
+                                        historyJsonToSave = updatedWithHistory.passwordHistoryJson
                                     }
                                 }
 
-                                finalNextRotationDate = if (!rotationEnabled) {
+                                nextRotationDateToSave = if (!rotationEnabled) {
                                     null
                                 } else if (currentOriginalEntry == null || !currentOriginalEntry.rotationEnabled || rotationPeriodMonths != currentOriginalEntry.rotationPeriodMonths || isPasswordChanged) {
                                     System.currentTimeMillis() + (rotationPeriodMonths * 30L * 24 * 60 * 60 * 1000)
                                 } else {
-                                    currentOriginalEntry.nextRotationDate
+                                    currentOriginalEntry?.nextRotationDate
                                 }
 
                                 if (!isEditMode) {
-                                    //  БЕЗОПАСНОЕ ПРИВЕДЕНИЕ ТИПА String? к String
-                                    val pwd = passwordDraft ?: ""
+                                    // АБСОЛЮТНО ЯВНОЕ ПРИВЕДЕНИЕ ТИПА: компилятор точно знает, что это String
+                                    val pwdToSave: String = passwordDraft ?: ""
+                                    
                                     val newEntry = Entry.create(
-                                        service = service, username = username, password = pwd, profileId = targetProfileIdForSave,
-                                        passwordFingerprint = finalFingerprint, url = url.ifBlank { null }, notes = notes.ifBlank { null },
-                                        rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                                        isFavorite = isFavorite, generationType = finalGenerationType,
-                                        tagsCsv = finalTags, passwordAccessMode = passwordAccessMode,
-                                        textHint = textHint, mnemonicPhraseHint = mnemonicPhraseHint, mnemonicOptionsJson = mnemonicOptionsJson
+                                        service = service, 
+                                        username = username, 
+                                        password = pwdToSave, 
+                                        profileId = targetProfileIdForSave,
+                                        passwordFingerprint = fingerprintToSave, 
+                                        url = url.ifBlank { null }, 
+                                        notes = notes.ifBlank { null },
+                                        rotationEnabled = rotationEnabled, 
+                                        rotationPeriodMonths = rotationPeriodMonths,
+                                        isFavorite = isFavorite, 
+                                        generationType = finalGenerationType,
+                                        tagsCsv = finalTags, 
+                                        passwordAccessMode = passwordAccessMode,
+                                        textHint = textHint, 
+                                        mnemonicPhraseHint = mnemonicPhraseHint, 
+                                        mnemonicOptionsJson = mnemonicOptionsJson
                                     )
                                     viewModel.insert(newEntry) { result ->
                                         when (result) {
@@ -457,17 +477,21 @@ fun EntryEditorScreen(
                                     }
                                 } else if (currentOriginalEntry != null) {
                                     val updatedEntry = currentOriginalEntry.copy(
-                                        service = service, username = username,
-                                        encryptedPassword = finalEncryptedPassword,
-                                        url = url.ifBlank { null }, notes = notes.ifBlank { null },
-                                        tagsCsv = finalTags, isFavorite = isFavorite,
-                                        rotationEnabled = rotationEnabled, rotationPeriodMonths = rotationPeriodMonths,
-                                        passwordHistoryJson = finalHistoryJson,
+                                        service = service, 
+                                        username = username,
+                                        encryptedPassword = encryptedPasswordToSave,
+                                        url = url.ifBlank { null }, 
+                                        notes = notes.ifBlank { null },
+                                        tagsCsv = finalTags, 
+                                        isFavorite = isFavorite,
+                                        rotationEnabled = rotationEnabled, 
+                                        rotationPeriodMonths = rotationPeriodMonths,
+                                        passwordHistoryJson = historyJsonToSave,
                                         generationType = finalGenerationType,
-                                        passwordFingerprint = finalFingerprint,
-                                        nextRotationDate = finalNextRotationDate,
+                                        passwordFingerprint = fingerprintToSave,
+                                        nextRotationDate = nextRotationDateToSave,
                                         passwordAccessMode = passwordAccessMode,
-                                        lastChanged = finalLastChanged,
+                                        lastChanged = lastChangedToSave,
                                         textHint = textHint,
                                         mnemonicPhraseHint = mnemonicPhraseHint,
                                         mnemonicOptionsJson = mnemonicOptionsJson
