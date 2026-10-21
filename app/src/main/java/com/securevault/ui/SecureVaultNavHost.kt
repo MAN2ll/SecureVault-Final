@@ -24,7 +24,7 @@ import com.securevault.viewmodel.AuthViewModel
 @Composable
 fun SecureVaultNavHost(
     navController: NavHostController = rememberNavController(),
-    authViewModel: AuthViewModel 
+    authViewModel: AuthViewModel
 ) {
     val authState by authViewModel.authState.collectAsState()
 
@@ -35,7 +35,9 @@ fun SecureVaultNavHost(
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = startDestination) {
             composable("setup") {
+                //  ПЕРЕДАЧА AuthViewModel В SETUP
                 SetupScreen(
+                    authViewModel = authViewModel,
                     onCompleted = {
                         navController.navigate("profiles") {
                             popUpTo("setup") { inclusive = true }
@@ -54,7 +56,7 @@ fun SecureVaultNavHost(
                     },
                     onNavigateToSettings = { navController.navigate("settings") },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel 
+                    authViewModel = authViewModel
                 )
             }
 
@@ -153,7 +155,7 @@ fun SecureVaultNavHost(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel 
+                    authViewModel = authViewModel
                 )
             }
 
@@ -183,7 +185,7 @@ fun SecureVaultNavHost(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel 
+                    authViewModel = authViewModel
                 )
             }
 
@@ -196,7 +198,7 @@ fun SecureVaultNavHost(
                     profileId = profileId,
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() },
-                    authViewModel = authViewModel 
+                    authViewModel = authViewModel
                 )
             }
 
