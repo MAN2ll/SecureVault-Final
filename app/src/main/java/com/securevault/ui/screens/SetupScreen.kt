@@ -16,19 +16,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupScreen(
     onCompleted: () -> Unit,
-    viewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel // ✅ ЯВНАЯ ПЕРЕДАЧА КОРНЕВОГО ЭКЗЕМПЛЯРА
 ) {
-    //  ИНИЦИАЛИЗАЦИЯ AuthViewModel
     val context = LocalContext.current
     LaunchedEffect(Unit) {
-        viewModel.init(context)
+        authViewModel.init(context)
     }
     
     var password by remember { mutableStateOf("") }
@@ -105,7 +103,7 @@ fun SetupScreen(
                             password.length < 12 -> error = "Пароль должен содержать минимум 12 символов"
                             password != confirmPassword -> error = "Пароли не совпадают"
                             else -> {
-                                viewModel.setupMasterPassword(password)
+                                authViewModel.setupMasterPassword(password)
                                 onCompleted()
                             }
                         }
