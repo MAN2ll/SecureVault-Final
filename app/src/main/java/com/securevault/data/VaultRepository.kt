@@ -15,6 +15,8 @@ class VaultRepository @Inject constructor(
 
     suspend fun insert(entry: Entry) = entryDao.insert(entry)
     suspend fun update(entry: Entry) = entryDao.update(entry)
+    suspend fun updateMany(entries: List<Entry>) = entryDao.updateMany(entries)
+    suspend fun deleteMany(entries: List<Entry>) = entryDao.deleteMany(entries)
     suspend fun delete(entry: Entry) = entryDao.delete(entry)
     suspend fun deleteAll() = entryDao.deleteAll()
 
