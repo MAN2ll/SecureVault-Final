@@ -29,21 +29,22 @@ class RotationNotificationWorker(context: Context, params: WorkerParameters) : C
         val now = System.currentTimeMillis()
         val entries = repository.allEntries.first()
         val expiredEntries = entries.filter { it.rotationEnabled && (it.nextRotationDate ?: Long.MAX_VALUE) <= now }
+        val soon = entries.count { it.rotationEnabled && (it.nextRotationDate ?: Long.MAX_VALUE) in (now + 1)..(now + 7 * 86400000L) }
 
-        if (expiredEntries.isNotEmpty()) {
+        if (expiredEntries.isNotEmpty() || soon > 0) {
             val lastNotified = prefs.getLong("last_rotation_notification_time", 0L)
             val oneDayMs = 24L * 60 * 60 * 1000
             if (now - lastNotified >= oneDayMs) {
-                showNotification(expiredEntries.size, expiredEntries.first().service)
+                showNotification(expiredEntries.size, soon)
                 prefs.edit().putLong("last_rotation_notification_time", now).apply()
             }
         }
         return Result.success()
     }
 
-    private fun showNotification(count: Int, firstService: String) {
+    private fun showNotification(count: Int, soon: Int) {
         createChannel()
-        val text = if (count == 1) "Пора обновить пароль: $firstService" else "Есть пароли, которым требуется ротация ($count)"
+        val text = "Просрочено паролей: $count. Истекает за 7 дней: $soon."
         
         val intent = Intent(applicationContext, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
         val pendingIntent = PendingIntent.getActivity(applicationContext, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
