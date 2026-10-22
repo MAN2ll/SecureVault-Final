@@ -44,6 +44,7 @@ object BackupManager {
         val iv = Base64.decode(encryptedBackup.iv, Base64.NO_WRAP)
         val ciphertext = Base64.decode(encryptedBackup.ciphertext, Base64.NO_WRAP)
 
+        require(salt.size == SALT_LENGTH && iv.size == IV_LENGTH && ciphertext.size >= 16) { "Некорректные параметры backup" }
         val key = deriveKey(password, salt, encryptedBackup.iterations)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
@@ -55,9 +56,7 @@ object BackupManager {
     }
 
     private fun deriveKey(password: String, salt: ByteArray, iterations: Int): ByteArray {
-        val spec = PBEKeySpec(password.toCharArray(), salt, iterations, KEY_LENGTH)
-        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        return factory.generateSecret(spec).encoded
+        return com.securevault.security.PasswordKdf.derive(password, salt, iterations)
     }
 
     private fun generateRandomBytes(length: Int): ByteArray {
@@ -96,7 +95,7 @@ object BackupManager {
                                 passwordFingerprint = fingerprint
                             )
                         } catch (e: Exception) {
-                            null
+                            throw IllegalStateException("Не удалось перенести историю '${entry.service}'", e)
                         }
                     }
                 }
@@ -232,11 +231,17 @@ object BackupManager {
                             continue
                         }
 
-                        val historyJson = buildHistoryJson(backupEntry.portableHistory, context)
-                            ?: backupEntry.passwordHistoryJson
+                        val historyJson = if (backupEntry.portableHistory != null) {
+                            val portable = JsonUtils.readHistory(buildHistoryJson(backupEntry.portableHistory, context))
+                            val hashOnly = JsonUtils.readHistory(backupEntry.passwordHistoryJson)
+                                .filter { it.encryptedOldPassword == null }
+                            JsonUtils.toJson(portable + hashOnly)
+                        } else backupEntry.passwordHistoryJson
+                        val importedProfile = requireNotNull(repository.getProfileById(newProfileId))
+                        val entryAccess = if (importedProfile.passwordHash.isBlank()) AccessMode.INHERIT.value
+                            else backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value
 
-                        val pwdFingerprint = backupEntry.passwordFingerprint 
-                            ?: PasswordValidator.buildPasswordFingerprint(backupEntry.password, context)
+                        val pwdFingerprint = PasswordValidator.buildPasswordFingerprint(backupEntry.password, context)
 
                         val newEntry = Entry.create(
                             service = backupEntry.service,
@@ -253,7 +258,7 @@ object BackupManager {
                             generationType = backupEntry.generationType ?: "random",
                             mnemonicPhraseHint = backupEntry.mnemonicPhraseHint,
                             mnemonicOptionsJson = backupEntry.mnemonicOptionsJson,
-                            passwordAccessMode = backupEntry.passwordAccessMode ?: AccessMode.INHERIT.value,
+                            passwordAccessMode = entryAccess,
                             tagsCsv = backupEntry.tagsCsv //  БЛОК 10: Добавлено при импорте
                         ).copy(
                             nextRotationDate = backupEntry.nextRotationDate,
@@ -283,9 +288,8 @@ object BackupManager {
     }
 
     private fun buildHistoryJson(portableHistory: List<PortableHistoryItem>?, context: Context): String? {
-        if (portableHistory.isNullOrEmpty()) return null
-
-        return try {
+        if (portableHistory == null) return null
+        return run {
             val jsonArray = JSONArray()
             for (item in portableHistory) {
                 val encrypted = CryptoUtils.encrypt(item.plainOldPassword)
@@ -304,8 +308,6 @@ object BackupManager {
                 jsonArray.put(obj)
             }
             jsonArray.toString()
-        } catch (e: Exception) {
-            null
         }
     }
 
