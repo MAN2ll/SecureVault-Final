@@ -53,50 +53,7 @@ data class Entry(
             .filter { it.isNotEmpty() }
             .distinctBy { it.lowercase() }
 
-    fun getPasswordHistory(): List<PasswordHistoryItem> {
-        if (passwordHistoryJson.isNullOrBlank()) return emptyList()
-        return try {
-            val jsonArray = JSONArray(passwordHistoryJson)
-            val result = mutableListOf<PasswordHistoryItem>()
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                result.add(
-                    PasswordHistoryItem(
-                        encryptedOldPassword = obj.optString("encryptedOldPassword").takeIf { it != "null" && it.isNotEmpty() },
-                        encryptedNewPassword = obj.optString("encryptedNewPassword").takeIf { it != "null" && it.isNotEmpty() },
-                        passwordHash = obj.optString("passwordHash", ""),
-                        passwordFingerprint = obj.optString("passwordFingerprint", ""),
-                        date = obj.optLong("date", 0L),
-                        type = obj.optString("type", "unknown"),
-                        relatedService = obj.optString("relatedService").takeIf { it != "null" && it.isNotEmpty() },
-                        relatedEntryId = obj.optString("relatedEntryId").takeIf { it != "null" && it.isNotEmpty() },
-                        hint = obj.optString("hint").takeIf { it != "null" && it.isNotEmpty() }
-                    )
-                )
-            }
-            result
-        } catch (e: Exception) {
-            parseLegacyHistory(passwordHistoryJson)
-        }
-    }
-
-    private fun parseLegacyHistory(json: String): List<PasswordHistoryItem> {
-        val result = mutableListOf<PasswordHistoryItem>()
-        try {
-            val entries = json.split("|")
-            for (entry in entries) {
-                if (entry.isBlank()) continue
-                val parts = entry.split(":")
-                if (parts.size >= 2) {
-                    val hash = parts[0]
-                    val date = parts[1].toLongOrNull() ?: 0L
-                    val type = if (parts.size >= 3) parts[2] else "unknown"
-                    result.add(PasswordHistoryItem(passwordHash = hash, passwordFingerprint = "", date = date, type = type))
-                }
-            }
-        } catch (e: Exception) { /* ignore */ }
-        return result
-    }
+    fun getPasswordHistory(): List<PasswordHistoryItem> = com.securevault.utils.JsonUtils.readHistory(passwordHistoryJson)
 
     fun addToPasswordHistory(
         oldPassword: String,
@@ -106,7 +63,7 @@ data class Entry(
         relatedEntryId: String? = null,
         hint: String? = null
     ): Entry {
-        val encryptedOld = try { CryptoUtils.encrypt(oldPassword) } catch (e: Exception) { null }
+        val encryptedOld = CryptoUtils.encrypt(oldPassword)
         val newItem = PasswordHistoryItem(
             encryptedOldPassword = encryptedOld,
             passwordHash = oldPasswordFingerprint,
@@ -119,22 +76,7 @@ data class Entry(
         )
         val currentHistory = getPasswordHistory().toMutableList()
         currentHistory.add(0, newItem)
-        val trimmed = currentHistory.take(10)
-        val jsonArray = JSONArray()
-        for (item in trimmed) {
-            val obj = JSONObject().apply {
-                put("encryptedOldPassword", item.encryptedOldPassword ?: JSONObject.NULL)
-                put("passwordHash", item.passwordHash)
-                put("passwordFingerprint", item.passwordFingerprint)
-                put("date", item.date)
-                put("type", item.type)
-                put("relatedService", item.relatedService ?: JSONObject.NULL)
-                put("relatedEntryId", item.relatedEntryId ?: JSONObject.NULL)
-                put("hint", item.hint ?: JSONObject.NULL)
-            }
-            jsonArray.put(obj)
-        }
-        return this.copy(passwordHistoryJson = jsonArray.toString())
+        return this.copy(passwordHistoryJson = com.securevault.utils.JsonUtils.toJson(currentHistory))
     }
 
     fun getDaysUntilRotation(): Int? = nextRotationDate?.let { ((it - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).toInt() }
@@ -154,7 +96,7 @@ data class Entry(
             isFavorite: Boolean = false, generationType: String = "random",
             mnemonicPhraseHint: String? = null, mnemonicOptionsJson: String? = null,
             passwordAccessMode: String = AccessMode.INHERIT.value,
-            tagsCsv: String = "" // ✅ БЛОК 6: Добавлен параметр с дефолтным значением
+            tagsCsv: String = "" //  БЛОК 6: Добавлен параметр с дефолтным значением
         ): Entry {
             val encryptedPassword = CryptoUtils.encrypt(password)
             val now = System.currentTimeMillis()
