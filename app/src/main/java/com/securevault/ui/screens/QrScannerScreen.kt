@@ -1,11 +1,8 @@
-@file:OptIn(ExperimentalMaterial3Api::class, androidx.camera.core.ExperimentalGetImage::class)
-
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.securevault.ui.screens
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
@@ -16,297 +13,144 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.securevault.data.Profile
+import com.securevault.data.Entry
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
-import com.securevault.utils.AccessResult
-import com.securevault.utils.ClipboardHelper
-import com.securevault.utils.CryptoUtils
-import com.securevault.utils.resolveAccess
-import com.securevault.utils.SecureQrManager
-import com.securevault.viewmodel.AuthViewModel
-import com.securevault.viewmodel.ProfileViewModel
-import com.securevault.viewmodel.VaultViewModel
-import java.util.concurrent.ExecutorService
+import com.securevault.utils.*
+import com.securevault.viewmodel.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QrScannerScreen(
-    profileId: Int?,
-    onBack: () -> Unit,
-    onLock: () -> Unit,
-    viewModel: VaultViewModel = hiltViewModel(),
-    profileViewModel: ProfileViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel
-) {
+fun QrScannerScreen(profileId: Int?, onBack: () -> Unit, onLock: () -> Unit,
+    viewModel: VaultViewModel = hiltViewModel(), profileViewModel: ProfileViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
-    val lifecycleOwner = LocalLifecycleOwner.current
-
+    val scope = rememberCoroutineScope()
     val profiles by profileViewModel.profiles.collectAsState()
-    val currentProfile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
-
-    var hasCameraPermission by remember { mutableStateOf(false) }
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-
-    var scannedEntryId by remember { mutableStateOf<String?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    var showPassword by remember { mutableStateOf(false) }
-    var decryptedPassword by remember { mutableStateOf<String?>(null) }
-    var showProfileAccessDialog by remember { mutableStateOf(false) }
-    var currentAccessAllowBiometric by remember { mutableStateOf(false) }
-    var showPinNotSetDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        authViewModel.clearSensitiveEvent.collect {
-            showPassword = false
-            decryptedPassword = null
-            showProfileAccessDialog = false
-        }
+    var permitted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context,
+        Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permitted = it }
+    var entry by remember { mutableStateOf<Entry?>(null) }
+    var password by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var access by remember { mutableStateOf(false) }
+    var biometric by remember { mutableStateOf(false) }
+    val profile = profiles.find { it.id == entry?.profileId }
+    fun reveal() {
+        try { password = requireNotNull(entry).password }
+        catch (e: Exception) { error = "Ошибка расшифровки: ${e.message}" }
     }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted -> hasCameraPermission = isGranted }
-
-    LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            hasCameraPermission = true
-        } else {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+    LaunchedEffect(authViewModel) {
+        authViewModel.clearSensitiveEvent.collect { password = null; entry = null; access = false }
     }
-
-    fun requestAccess(entry: com.securevault.data.Entry, profile: Profile) {
-        when (val result = resolveAccess(entry, profile)) {
-            is AccessResult.Granted -> {
-                showPassword = true
-                decryptedPassword = entry.password
-            }
-            is AccessResult.PinRequired -> {
-                currentAccessAllowBiometric = false
-                showProfileAccessDialog = true
-            }
-            is AccessResult.BiometricOrPin -> {
-                currentAccessAllowBiometric = true
-                showProfileAccessDialog = true
-            }
-            is AccessResult.PinNotSet -> {
-                showPinNotSetDialog = true
-            }
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Сканирование QR", fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
-                actions = {
-                    LockActionButton(onLock = onLock)
+    Scaffold(topBar = { TopAppBar(title = { Text("Сканирование QR") },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
+        actions = { LockActionButton(onLock) }) }) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when {
+                !permitted -> Column(Modifier.padding(24.dp)) {
+                    Text("Для сканирования нужна камера")
+                    Button(onClick = { permission.launch(Manifest.permission.CAMERA) }) { Text("Разрешить камеру") }
                 }
-            )
-        }
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (!hasCameraPermission) {
-                Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.NoPhotography, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Требуется разрешение на использование камеры", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) { Text("Предоставить разрешение") }
+                error != null -> Column(Modifier.padding(24.dp)) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = { error = null; entry = null; password = null }) { Text("Попробовать снова") }
                 }
-            } else if (scannedEntryId == null && errorMessage == null) {
-                CameraPreview(
-                    onQrCodeScanned = { rawValue ->
-                        val currentProfileId = profileId ?: return@CameraPreview
-                        try {
-                            val result = SecureQrManager.validateQrToken(rawValue, currentProfileId, context)
-                            if (result.isValid && result.entryId != null) {
-                                val entry = viewModel.findEntryById(result.entryId)
-                                val profile = profiles.find { it.id == entry?.profileId }
-                                if (entry != null && profile != null && entry.profileId == currentProfileId) {
-                                    scannedEntryId = entry.id
-                                } else {
-                                    errorMessage = "Недействительный QR-код"
-                                }
-                            } else {
-                                errorMessage = "Недействительный QR-код"
-                            }
-                        } catch (e: Exception) {
-                            errorMessage = "Недействительный QR-код"
-                        }
-                    },
-                    lifecycleOwner = lifecycleOwner,
-                    cameraExecutor = cameraExecutor
-                )
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                    Card(modifier = Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))) {
-                        Text("Наведите камеру на QR-код", modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally), fontWeight = FontWeight.Medium)
-                    }
-                }
-            } else if (errorMessage != null) {
-                Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Icon(Icons.Default.Error, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Ошибка сканирования", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
-                    Spacer(Modifier.height(24.dp))
-                    Button(onClick = { scannedEntryId = null; errorMessage = null }) { Text("Попробовать снова") }
-                }
-            } else if (scannedEntryId != null && currentProfile != null) {
-                val entry = viewModel.findEntryById(scannedEntryId!!)
-                if (entry != null) {
-                    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                                    Spacer(Modifier.width(12.dp))
-                                    Column {
-                                        Text("QR-код успешно проверен", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                        Text("Устройство и профиль совпадают", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                                HorizontalDivider()
-                                InfoRow("Сервис", entry.service)
-                                InfoRow("Логин", entry.username)
-                                if (!entry.textHint.isNullOrBlank()) InfoRow("Подсказка", entry.textHint)
-                                if (!entry.mnemonicPhraseHint.isNullOrBlank()) InfoRow("Мнемоника", entry.mnemonicPhraseHint)
-
-                                Card(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("Пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = if (showPassword && decryptedPassword != null) decryptedPassword!! else "••••••••••••",
-                                                fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
-                                            )
-                                            if (!showPassword) {
-                                                IconButton(onClick = { requestAccess(entry, currentProfile) }) {
-                                                    Icon(Icons.Default.Visibility, "Показать пароль", tint = MaterialTheme.colorScheme.primary)
-                                                }
-                                            } else {
-                                                IconButton(onClick = {
-                                                    if (decryptedPassword != null) {
-                                                        // ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
-                                                        ClipboardHelper.copyWithAutoClear(
-                                                            context = context,
-                                                            text = decryptedPassword!!,
-                                                            label = "qr_password"
-                                                        )
-                                                        android.widget.Toast.makeText(context, "Скопировано (очищается через 30 сек)", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }) {
-                                                    Icon(Icons.Default.ContentCopy, "Копировать пароль", tint = MaterialTheme.colorScheme.primary)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Button(onClick = { scannedEntryId = null; showPassword = false; decryptedPassword = null }, modifier = Modifier.fillMaxWidth()) {
-                                    Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Сканировать другой QR")
-                                }
-                            }
+                entry == null && !loading -> CameraPreview(onResult = { raw ->
+                    if (!loading) {
+                        loading = true
+                        scope.launch {
+                            try {
+                                val owner = requireNotNull(profileId) { "Профиль не выбран" }
+                                val result = SecureQrManager.validateQrToken(raw, owner, context)
+                                require(result.isValid) { "Недействительный QR-код" }
+                                val found = viewModel.getEntryById(requireNotNull(result.entryId))
+                                require(found != null && found.profileId == owner) { "Запись QR-кода не найдена в профиле" }
+                                entry = found
+                            } catch (e: CancellationException) { throw e
+                            } catch (e: Exception) { error = e.message ?: "Ошибка QR"
+                            } finally { loading = false }
                         }
                     }
+                }, onError = { error = it })
+                loading -> CircularProgressIndicator()
+                else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(entry!!.service); Text(entry!!.username)
+                    Text(password ?: "••••••••••••", fontFamily = FontFamily.Monospace)
+                    Button(onClick = {
+                        val owner = profile
+                        if (owner == null) error = "Профиль записи не найден"
+                        else when (val policy = resolveAccess(entry!!, owner)) {
+                            AccessResult.Granted -> reveal()
+                            AccessResult.PinNotSet -> error = "Сначала задайте PIN профиля"
+                            else -> { biometric = policy is AccessResult.BiometricOrPin; access = true }
+                        }
+                    }) { Text("Показать пароль") }
+                    password?.let { pwd ->
+                        OutlinedButton(onClick = { ClipboardHelper.copyWithAutoClear(context, pwd, "qr_password") }) { Text("Копировать на 30 секунд") }
+                        OutlinedButton(onClick = { password = null }) { Text("Скрыть") }
+                    }
+                    TextButton(onClick = { password = null; entry = null }) { Text("Сканировать другой QR") }
                 }
             }
         }
     }
-
-    if (showProfileAccessDialog && scannedEntryId != null && currentProfile != null) {
-        val entry = viewModel.findEntryById(scannedEntryId!!)
-        if (entry != null) {
-            ProfileAccessDialog(
-                profile = currentProfile,
-                allowBiometric = currentAccessAllowBiometric,
-                onDismiss = { showProfileAccessDialog = false },
-                onGranted = {
-                    showPassword = true
-                    decryptedPassword = entry.password
-                    showProfileAccessDialog = false
-                }
-            )
-        }
-    }
-    
-    if (showPinNotSetDialog) {
-        AlertDialog(
-            onDismissRequest = { showPinNotSetDialog = false },
-            title = { Text("PIN профиля не задан") },
-            text = { Text("Для этого действия нужно сначала задать PIN профиля в настройках.") },
-            confirmButton = { TextButton(onClick = { showPinNotSetDialog = false }) { Text("Понятно") } }
-        )
-    }
+    if (access && profile != null) ProfileAccessDialog(profile, biometric,
+        onDismiss = { access = false }, onGranted = { access = false; reveal() })
 }
 
+@androidx.annotation.OptIn(ExperimentalGetImage::class)
 @Composable
-private fun InfoRow(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@androidx.camera.core.ExperimentalGetImage
-@Composable
-private fun CameraPreview(onQrCodeScanned: (String) -> Unit, lifecycleOwner: androidx.lifecycle.LifecycleOwner, cameraExecutor: ExecutorService) {
+private fun CameraPreview(onResult: (String) -> Unit, onError: (String) -> Unit) {
     val context = LocalContext.current
-    AndroidView(factory = { ctx ->
-        val previewView = PreviewView(ctx)
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-            val imageAnalysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build().also {
-                it.setAnalyzer(cameraExecutor) { imageProxy ->
-                    val mediaImage = imageProxy.image
-                    if (mediaImage != null) {
-                        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                        val scanner = BarcodeScanning.getClient()
-                        scanner.process(image).addOnSuccessListener { barcodes ->
-                            for (barcode in barcodes) {
-                                val rawValue = barcode.rawValue
-                                if (!rawValue.isNullOrBlank()) {
-                                    onQrCodeScanned(rawValue)
-                                    break
-                                }
-                            }
-                        }.addOnCompleteListener { imageProxy.close() }
-                    } else {
-                        imageProxy.close()
-                    }
-                }
-            }
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis)
-            } catch (e: Exception) {
-                Log.e("CameraPreview", "Use case binding failed", e)
-            }
-        }, ContextCompat.getMainExecutor(ctx))
-        previewView
-    }, modifier = Modifier.fillMaxSize())
+    val owner = LocalLifecycleOwner.current
+    val result by rememberUpdatedState(onResult)
+    val failure by rememberUpdatedState(onError)
+    val view = remember { PreviewView(context) }
+    DisposableEffect(owner, view) {
+        var active = true
+        val executor = Executors.newSingleThreadExecutor()
+        val main = ContextCompat.getMainExecutor(context)
+        val scanner = BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build())
+        val preview = Preview.Builder().build().also { it.setSurfaceProvider(view.surfaceProvider) }
+        val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+        var provider: ProcessCameraProvider? = null
+        analysis.setAnalyzer(executor) { frame ->
+            val media = frame.image
+            if (media == null || !active) frame.close()
+            else try {
+                scanner.process(InputImage.fromMediaImage(media, frame.imageInfo.rotationDegrees))
+                    .addOnSuccessListener(main) { codes -> if (active) codes.firstNotNullOfOrNull { it.rawValue }?.let(result) }
+                    .addOnFailureListener(main) { if (active) failure("Не удалось распознать QR-код") }
+                    .addOnCompleteListener(main) { frame.close() }
+            } catch (_: Exception) { frame.close() }
+        }
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            if (active) try {
+                provider = future.get()
+                provider?.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            } catch (_: Exception) { failure("Не удалось запустить камеру") }
+        }, main)
+        onDispose {
+            active = false; analysis.clearAnalyzer(); provider?.unbind(preview, analysis)
+            scanner.close(); executor.shutdown()
+        }
+    }
+    AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
 }
