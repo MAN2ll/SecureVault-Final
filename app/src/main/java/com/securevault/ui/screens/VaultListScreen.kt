@@ -3,6 +3,12 @@
 package com.securevault.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,11 +58,15 @@ fun VaultListScreen(
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val entries by viewModel.entries.collectAsState()
+    val scope = rememberCoroutineScope()
+    var envelopeIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val allEntries by viewModel.allEntries.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
+    val entries = allEntries.filter { it.profileId == profileId && (!favoritesOnly || it.isFavorite) }
+    val profiles by viewModel.profiles.collectAsState()
+    val currentProfile = profiles.find { it.id == profileId }
     
-    val currentProfile by viewModel.currentProfile.collectAsState()
-    
+    var showShuffle by remember { mutableStateOf(false) }
     var entryToDelete by remember { mutableStateOf<Entry?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(false) }
@@ -70,6 +80,32 @@ fun VaultListScreen(
     
     var searchQuery by remember { mutableStateOf("") }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
+    val envelopeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val ids = envelopeIds; envelopeIds = emptySet()
+        if (uri != null && ids.isNotEmpty() && authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) {
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        val items = ids.map { viewModel.getEntryById(it) ?: error("Запись не найдена") }
+                        require(items.all { it.profileId == profileId }) { "Запись другого профиля" }
+                        val text = buildString {
+                            append("СЛУЖЕБНЫЙ КОНВЕРТ БЕЗОПАСНОСТИ\n")
+                            append("Дата: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())}\n\n")
+                            items.forEachIndexed { index, item ->
+                                append("${index + 1}. СЕРВИС: ${item.service}\nЛОГИН: ${item.username}\nПАРОЛЬ: ${item.password}\n\n")
+                            }
+                        }
+                        requireNotNull(context.contentResolver.openOutputStream(uri)) { "Не удалось открыть файл" }.use {
+                            it.write(text.toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                    operationMessage = "Конверт сохранён"
+                } catch (e: CancellationException) { throw e
+                } catch (e: Exception) { operationMessage = "Ошибка конверта: ${e.message}" }
+            }
+        }
+    }
+
 
     if (profileId == null) {
         LaunchedEffect(Unit) { onBack() }
@@ -91,7 +127,7 @@ fun VaultListScreen(
                 entry.service.contains(searchQuery, ignoreCase = true) ||
                 entry.username.contains(searchQuery, ignoreCase = true) ||
                 entry.tags.any { it.contains(searchQuery, ignoreCase = true) }
-            val matchesTag = selectedTag == null || selectedTag in entry.tags
+            val matchesTag = selectedTag == null || entry.tags.any { it.equals(selectedTag, ignoreCase = true) }
             matchesSearch && matchesTag
         }
     }
@@ -179,6 +215,19 @@ fun VaultListScreen(
             }
             
             if (selectionMode && selectedEntryIds.isNotEmpty()) {
+                OutlinedButton(onClick = {
+                    pendingDeleteAction = {
+                        envelopeIds = selectedEntryIds
+                        envelopeLauncher.launch("securevault_envelope_${System.currentTimeMillis()}.txt")
+                    }
+                    showMasterPasswordDialog = true
+                }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text("Конверт: пароли открытым текстом")
+                }
+                OutlinedButton(onClick = { showShuffle = true },
+                    enabled = selectedEntryIds.size >= 2, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text("Перемешать выбранные пароли")
+                }
                 Button(
                     onClick = {
                         pendingDeleteAction = {
@@ -231,6 +280,14 @@ fun VaultListScreen(
             }
         }
     }
+
+    if (showShuffle) PasswordShuffleDialog(
+        entries = entries.filter { it.id in selectedEntryIds },
+        onDismiss = { showShuffle = false },
+        onShuffleApplied = {
+            showShuffle = false; selectedEntryIds = emptySet(); selectionMode = false
+            operationMessage = "Пароли перемешаны"
+        }, viewModel = viewModel)
 
     if (entryToView != null && currentProfile != null) {
         PasswordViewDialog(
@@ -318,6 +375,7 @@ fun VaultListScreen(
                     pendingDeleteAction?.invoke()
                     pendingDeleteAction = null
                 } else {
+                    pendingDeleteAction = null
                     operationMessage = "Неверный мастер-пароль"
                 }
             },
