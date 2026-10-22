@@ -1,8 +1,12 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.securevault.ui.screens
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
@@ -15,117 +19,90 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity //  ИСПРАВЛЕНО: нужен именно FragmentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.work.*
+import com.securevault.ui.components.LockActionButton
+import com.securevault.utils.RotationNotificationWorker
+import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
-import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
-    onBack: () -> Unit,
-    onNavigateToExport: () -> Unit = {},
-    onNavigateToChangePassword: () -> Unit = {},
-    onLock: () -> Unit = {},
-    viewModel: VaultViewModel = hiltViewModel()
-) {
+fun SettingsScreen(onBack: () -> Unit, onNavigateToExport: () -> Unit = {},
+    onNavigateToChangePassword: () -> Unit = {}, onLock: () -> Unit = {},
+    viewModel: VaultViewModel = hiltViewModel(), authViewModel: AuthViewModel) {
     val context = LocalContext.current
-    //  ИСПРАВЛЕНО: приводим к FragmentActivity, так как этого требует BiometricPrompt
     val activity = context as? FragmentActivity
     val prefs = remember { context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE) }
-    
-    var biometricEnabled by remember { mutableStateOf(prefs.getBoolean("biometric_enabled", false)) }
-    var actualBiometricState by remember { mutableStateOf(biometricEnabled) }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Настройки", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Вход по биометрии", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("Использовать отпечаток или Face ID", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(
-                        checked = actualBiometricState,
-                        onCheckedChange = { isEnabled ->
-                            if (isEnabled && activity != null) {
-                                val biometricManager = BiometricManager.from(context)
-                                val canAuthenticate = biometricManager.canAuthenticate(
-                                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                                )
-
-                                if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-                                    launchBiometricPrompt(activity) { success ->
-                                        if (success) {
-                                            actualBiometricState = true
-                                            prefs.edit().putBoolean("biometric_enabled", true).apply()
-                                        } else {
-                                            actualBiometricState = false
-                                        }
-                                    }
-                                } else {
-                                    actualBiometricState = false
+    var biometric by remember { mutableStateOf(authViewModel.isBiometricLoginEnabled()) }
+    var notifications by remember { mutableStateOf(prefs.getBoolean("notifications_rotation_enabled", false)) }
+    var timeout by remember { mutableIntStateOf(prefs.getInt("auto_lock_timeout_minutes", 5)) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var prompt by remember { mutableStateOf<BiometricPrompt?>(null) }
+    var active by remember { mutableStateOf(true) }
+    DisposableEffect(Unit) { onDispose { active = false; prompt?.cancelAuthentication() } }
+    fun setNotifications(enabled: Boolean) {
+        notifications = enabled
+        prefs.edit().putBoolean("notifications_rotation_enabled", enabled).apply()
+        val manager = WorkManager.getInstance(context)
+        if (enabled) manager.enqueueUniquePeriodicWork("securevault_rotation_notifications",
+            ExistingPeriodicWorkPolicy.UPDATE, PeriodicWorkRequestBuilder<RotationNotificationWorker>(1, TimeUnit.DAYS).build())
+        else manager.cancelUniqueWork("securevault_rotation_notifications")
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        setNotifications(granted)
+        if (!granted) error = "Разрешение на уведомления не предоставлено"
+    }
+    Scaffold(topBar = { TopAppBar(title = { Text("Настройки") },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
+        actions = { LockActionButton(onLock) }) }) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Вход по биометрии", Modifier.weight(1f))
+                Switch(biometric, { enabled ->
+                    if (!enabled) { biometric = false; authViewModel.setBiometricLoginEnabled(false) }
+                    else if (activity == null || BiometricManager.from(context).canAuthenticate(
+                        BiometricManager.Authenticators.BIOMETRIC_STRONG) != BiometricManager.BIOMETRIC_SUCCESS) {
+                        error = "Сильная биометрия недоступна. Добавьте её в настройках Android."
+                    } else {
+                        prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(context),
+                            object : BiometricPrompt.AuthenticationCallback() {
+                                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                    if (active) { biometric = true; authViewModel.setBiometricLoginEnabled(true) }
                                 }
-                            } else {
-                                actualBiometricState = false
-                                biometricEnabled = false
-                                prefs.edit().putBoolean("biometric_enabled", false).apply()
-                            }
-                        }
-                    )
+                            }).also { it.authenticate(BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("Подтвердите включение биометрии")
+                                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                                .setNegativeButtonText("Отмена").build()) }
+                    }
+                })
+            }
+            Text("Автоблокировка")
+            listOf(0 to "Сразу при сворачивании", 1 to "Через 1 минуту", 5 to "Через 5 минут",
+                15 to "Через 15 минут", 30 to "Через 30 минут").forEach { (value, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(timeout == value, {
+                        timeout = value; prefs.edit().putInt("auto_lock_timeout_minutes", value).apply()
+                    }); Text(label)
                 }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Напоминания о сроках смены", Modifier.weight(1f))
+                Switch(notifications, { enabled ->
+                    if (enabled && Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context,
+                        Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                        permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else setNotifications(enabled)
+                })
+            }
+            Text("Фоновая проверка просроченных паролей раз в день; время зависит от Android.")
+            Button(onClick = onNavigateToChangePassword, modifier = Modifier.fillMaxWidth()) { Text("Изменить мастер-пароль") }
+            OutlinedButton(onClick = onNavigateToExport, modifier = Modifier.fillMaxWidth()) { Text("Экспорт / Импорт") }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
-}
-
-//  ИСПРАВЛЕНО: параметр теперь строго FragmentActivity
-private fun launchBiometricPrompt(activity: FragmentActivity, onResult: (Boolean) -> Unit) {
-    val executor: Executor = ContextCompat.getMainExecutor(activity)
-    val biometricPrompt = BiometricPrompt(
-        activity, //  Теперь тип точно совпадает с требуемым конструктором
-        executor,
-        object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                onResult(true)
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                onResult(false)
-            }
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                onResult(false)
-            }
-        }
-    )
-
-    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Подтвердите личность")
-        .setSubtitle("Для включения входа по биометрии подтвердите свои данные")
-        .setNegativeButtonText("Отмена")
-        .build()
-
-    biometricPrompt.authenticate(promptInfo)
 }
