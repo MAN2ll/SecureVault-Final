@@ -74,7 +74,8 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         val iterations = prefs.getInt("master_iterations", 100_000)
         
         return if (storedHash != null && storedSalt != null && MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
-            prefs.edit().putInt("failed_attempts", 0).apply()
+            prefs.edit().putInt("failed_attempts", 0)
+                .putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
             _authState.value = AuthState.Unlocked
             prefs.edit().putLong("last_interaction_time", System.currentTimeMillis()).apply()
             true
@@ -113,18 +114,22 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         
         val hashResult = MasterPasswordHasher.hash(newPassword)
         prefs.edit().putString("master_hash", hashResult.hash).putString("master_salt", hashResult.salt)
+            .putInt("master_iterations", hashResult.iterations)
             .putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
         return true
     }
 
     fun lock() {
-        _authState.value = AuthState.Locked
+        _authState.value = if (prefs.contains("master_hash")) AuthState.Locked else AuthState.SetupRequired
         prefs.edit().putBoolean("is_unlocked", false).apply()
         viewModelScope.launch { _clearSensitiveEvent.emit(Unit) }
     }
 
     fun unlockWithBiometric(): Boolean {
-        if (isMasterPasswordRequired()) return false
+        updateBruteForceState()
+        if (!isBiometricLoginEnabled() || isMasterPasswordRequired() ||
+            _authState.value is AuthState.BruteForceLocked ||
+            _authState.value is AuthState.SetupRequired) return false
         _authState.value = AuthState.Unlocked
         prefs.edit().putLong("last_interaction_time", System.currentTimeMillis()).apply()
         return true
