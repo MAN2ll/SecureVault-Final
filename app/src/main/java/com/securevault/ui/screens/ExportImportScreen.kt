@@ -66,8 +66,8 @@ fun ExportImportScreen(
     val exportManager = remember { ExportManager(context) }
     val scope = rememberCoroutineScope()
 
-    val entries by vaultViewModel.entries.collectAsState()
     val allEntries by vaultViewModel.allEntries.collectAsState()
+    val entries = allEntries.filter { profileId == null || it.profileId == profileId }
     val profiles by profileViewModel.profiles.collectAsState()
     val currentProfileId by vaultViewModel.currentProfileId.collectAsState()
 
@@ -199,23 +199,22 @@ fun ExportImportScreen(
     val csvImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        uri?.let {
-            val result = exportManager.importFromCsv(it, importTargetProfileId, generateNewIds = true)
-            scope.launch {
-                result.entries.forEach { entry -> vaultViewModel.insert(entry) }
-                val message = buildString {
-                    if (result.entries.isNotEmpty()) append("Импортировано: ${result.entries.size} записей")
-                    if (result.hasKeystoreErrors) {
-                        if (isNotEmpty()) append("\n")
-                        append("${result.keystoreErrors} записей нельзя расшифровать")
-                    }
-                    if (result.errors.isNotEmpty() && result.entries.isEmpty()) {
-                        append("Ошибка: ${result.errors.take(3).joinToString("; ")}")
-                    }
-                    if (isEmpty()) append("Файл не содержит данных")
+        if (uri != null) scope.launch {
+            isImporting = true
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    exportManager.importFromCsv(uri, importTargetProfileId, generateNewIds = true)
                 }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            }
+                var imported = 0
+                val errors = result.errors.toMutableList()
+                for (entry in result.entries) {
+                    try { vaultViewModel.saveEntry(entry, null); imported++ }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Exception) { errors.add("${entry.service}: ${e.message}") }
+                }
+                importResult = OperationResult(errors.isEmpty(), "Импортировано: $imported" +
+                    if (errors.isEmpty()) "" else "\nОшибок: ${errors.size}\n${errors.take(3).joinToString("; ")}")
+            } finally { isImporting = false }
         }
     }
 
@@ -234,8 +233,10 @@ fun ExportImportScreen(
                 val encrypted = withContext(Dispatchers.IO) { BackupManager.encryptBackup(backupData, backupPassword) }
                 val jsonString = encrypted.toJson()
 
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                withContext(Dispatchers.IO) {
+                    requireNotNull(context.contentResolver.openOutputStream(uri)) { "Не удалось открыть файл для записи" }.use {
+                        it.write(jsonString.toByteArray(Charsets.UTF_8))
+                    }
                 }
 
                 val profileCount = backupData.profiles.size
@@ -621,9 +622,10 @@ fun ExportImportScreen(
                                 if (!it) { importPin = ""; importPinConfirm = ""; importPinError = null }
                             }
                         )
-                        Text("Задать PIN для импортируемых профилей", modifier = Modifier.padding(start = 8.dp))
+                        Text("Задать PIN для новых импортируемых профилей", modifier = Modifier.padding(start = 8.dp))
                     }
 
+                    Text("Без этой галочки новые профили и их записи открываются без PIN. При объединении защита существующего профиля сохраняется.", fontSize = 12.sp)
                     if (setPinForImport) {
                         OutlinedTextField(
                             value = importPin,
