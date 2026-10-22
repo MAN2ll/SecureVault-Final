@@ -26,7 +26,10 @@ object ProfilePasswordHasher {
     }
 
     fun verify(password: String, storedHash: String, storedSalt: String): Boolean {
-        val computedHash = hash(password, storedSalt)
-        return computedHash == storedHash
+        if (password.isBlank() || storedHash.isBlank() || storedSalt.isBlank()) return false
+        return try {
+            MessageDigest.isEqual(hash(password, storedSalt).toByteArray(Charsets.UTF_8),
+                storedHash.toByteArray(Charsets.UTF_8))
+        } catch (_: IllegalArgumentException) { false }
     }
 }
