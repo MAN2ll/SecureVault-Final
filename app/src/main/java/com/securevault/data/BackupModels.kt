@@ -16,6 +16,24 @@ data class BackupData(
 
     companion object {
         fun fromJson(jsonString: String): BackupData {
+            if (jsonString.trimStart().startsWith("{")) {
+                val root = JSONObject(jsonString)
+                require(root.optInt("version") == 3 && root.has("accounts")) { "Неподдерживаемый формат backup" }
+                val accounts = root.getJSONArray("accounts")
+                val timestamp = root.optLong("exportTimestamp", System.currentTimeMillis())
+                val entries = (0 until accounts.length()).map { index ->
+                    val account = accounts.getJSONObject(index)
+                    val password = account.optString("explicitPassword")
+                    require(password.isNotBlank()) {
+                        "Старый backup не содержит пароль записи «${account.optString("serviceName")}». " +
+                        "Сначала сохраните её вычисленный пароль в старом приложении и создайте новый backup."
+                    }
+                    BackupEntry(service = account.getString("serviceName"), username = account.optString("login"),
+                        password = password, generationType = "manual", createdAt = timestamp, lastChanged = timestamp,
+                        notes = "Импорт из Мнемокот; прежний параметр ротации: ${account.optString("rotationDate")}")
+                }
+                return BackupData(listOf(BackupProfile(0, "Импорт Мнемокот", entries)))
+            }
             val array = JSONArray(jsonString)
             val profiles = mutableListOf<BackupProfile>()
             for (i in 0 until array.length()) {
@@ -205,7 +223,13 @@ data class EncryptedBackup(
 
     companion object {
         fun fromJson(jsonString: String): EncryptedBackup {
-            val obj = JSONObject(jsonString)
+            val trimmed = jsonString.trim()
+            if (!trimmed.startsWith("{")) {
+                val parts = trimmed.split(':')
+                require(parts.size == 3) { "Неподдерживаемый формат зашифрованного backup" }
+                return EncryptedBackup(parts[0], parts[1], parts[2])
+            }
+            val obj = JSONObject(trimmed)
             return EncryptedBackup(
                 salt = obj.getString("salt"),
                 iv = obj.getString("iv"),
