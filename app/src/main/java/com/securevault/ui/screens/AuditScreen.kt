@@ -30,7 +30,8 @@ fun AuditScreen(
     onEditEntry: (String) -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val entries by viewModel.entries.collectAsState()
+    val allEntries by viewModel.allEntries.collectAsState()
+    val entries = allEntries.filter { it.profileId == profileId }
     
     val weakPasswords = remember(entries) {
         entries.filter { entry ->
@@ -120,7 +121,7 @@ fun AuditScreen(
                             Icon(Icons.Default.CheckCircle, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(16.dp))
                             Text("Отлично! Проблем не найдено", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Text("Все пароли соответствуют требованиям безопасности", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Проверки длины, состава, повторов и сроков завершены", color = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                 }
