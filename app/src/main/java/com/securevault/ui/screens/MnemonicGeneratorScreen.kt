@@ -76,7 +76,7 @@ fun MnemonicGeneratorScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "AMPG создаёт запоминаемые пароли из фразы. " +
-                        "Каждый пароль уникален и восстанавливаем из исходной фразы.",
+                        "Для повторения результата нужны та же фраза, параметры и выбранный вариант.",
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -144,10 +144,10 @@ fun MnemonicGeneratorScreen(
             onDismiss = { showGeneratorDialog = false },
             //  5 ПАРАМЕТРОВ ДЛЯ КОРРЕКТНОЙ ПЕРЕДАЧИ ПОДСКАЗОК
             onGenerated = { pwd, type, hint, mnemonicHint, mnemonicJson ->
-                clipboardManager.setText(AnnotatedString(pwd))
+                com.securevault.utils.ClipboardHelper.copyWithAutoClear(context, pwd)
                 showGeneratorDialog = false
             },
-            initialServiceName = ""
+            initialServiceName = "", initialMode = 3
         )
     }
 }
