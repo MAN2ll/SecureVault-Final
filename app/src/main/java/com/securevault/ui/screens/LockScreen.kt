@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.viewmodel.AuthViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,15 +55,24 @@ fun LockScreen(
         }
     }
 
-    if (showBiometricPrompt && activity != null) {
+    LaunchedEffect(authState) {
+        if (authState is AuthViewModel.AuthState.BruteForceLocked) {
+            delay(1000); viewModel.init()
+        }
+    }
+    var activePrompt by remember { mutableStateOf<BiometricPrompt?>(null) }
+    var active by remember { mutableStateOf(true) }
+    DisposableEffect(Unit) { onDispose { active = false; activePrompt?.cancelAuthentication() } }
+    LaunchedEffect(showBiometricPrompt) {
+      if (showBiometricPrompt && activity != null) {
         val executor = ContextCompat.getMainExecutor(context)
         val biometricPrompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
                 showBiometricPrompt = false
                 
-                // ✅ ИСПРАВЛЕНО: Проверка результата разблокировки
-                val unlocked = viewModel.unlockWithBiometric()
+                //  Проверка результата разблокировки
+                val unlocked = active && viewModel.unlockWithBiometric()
                 if (unlocked) {
                     onUnlocked()
                 } else {
@@ -81,11 +91,14 @@ fun LockScreen(
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Разблокировать SecureVault")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setSubtitle("Используйте отпечаток пальца или лицо")
             .setNegativeButtonText("Использовать мастер-пароль")
             .build()
 
+        activePrompt = biometricPrompt
         biometricPrompt.authenticate(promptInfo)
+      }
     }
 
     Column(
@@ -113,6 +126,9 @@ fun LockScreen(
             Spacer(Modifier.height(16.dp))
         }
 
+        if (authState is AuthViewModel.AuthState.BruteForceLocked) {
+            Text("Повторите через ${((authState as AuthViewModel.AuthState.BruteForceLocked).remainingMillis + 999) / 1000} сек.")
+        }
         OutlinedTextField(
             value = password,
             onValueChange = { password = it; error = null },
@@ -139,7 +155,8 @@ fun LockScreen(
                     password = ""
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(50.dp)
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            enabled = authState !is AuthViewModel.AuthState.BruteForceLocked
         ) {
             Text("Разблокировать", fontSize = 16.sp)
         }
