@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.AccessMode
+import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.viewmodel.PasswordOperationResult
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -50,8 +51,21 @@ fun ProfileSettingsScreen(
     }
 
     val profiles by profileViewModel.profiles.collectAsState()
-    val entries by vaultViewModel.entries.collectAsState()
+    val allEntries by vaultViewModel.allEntries.collectAsState()
+    val entries = allEntries.filter { it.profileId == profileId }
     val profile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
+    var pendingSecurityChange by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun authorizeChange(action: () -> Unit) {
+        if (profile == null) return
+        if (profile.passwordHash.isBlank()) action() else pendingSecurityChange = action
+    }
+    if (pendingSecurityChange != null && profile != null) {
+        ProfileAccessDialog(profile, false,
+            onDismiss = { pendingSecurityChange = null }, onGranted = {
+                val action = pendingSecurityChange; pendingSecurityChange = null; action?.invoke()
+            })
+    }
+
 
     var showDeleteProfileDialog by remember { mutableStateOf(false) }
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
@@ -113,7 +127,7 @@ fun ProfileSettingsScreen(
                                 newPin = ""
                                 confirmNewPin = ""
                                 pinError = null
-                                showSetPinDialog = true 
+                                authorizeChange { showSetPinDialog = true } 
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text(if (hasPin) "Изменить PIN" else "Задать PIN") }
@@ -138,7 +152,7 @@ fun ProfileSettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     
                     var expanded by remember { mutableStateOf(false) }
-                    val currentMode = AccessMode.values().find { it.value == profile?.profileAccessMode } ?: AccessMode.PIN_REQUIRED
+                    val currentMode = AccessMode.fromString(profile?.profileAccessMode)
                     val hasPin = !profile?.passwordHash.isNullOrBlank()
                     
                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
@@ -167,12 +181,13 @@ fun ProfileSettingsScreen(
                                             showSetPinPrompt = true
                                         } else {
                                             profile?.let {
-                                                profileViewModel.setProfileAccessMode(it, mode) { result ->
+                                                authorizeChange { profileViewModel.setProfileAccessMode(it, mode) { result ->
                                                     when (result) {
                                                         is PasswordOperationResult.Success -> operationSuccess = "Режим входа обновлён"
                                                         is PasswordOperationResult.Error -> operationError = result.message
                                                     }
                                                 }
+                                            }
                                             }
                                         }
                                         expanded = false
@@ -191,7 +206,7 @@ fun ProfileSettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     
                     var expanded by remember { mutableStateOf(false) }
-                    val currentMode = AccessMode.values().find { it.value == profile?.passwordAccessMode } ?: AccessMode.PIN_REQUIRED
+                    val currentMode = AccessMode.fromString(profile?.passwordAccessMode)
                     val hasPin = !profile?.passwordHash.isNullOrBlank()
                     
                     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
@@ -221,7 +236,7 @@ fun ProfileSettingsScreen(
                                             showSetPinPrompt = true
                                         } else {
                                             profile?.let {
-                                                profileViewModel.updateProfile(it.copy(passwordAccessMode = mode.value))
+                                                authorizeChange { profileViewModel.updateProfile(it.copy(passwordAccessMode = mode.value)) }
                                             }
                                         }
                                         expanded = false
@@ -238,7 +253,7 @@ fun ProfileSettingsScreen(
                             Text("Сначала задайте PIN профиля", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         }
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = { showSetPinDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Button(onClick = { authorizeChange { showSetPinDialog = true } }, modifier = Modifier.fillMaxWidth()) {
                             Text("Задать PIN профиля")
                         }
                     }
@@ -266,7 +281,7 @@ fun ProfileSettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Удалить профиль", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer)
-                            Text("Профиль и все его пароли будут удалены безвозвратно.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Можно удалить только пустой профиль. Сначала удалите его пароли.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
 
@@ -312,7 +327,7 @@ fun ProfileSettingsScreen(
             onDismissRequest = { showDeleteProfileDialog = false },
             icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Удалить профиль?") },
-            text = { Text("Профиль \"${profile?.name ?: ""}\" и все его пароли будут удалены безвозвратно.\n\nЭто действие нельзя отменить.", color = MaterialTheme.colorScheme.onErrorContainer) },
+            text = { Text("Профиль \"${profile?.name ?: ""}\" будет удалён. Профиль должен быть пустым.\n\nЭто действие нельзя отменить.", color = MaterialTheme.colorScheme.onErrorContainer) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -367,7 +382,7 @@ fun ProfileSettingsScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (newPin.length !in 4..8) {
+                    if (newPin.length !in 4..8 || !newPin.all(Char::isDigit)) {
                         pinError = "PIN профиля должен содержать от 4 до 8 цифр"
                         return@Button
                     }
