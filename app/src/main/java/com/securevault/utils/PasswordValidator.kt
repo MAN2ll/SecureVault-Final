@@ -83,19 +83,18 @@ object PasswordValidator {
             return true
         }
 
-        val history = entry.getPasswordHistory()
-        return history.any {
-            it.passwordFingerprint == newFingerprint || it.passwordFingerprint == legacyFingerprint
+        if (CryptoUtils.decrypt(entry.encryptedPassword) == password) return true
+        return entry.getPasswordHistory().any { item ->
+            item.passwordFingerprint in setOf(newFingerprint, legacyFingerprint) ||
+            item.passwordHash in setOf(newFingerprint, legacyFingerprint) ||
+            item.encryptedOldPassword?.let { CryptoUtils.decrypt(it) == password } == true
         }
     }
 
-    fun validatePasswordNotReusedForEntry(entry: Entry, newPassword: String, context: Context): ValidationResult {
-        return if (wasPasswordUsedForEntry(entry, newPassword, context)) {
-            ValidationResult(false, "Этот пароль уже использовался для данного сервиса. Выберите другой пароль.")
-        } else {
-            ValidationResult(true)
-        }
-    }
+    fun validatePasswordNotReusedForEntry(entry: Entry, newPassword: String, context: Context): ValidationResult =
+        if (wasPasswordUsedForEntry(entry, newPassword, context))
+            ValidationResult(false, "Этот пароль уже использовался для данного сервиса")
+        else ValidationResult(true)
 
     fun calculatePasswordDifferencePercent(oldPassword: String, newPassword: String): Int {
         val old = oldPassword.lowercase().replace(" ", "")
@@ -160,22 +159,8 @@ object PasswordValidator {
             if (!reuseCheck.isValid) return reuseCheck
         }
 
-        if (checkHistory) {
-            val history = entry.getPasswordHistory()
-            val lastHistoryItem = history.firstOrNull()
-            if (lastHistoryItem?.encryptedOldPassword != null) {
-                try {
-                    val oldPassword = CryptoUtils.decrypt(lastHistoryItem.encryptedOldPassword)
-                    if (!isAtLeast60PercentUnique(oldPassword, newPassword)) {
-                        return ValidationResult(
-                            false,
-                            "Новый пароль слишком похож на предыдущий. Отличие должно быть не менее 60%."
-                        )
-                    }
-                } catch (e: Exception) {
-                    // ignore
-                }
-            }
+        if (!isAtLeast60PercentUnique(CryptoUtils.decrypt(entry.encryptedPassword), newPassword)) {
+            return ValidationResult(false, "Новый пароль должен отличаться от текущего минимум на 60%")
         }
 
         return ValidationResult(true)
