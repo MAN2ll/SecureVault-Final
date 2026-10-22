@@ -1,5 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.securevault.ui.components
 
 import androidx.compose.foundation.clickable
@@ -11,234 +10,163 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.securevault.data.Profile
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
+import org.json.JSONObject
+import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UnifiedPasswordGeneratorDialog(
-    onDismiss: () -> Unit,
-    // ✅ ОБНОВЛЁННАЯ СИГНАТУРА: password, type, textHint, mnemonicPhraseHint, mnemonicOptionsJson
+fun UnifiedPasswordGeneratorDialog(onDismiss: () -> Unit,
     onGenerated: (String, String, String?, String?, String?) -> Unit,
-    initialServiceName: String = "",
-    profile: com.securevault.data.Profile? = null
-) {
-    var selectedMode by remember { mutableIntStateOf(0) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Генератор паролей", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    FilterChip(selected = selectedMode == 0, onClick = { selectedMode = 0 }, label = { Text("Случайный", modifier = Modifier.weight(1f)) })
-                    FilterChip(selected = selectedMode == 1, onClick = { selectedMode = 1 }, label = { Text("2 части", modifier = Modifier.weight(1f)) })
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    FilterChip(selected = selectedMode == 2, onClick = { selectedMode = 2 }, label = { Text("Якорь", modifier = Modifier.weight(1f)) })
-                    FilterChip(selected = selectedMode == 3, onClick = { selectedMode = 3 }, label = { Text("AMPG", modifier = Modifier.weight(1f)) })
-                }
-
-                when (selectedMode) {
-                    // ✅ Случайные пароли очищают мнемонические поля (передают null)
-                    0 -> RandomGeneratorContent { pwd -> onGenerated(pwd, "random", null, null, null) }
-                    1 -> TwoPartGeneratorContent { pwd -> onGenerated(pwd, "random_two_part", null, null, null) }
-                    // ✅ Якорь передаёт подсказку как textHint
-                    2 -> AnchorGeneratorContent({ pwd, hint -> onGenerated(pwd, "random_anchor", hint, null, null) }, initialServiceName)
-                    // ✅ AMPG корректно передаёт mnemonicPhraseHint
-                    3 -> AmpgGeneratorContent({ pwd, type, mnemonicHint -> 
-                        onGenerated(pwd, type, null, mnemonicHint, null) 
-                    }, initialServiceName)
+    initialServiceName: String = "", profile: Profile? = null, initialMode: Int = 0) {
+    var mode by remember { mutableIntStateOf(initialMode.coerceIn(0, 3)) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Генератор паролей") }, text = {
+        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            listOf(listOf(0 to "Случайный", 1 to "2 части"), listOf(2 to "Якорь", 3 to "AMPG")).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (value, label) -> FilterChip(mode == value, { mode = value }, label = { Text(label) }) }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } }
-    )
-}
-
-@Composable
-private fun RandomGeneratorContent(onGenerated: (String) -> Unit) {
-    var length by remember { mutableIntStateOf(16) }
-    var useLower by remember { mutableStateOf(true) }
-    var useUpper by remember { mutableStateOf(true) }
-    var useDigits by remember { mutableStateOf(true) }
-    var useSpecial by remember { mutableStateOf(true) }
-    
-    var generatedPassword by remember { mutableStateOf("") }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(length, useLower, useUpper, useDigits, useSpecial) {
-        val result = PasswordGenerator.generate(length, useLower, useUpper, useDigits, useSpecial)
-        result.onSuccess { res -> generatedPassword = res.password; errorMsg = null }
-            .onFailure { err -> generatedPassword = ""; errorMsg = err.message ?: "Ошибка" }
-    }
-
-    if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-    if (generatedPassword.isNotEmpty()) Text(generatedPassword, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Длина: $length", modifier = Modifier.weight(1f))
-            Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 8f..32f, modifier = Modifier.weight(2f))
+            when (mode) {
+                0, 1 -> RandomContent(mode == 1) { pwd ->
+                    onGenerated(pwd, if (mode == 1) "random_two_part" else "random", null, null, null)
+                }
+                2 -> AnchorContent(initialServiceName) { pwd, hint -> onGenerated(pwd, "random_anchor", hint, null, null) }
+                3 -> AmpgContent(initialServiceName, profile?.id, onGenerated)
+            }
         }
-        Button(onClick = { onGenerated(generatedPassword) }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
-    }
+    }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
 }
-
 @Composable
-private fun TwoPartGeneratorContent(onGenerated: (String) -> Unit) {
-    val allowedLengths = listOf(16, 18, 20)
-    var lengthIndex by remember { mutableIntStateOf(0) }
-    var length by remember { mutableIntStateOf(16) }
-    var generatedPassword by remember { mutableStateOf("") }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(length) {
-        val result = PasswordGenerator.generateTwoPart(length, true, true, true, true)
-        result.onSuccess { res -> generatedPassword = res.password; errorMsg = null }
-            .onFailure { err -> generatedPassword = ""; errorMsg = err.message ?: "Ошибка" }
+private fun RandomContent(twoParts: Boolean, onGenerated: (String) -> Unit) {
+    var length by remember(twoParts) { mutableIntStateOf(16) }
+    var lower by remember { mutableStateOf(true) }
+    var upper by remember { mutableStateOf(true) }
+    var digits by remember { mutableStateOf(true) }
+    var special by remember { mutableStateOf(true) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(twoParts, length, lower, upper, digits, special, refresh) {
+        val result = if (twoParts) PasswordGenerator.generateTwoPart(length, true, true, true, true)
+            else PasswordGenerator.generate(length, lower, upper, digits, special)
+        password = result.getOrNull()?.password.orEmpty(); error = result.exceptionOrNull()?.message
     }
-
-    if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-    if (generatedPassword.isNotEmpty()) {
-        val half = length / 2
-        Text("${generatedPassword.substring(0, half)} / ${generatedPassword.substring(half)}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-    }
-
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        allowedLengths.forEachIndexed { index, len ->
-            FilterChip(selected = lengthIndex == index, onClick = { lengthIndex = index; length = len }, label = { Text("$len", modifier = Modifier.weight(1f)) })
+    if (twoParts) {
+        Text("В каждой части минимум по две строчные, заглавные, цифры и спецсимвола.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(16, 18, 20).forEach { n -> FilterChip(length == n, { length = n }, label = { Text("$n") }) }
         }
+    } else {
+        Text("Длина: $length")
+        Slider(length.toFloat(), { length = it.toInt() }, valueRange = 8f..32f, steps = 23)
+        Toggle("Строчные a–z", lower) { lower = it }
+        Toggle("Заглавные A–Z", upper) { upper = it }
+        Toggle("Цифры", digits) { digits = it }
+        Toggle("Спецсимволы", special) { special = it }
     }
-    Button(onClick = { onGenerated(generatedPassword) }, enabled = generatedPassword.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Выбрать") }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (password.isNotEmpty()) Text(if (twoParts) password.chunked(password.length / 2).joinToString(" / ")
+        else password, fontFamily = FontFamily.Monospace)
+    OutlinedButton(onClick = { refresh++ }) { Text("Сгенерировать ещё") }
+    Button(onClick = { onGenerated(password) }, enabled = password.isNotEmpty()) { Text("Выбрать") }
 }
-
 @Composable
-private fun AnchorGeneratorContent(onGenerated: (String, String?) -> Unit, initialService: String) {
+private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked, onChange); Text(label) }
+}
+@Composable
+private fun AnchorContent(initialService: String, onGenerated: (String, String) -> Unit) {
     var anchor by remember { mutableStateOf("") }
+    var service by remember { mutableStateOf(initialService) }
     var length by remember { mutableIntStateOf(16) }
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
-    
-    var generatedPassword by remember { mutableStateOf("") }
+    var refresh by remember { mutableIntStateOf(0) }
+    var password by remember { mutableStateOf("") }
     var explanation by remember { mutableStateOf("") }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(anchor, length, addService, addYear) {
-        if (anchor.isBlank()) { generatedPassword = ""; return@LaunchedEffect }
-        val result = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, true, addService, initialService, addYear, 2026)
-        result.onSuccess { res -> generatedPassword = res.password; explanation = res.explanation; errorMsg = null }
-            .onFailure { err -> generatedPassword = ""; explanation = ""; errorMsg = err.message ?: "Ошибка" }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(anchor, service, length, addService, addYear, refresh) {
+        password = ""; explanation = ""; error = null
+        if (anchor.isNotBlank()) {
+            val result = PasswordGenerator.generateWithAnchor(anchor, length, true, true, true, true,
+                addService, service, addYear)
+            password = result.getOrNull()?.password.orEmpty()
+            explanation = result.getOrNull()?.explanation.orEmpty()
+            error = result.exceptionOrNull()?.message
+        }
     }
-
-    if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-    OutlinedTextField(value = anchor, onValueChange = { anchor = it }, label = { Text("Якорное слово") }, modifier = Modifier.fillMaxWidth())
-    
-    if (generatedPassword.isNotEmpty()) {
-        Text(generatedPassword, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-        Text(explanation, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Slider(value = length.toFloat(), onValueChange = { length = it.toInt() }, valueRange = 12f..32f, modifier = Modifier.weight(1f))
-        Button(onClick = { onGenerated(generatedPassword, anchor) }, enabled = generatedPassword.isNotEmpty()) { Text("Выбрать") }
-    }
+    OutlinedTextField(anchor, { anchor = it }, label = { Text("Якорное слово") }, modifier = Modifier.fillMaxWidth())
+    Text("Длина: $length")
+    Slider(length.toFloat(), { length = it.toInt() }, valueRange = 12f..32f, steps = 19)
+    Toggle("Добавить маркер сервиса", addService) { addService = it }
+    if (addService) OutlinedTextField(service, { service = it }, label = { Text("Сервис") })
+    Toggle("Добавить текущий год", addYear) { addYear = it }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    Text(password, fontFamily = FontFamily.Monospace)
+    Text(explanation)
+    OutlinedButton(onClick = { refresh++ }) { Text("Сгенерировать ещё") }
+    Button(onClick = { onGenerated(password, explanation) }, enabled = password.isNotEmpty()) { Text("Выбрать") }
 }
-
 @Composable
-private fun AmpgGeneratorContent(onGenerated: (String, String, String?) -> Unit, initialService: String) {
-    var phrase1 by remember { mutableStateOf("") }
-    var phrase2 by remember { mutableStateOf("") }
-    var splitMode by remember { mutableStateOf(MnemonicPasswordGenerator.SplitMode.SINGLE_USER) }
-    var targetLength by remember { mutableIntStateOf(16) }
-    
+private fun AmpgContent(initialService: String, profileId: Int?,
+    onGenerated: (String, String, String?, String?, String?) -> Unit) {
+    var phrase by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    var service by remember { mutableStateOf(initialService) }
+    var two by remember { mutableStateOf(false) }
+    var length by remember { mutableIntStateOf(16) }
+    var addService by remember { mutableStateOf(false) }
+    var addYear by remember { mutableStateOf(false) }
+    val year = remember { Calendar.getInstance().get(Calendar.YEAR) }
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-
-    fun generate() {
-        if (phrase1.isBlank()) { errorMsg = "Введите мнемоническую фразу"; return }
-        if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS && phrase2.isBlank()) {
-            errorMsg = "Введите вторую фразу для режима TWO_USERS"; return
+    var error by remember { mutableStateOf<String?>(null) }
+    val options = MnemonicPasswordGenerator.GenerationOptions(phrase = phrase,
+        phrase2 = second.takeIf { two }, serviceName = service, profileId = profileId,
+        targetLength = length, splitMode = if (two) MnemonicPasswordGenerator.SplitMode.TWO_USERS
+            else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
+        addServiceMarker = addService, addYearMarker = addYear, year = year)
+    LaunchedEffect(options) { variants = emptyList(); error = null }
+    OutlinedTextField(phrase, { phrase = it }, label = { Text("Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
+    Toggle("Два пользователя", two) { two = it; if (it && length !in listOf(16, 18, 20)) length = 16 }
+    if (two) {
+        OutlinedTextField(second, { second = it }, label = { Text("Фраза второго пользователя") })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(16, 18, 20).forEach { n -> FilterChip(length == n, { length = n }, label = { Text("$n") }) }
         }
-
-        val options = MnemonicPasswordGenerator.GenerationOptions(
-            phrase = phrase1,
-            phrase2 = if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) phrase2 else null,
-            serviceName = initialService,
-            targetLength = targetLength,
-            splitMode = splitMode,
-            addServiceMarker = true,
-            addYearMarker = true,
-            year = 2026
-        )
-
-        val results = MnemonicPasswordGenerator.generateVariants(options, count = 3)
-        if (results.isEmpty()) {
-            errorMsg = "Не удалось сгенерировать варианты. Попробуйте изменить фразу или увеличить длину."
-            variants = emptyList()
-        } else {
-            variants = results
-            errorMsg = null
-        }
+    } else {
+        Text("Длина: $length")
+        Slider(length.toFloat(), { length = it.toInt() }, valueRange = 12f..32f, steps = 19)
     }
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
-            value = phrase1, onValueChange = { phrase1 = it; errorMsg = null },
-            label = { Text("Мнемоническая фраза 1") },
-            placeholder = { Text("например: это был обычный август") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        if (splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS) {
-            OutlinedTextField(
-                value = phrase2, onValueChange = { phrase2 = it; errorMsg = null },
-                label = { Text("Мнемоническая фраза 2") },
-                placeholder = { Text("например: для второго пользователя") },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Режим:", modifier = Modifier.weight(1f))
-            Row {
-                RadioButton(selected = splitMode == MnemonicPasswordGenerator.SplitMode.SINGLE_USER, onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.SINGLE_USER })
-                Text("Один", modifier = Modifier.padding(end = 16.dp))
-                RadioButton(selected = splitMode == MnemonicPasswordGenerator.SplitMode.TWO_USERS, onClick = { splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS })
-                Text("Два")
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Длина: $targetLength", modifier = Modifier.weight(1f))
-            Slider(value = targetLength.toFloat(), onValueChange = { targetLength = it.toInt() }, valueRange = 12f..32f, steps = 20)
-        }
-
-        Button(onClick = { generate() }, modifier = Modifier.fillMaxWidth()) { Text("Сгенерировать варианты") }
-
-        if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-
-        if (variants.isNotEmpty()) {
-            Text("Выберите вариант:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            variants.forEachIndexed { index, variant ->
-                Card(modifier = Modifier.fillMaxWidth().clickable { 
-                    //  Передаём пароль, тип и mnemonicHint
-                    onGenerated(variant.password, "ampg_v${variant.variantOffset}", variant.mnemonicHint) 
-                }) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(variant.password, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Text(variant.variantName, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(variant.explanation, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
+    Toggle("Маркер сервиса", addService) { addService = it }
+    if (addService) OutlinedTextField(service, { service = it }, label = { Text("Сервис") })
+    Toggle("Маркер года ($year)", addYear) { addYear = it }
+    Button(onClick = {
+        variants = if (phrase.isBlank() || (two && second.isBlank())) emptyList()
+            else MnemonicPasswordGenerator.generateVariants(options, 3)
+        error = if (variants.isEmpty()) "Нет подходящих вариантов. Измените фразу, длину или маркеры." else null
+    }) { Text("Сгенерировать варианты") }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    variants.forEach { variant ->
+        Card(Modifier.fillMaxWidth().clickable {
+            val json = JSONObject().apply {
+                put("phrase", phrase); put("phrase2", second.takeIf { two } ?: JSONObject.NULL)
+                put("serviceName", service); put("username", options.username)
+                put("profileId", profileId ?: JSONObject.NULL); put("targetLength", length)
+                put("splitMode", options.splitMode.name); put("variantOffset", variant.variantOffset)
+                put("addServiceMarker", addService); put("addYearMarker", addYear); put("year", year)
+                put("rotationMonth", JSONObject.NULL); put("rotationYear", JSONObject.NULL)
+            }.toString()
+            onGenerated(variant.password, "ampg_v${variant.variantOffset}", variant.explanation,
+                variant.mnemonicHint, json)
+        }) {
+            Column(Modifier.padding(12.dp)) {
+                Text(variant.password, fontFamily = FontFamily.Monospace)
+                Text(variant.variantName); Text(variant.explanation)
+                Text("Выбрать этот вариант")
             }
         }
     }
