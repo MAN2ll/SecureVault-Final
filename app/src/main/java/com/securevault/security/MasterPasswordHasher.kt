@@ -33,12 +33,11 @@ object MasterPasswordHasher {
     }
 
     fun verify(password: String, storedHash: String, storedSalt: String, iterations: Int = ITERATIONS): Boolean {
-        val salt = Base64.decode(storedSalt, Base64.NO_WRAP)
-        val computedHash = hashWithSalt(password, salt, iterations)
-        val computedHashBase64 = Base64.encodeToString(computedHash, Base64.NO_WRAP)
-        
-        // CONSTANT-TIME COMPARE для защиты от timing attacks
-        return constantTimeEquals(computedHashBase64, storedHash)
+        return try {
+            val salt = Base64.decode(storedSalt, Base64.NO_WRAP)
+            val computedHash = hashWithSalt(password, salt, iterations)
+            constantTimeEquals(Base64.encodeToString(computedHash, Base64.NO_WRAP), storedHash)
+        } catch (_: Exception) { false }
     }
 
     //  Constant-time comparison
@@ -53,17 +52,6 @@ object MasterPasswordHasher {
     }
 
     private fun hashWithSalt(password: String, salt: ByteArray, iterations: Int): ByteArray {
-        //  Очищаем charArray после использования для безопасности
-        val passwordChars = password.toCharArray()
-        try {
-            val spec = PBEKeySpec(passwordChars, salt, iterations, KEY_LENGTH)
-            val factory = SecretKeyFactory.getInstance(ALGORITHM)
-            return factory.generateSecret(spec).encoded
-        } finally {
-            // Очищаем массив символов пароля
-            for (i in passwordChars.indices) {
-                passwordChars[i] = '\u0000'
-            }
-        }
+        return PasswordKdf.derive(password, salt, iterations)
     }
 }
