@@ -50,7 +50,8 @@ fun RotationJournalScreen(
         if (profileId != null) viewModel.setCurrentProfile(profileId)
     }
 
-    val entries by viewModel.entries.collectAsState()
+    val allEntries by viewModel.allEntries.collectAsState()
+    val entries = allEntries.filter { it.profileId == profileId }
     val profiles by profileViewModel.profiles.collectAsState()
     val currentProfile = remember(profileId, profiles) { profiles.find { it.id == profileId } }
 
@@ -89,7 +90,9 @@ fun RotationJournalScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(entries) { entry ->
-                    val history = entry.getPasswordHistory()
+                    val parsed = runCatching { entry.getPasswordHistory() }
+                    val history = parsed.getOrDefault(emptyList())
+                    if (parsed.isFailure) Text("${entry.service}: не удалось прочитать историю", color = MaterialTheme.colorScheme.error)
                     if (history.isNotEmpty()) {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(16.dp)) {
@@ -118,7 +121,7 @@ fun RotationJournalScreen(
                                             historyItemToShow = entry to item
                                             revealedHistoryPassword = null
                                             
-                                            val fallbackProfile = currentProfile ?: Profile(0, "", "", "")
+                                            val fallbackProfile = currentProfile ?: return@IconButton
                                             val result = resolveAccess(entry, fallbackProfile)
                                             
                                             when (result) {
