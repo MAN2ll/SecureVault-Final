@@ -32,6 +32,12 @@ interface EntryDao {
     @Update
     suspend fun update(entry: Entry)
 
+    @Update
+    suspend fun updateMany(entries: List<Entry>)
+
+    @Delete
+    suspend fun deleteMany(entries: List<Entry>)
+
     @Delete
     suspend fun delete(entry: Entry)
 
