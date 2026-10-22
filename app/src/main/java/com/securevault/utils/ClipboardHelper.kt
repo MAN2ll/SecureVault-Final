@@ -6,47 +6,28 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PersistableBundle
 
 object ClipboardHelper {
-    
-    private const val DEFAULT_CLEAR_DELAY_MS = 30_000L // 30 секунд
     private val handler = Handler(Looper.getMainLooper())
-    private var clearRunnable: Runnable? = null
-    
-    /**
-     * Копирует текст в буфер обмена с автоматической очисткой.
-     * Повторный вызов отменяет предыдущий таймер.
-     */
-    fun copyWithAutoClear(
-        context: Context,
-        text: String,
-        label: String = "SecureVault",
-        clearDelayMs: Long = DEFAULT_CLEAR_DELAY_MS
-    ) {
+    private var pending: Runnable? = null
+    fun copyWithAutoClear(context: Context, text: String, label: String = "SecureVault", clearDelayMs: Long = 30_000L) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
+        clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         clipboard.setPrimaryClip(clip)
-        
-        // Отменяем предыдущий таймер, если он был
-        clearRunnable?.let { handler.removeCallbacks(it) }
-        
-        clearRunnable = Runnable {
+        pending?.let { handler.removeCallbacks(it) }
+        val task = Runnable {
             try {
-                if (clipboard.hasPrimaryClip() && clipboard.primaryClipDescription?.label == label) {
-                    //  СОВМЕСТИМАЯ ОЧИСТКА: API 28+ поддерживает clearPrimaryClip, ниже используем перезапись пустым значением
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        clipboard.clearPrimaryClip()
-                    } else {
-                        clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
-                    }
+                val current = clipboard.primaryClip
+                if (current?.description?.label?.toString() == label && current.itemCount == 1 &&
+                    current.getItemAt(0).text?.toString() == text) {
+                    if (Build.VERSION.SDK_INT >= 28) clipboard.clearPrimaryClip()
+                    else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
                 }
-            } catch (e: Exception) {
-                // Игнорируем ошибки очистки
-            } finally {
-                clearRunnable = null
-            }
+            } catch (_: Exception) { /* Буфер может быть недоступен в фоне. */ }
+            pending = null
         }
-        
-        handler.postDelayed(clearRunnable!!, clearDelayMs)
+        pending = task; handler.postDelayed(task, clearDelayMs.coerceAtLeast(0))
     }
 }
