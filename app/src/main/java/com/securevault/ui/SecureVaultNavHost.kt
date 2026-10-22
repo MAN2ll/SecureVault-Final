@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -28,12 +29,23 @@ fun SecureVaultNavHost(
 ) {
     val authState by authViewModel.authState.collectAsState()
 
-    val startDestination = remember {
-        if (authState is AuthViewModel.AuthState.SetupRequired) "setup" else "profiles"
+    when (authState) {
+        AuthViewModel.AuthState.SetupRequired -> {
+            SetupScreen(authViewModel = authViewModel, onCompleted = {})
+            return
+        }
+        AuthViewModel.AuthState.Unlocked -> Unit
+        else -> {
+            LockScreen(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                onUnlocked = {}, onSetupRequired = {}, viewModel = authViewModel)
+            return
+        }
     }
-
+    LaunchedEffect(Unit) {
+        navController.navigate("profiles") { popUpTo(0) { inclusive = true } }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(navController = navController, startDestination = startDestination) {
+        NavHost(navController = navController, startDestination = "profiles") {
             composable("setup") {
                 //  ПЕРЕДАЧА AuthViewModel В SETUP
                 SetupScreen(
@@ -65,7 +77,8 @@ fun SecureVaultNavHost(
                     onBack = { navController.popBackStack() },
                     onNavigateToExport = { navController.navigate("export") },
                     onNavigateToChangePassword = { navController.navigate("change_password") },
-                    onLock = { authViewModel.lock() }
+                    onLock = { authViewModel.lock() },
+                    authViewModel = authViewModel
                 )
             }
 
@@ -141,6 +154,7 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 RotationScreen(
                     profileId = profileId,
+                    onEditEntry = { navController.navigate("entry/$it?profileId=$profileId") },
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() }
                 )
@@ -209,6 +223,7 @@ fun SecureVaultNavHost(
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 AuditScreen(
                     profileId = profileId,
+                    onEditEntry = { navController.navigate("entry/$it?profileId=$profileId") },
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() }
                 )
@@ -216,24 +231,12 @@ fun SecureVaultNavHost(
 
             composable("change_password") {
                 ChangeMasterPasswordScreen(
+                    viewModel = authViewModel,
                     onBack = { navController.popBackStack() },
                     onLock = { authViewModel.lock() }
                 )
             }
         }
 
-        if (authState is AuthViewModel.AuthState.Locked || authState is AuthViewModel.AuthState.BruteForceLocked) {
-            LockScreen(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                onUnlocked = { },
-                onSetupRequired = {
-                    navController.navigate("setup") {
-                        popUpTo(0) { inclusive = true }
-                    }
-                }
-            )
-        }
     }
 }
