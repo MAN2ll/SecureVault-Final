@@ -11,10 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,9 +35,6 @@ fun MnemonicGeneratorScreen(
     }
 
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
-    val currentProfileId by viewModel.currentProfileId.collectAsState()
-    val effectiveProfileId = profileId ?: currentProfileId
 
     var showGeneratorDialog by remember { mutableStateOf(false) }
 
@@ -97,24 +91,20 @@ fun MnemonicGeneratorScreen(
                     Text("Как это работает", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(8.dp))
                     
-                    InfoItem("1. Введите фразу", "Например: 'это был обычный август'")
-                    InfoItem("2. Выберите режим", "Один пользователь или два пользователя")
-                    InfoItem("3. Получите варианты", "Все варианты валидны и объяснимы")
+                    InfoItem("1. Введите фразу", "Например: «Сегодня стояла чудесная погода». Для личного пароля придумайте свою фразу.")
+                    InfoItem("2. Выберите режим", "Одна фраза или две фразы для двух равных частей")
+                    InfoItem("3. Получите варианты", "Первые буквы слов сохраняются заглавными, замены показаны рядом")
                     InfoItem("4. Выберите пароль", "Нажмите на вариант для копирования")
                     
                     Spacer(Modifier.height(16.dp))
                     
-                    Text("Пример", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                    Text("Правила AMPG 3", fontWeight = FontWeight.Medium, fontSize = 14.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Фраза: это был обычный август\n" +
-                        "Вариант 1: E70BylO4nAvgu\$#5\n" +
-                        "Вариант 2: E70By!O4nAvgu\$#5\n" +
-                        "Вариант 3: Et0By!O4nAvgu\$#5",
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Из каждого слова берётся одинаковое число букв транслитерации. " +
+                        "В каждой части — минимум 2 строчные, 2 заглавные и 2 спецсимвола. " +
+                        "A и a могут встречаться вместе, точные повторы исключены. " +
+                        "Не всякая фраза подходит для любой длины: генератор объяснит, что изменить.", fontSize = 12.sp)
+
                 }
             }
 
@@ -128,8 +118,8 @@ fun MnemonicGeneratorScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Безопасность", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text(
-                            "Пароли не содержат повторов символов. " +
-                            "Каждый пароль проходит проверку сложности.",
+                            "Выбирайте непубличную фразу. Знакомые цитаты и предсказуемые замены легче подобрать. " +
+                            "Исходная фраза не сохраняется в подсказках. Запомните также длину, год и номер варианта.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -143,11 +133,11 @@ fun MnemonicGeneratorScreen(
         UnifiedPasswordGeneratorDialog(
             onDismiss = { showGeneratorDialog = false },
             //  5 ПАРАМЕТРОВ ДЛЯ КОРРЕКТНОЙ ПЕРЕДАЧИ ПОДСКАЗОК
-            onGenerated = { pwd, type, hint, mnemonicHint, mnemonicJson ->
+            onGenerated = { pwd, _, _, _, _ ->
                 com.securevault.utils.ClipboardHelper.copyWithAutoClear(context, pwd)
                 showGeneratorDialog = false
             },
-            initialServiceName = "", initialMode = 3
+            initialServiceName = "", initialMode = 3, ampgOnly = true
         )
     }
 }
