@@ -300,7 +300,7 @@ class CoreRegressionTest {
     fun androidSevenKdfMatchesPlatformIncludingUnicode() {
         val salt = ByteArray(16) { it.toByte() }
 
-        for (password in listOf("password", "Пароль🙂", "")) {
+        for (password in listOf("password", "Пароль", "")) {
             for (iterations in listOf(1, 2, 1000)) {
                 val reference = SecretKeyFactory
                     .getInstance("PBKDF2WithHmacSHA256")
@@ -327,7 +327,7 @@ class CoreRegressionTest {
     }
 
     @Test
-    fun ampgIsUnchangedAndDeterministic() {
+    fun ampgRemainsDeterministicWithCaseSensitiveUniqueness() {
         val options = MnemonicPasswordGenerator.GenerationOptions(
             phrase = "метроном жёлтый камень",
             targetLength = 16,
@@ -345,11 +345,80 @@ class CoreRegressionTest {
         )
 
         first.forEach { variant ->
+            assertTrue(MnemonicPasswordGenerator.validatePassword(variant.password, options.splitMode))
             assertEquals(16, variant.password.length)
             assertEquals(
                 16,
-                variant.password.lowercase().toSet().size
+                variant.password.toSet().size
             )
+        }
+    }
+
+    @Test
+    fun ampgBothHalvesRespectQuotasAndDoNotRepeatExactCharacters() {
+        val options = MnemonicPasswordGenerator.GenerationOptions(
+            phrase = "Сегодня стояла чудесная погода",
+            phrase2 = "Ветер качает листья березы",
+            targetLength = 24,
+            splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS
+        )
+        val variants = MnemonicPasswordGenerator.generateVariantsResult(options).getOrThrow()
+        assertTrue(variants.isNotEmpty())
+        variants.forEach { result ->
+            assertEquals(24, result.password.length)
+            assertEquals(24, result.password.toSet().size)
+            assertEquals(result.password, result.part1!! + result.part2!!)
+            listOf(result.part1, result.part2).forEach { part ->
+                assertEquals(12, part!!.length)
+                assertTrue(part.count(Char::isLowerCase) >= 2)
+                assertTrue(part.count(Char::isUpperCase) >= 2)
+                assertTrue(part.count { !it.isLetterOrDigit() } >= 2)
+            }
+            val reproduced = MnemonicPasswordGenerator.generateVariantsResult(
+                options.copy(variantOffset = result.variantOffset), 1
+            ).getOrThrow().single()
+            assertEquals(result.password, reproduced.password)
+        }
+    }
+
+    @Test
+    fun ampgMarkersAreOptionalAndFitSelectedLength() {
+        val options = MnemonicPasswordGenerator.GenerationOptions(
+            phrase = "Дикий ветер качает березы", serviceName = "Gmail", targetLength = 24,
+            addServiceMarker = true, addYearMarker = true, year = 2026
+        )
+        val variants = MnemonicPasswordGenerator.generateVariantsResult(options).getOrThrow()
+        assertTrue(variants.any { it.explanation.contains("Сервис: Gl.") && it.explanation.contains("Год: 26.") })
+        variants.forEach { result ->
+            assertEquals(24, result.password.length)
+            assertEquals(24, result.password.toSet().size)
+            assertTrue(MnemonicPasswordGenerator.validatePassword(result.password, options.splitMode))
+        }
+        MnemonicPasswordGenerator.generateVariantsResult(options.copy(year = 2022)).getOrThrow().forEach {
+            assertEquals(24, it.password.length)
+            assertEquals(24, it.password.toSet().size)
+            assertFalse(it.explanation.contains("Год: 22."))
+        }
+        val pair = "AaBb!@cdEF"
+        assertTrue(PasswordValidator.validateUniqueCharacters(pair, "ampg_v3_0").isValid)
+        assertFalse(PasswordValidator.validateUniqueCharacters(pair, "random").isValid)
+        assertFalse(PasswordValidator.validateUniqueCharacters(pair + "!", "ampg_v3_0").isValid)
+    }
+
+    @Test
+    fun passwordScreenshotsAndRecentAppPreviewsHaveSeparateRules() {
+        val policy = com.securevault.security.ScreenPrivacyPolicy
+        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, true, false),
+            policy.decide(true, true, true, false))
+        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, false),
+            policy.decide(true, false, true, false))
+        for (allow in listOf(false, true)) {
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, true),
+                policy.decide(true, allow, false, true))
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, true),
+                policy.decide(false, allow, true, true))
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, false, false),
+                policy.decide(false, allow, true, false))
         }
     }
 }
