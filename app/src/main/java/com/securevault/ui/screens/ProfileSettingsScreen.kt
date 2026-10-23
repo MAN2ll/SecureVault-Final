@@ -2,6 +2,8 @@
 
 package com.securevault.ui.screens
 
+import com.securevault.security.SensitiveContent
+
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -305,6 +307,7 @@ fun ProfileSettingsScreen(
             icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Подтверждение удаления") },
             text = {
+                SensitiveContent()
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Для удаления профиля введите мастер-пароль", fontSize = 13.sp)
                     MasterPasswordInput(
@@ -356,6 +359,7 @@ fun ProfileSettingsScreen(
             onDismissRequest = { showSetPinDialog = false },
             title = { Text(if (!profile.passwordHash.isNullOrBlank()) "Изменить PIN профиля" else "Задать PIN профиля") },
             text = {
+                SensitiveContent()
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = newPin,
@@ -409,6 +413,7 @@ fun ProfileSettingsScreen(
             onDismissRequest = { showMasterPasswordForRemoveDialog = false },
             title = { Text("Подтверждение") },
             text = {
+                SensitiveContent()
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Для удаления PIN профиля введите мастер-пароль", fontSize = 13.sp)
                     OutlinedTextField(
