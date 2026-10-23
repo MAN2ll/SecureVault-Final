@@ -21,7 +21,7 @@ object EntryChanges {
         val old = CryptoUtils.decrypt(entry.encryptedPassword)
         if (password == old) return entry
         require(password.isNotBlank()) { "Пароль не может быть пустым" }
-        val validation = PasswordValidator.validateNewPasswordForEntry(entry, password, context)
+        val validation = PasswordValidator.validateNewPasswordForEntry(entry, password, context, generationType = type)
         require(validation.isValid) { validation.errorMessage.orEmpty() }
         val now = System.currentTimeMillis()
         val oldFingerprint = PasswordValidator.buildPasswordFingerprint(old, context)
