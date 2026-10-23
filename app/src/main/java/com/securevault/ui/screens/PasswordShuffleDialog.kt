@@ -129,7 +129,8 @@ fun PasswordShuffleDialog(
                 val validation = PasswordValidator.validateNewPasswordForEntry(
                     entry = target,
                     newPassword = newPassword,
-                    context = context
+                    context = context,
+                    generationType = source.generationType
                 )
                 if (!validation.isValid) {
                     errors.add("${target.service} ← ${source.service}: ${validation.errorMessage}")
