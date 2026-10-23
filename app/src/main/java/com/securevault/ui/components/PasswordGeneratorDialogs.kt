@@ -1,6 +1,11 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.securevault.ui.components
 
+import com.securevault.security.SensitiveContent
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,22 +25,24 @@ import java.util.Calendar
 @Composable
 fun UnifiedPasswordGeneratorDialog(onDismiss: () -> Unit,
     onGenerated: (String, String, String?, String?, String?) -> Unit,
-    initialServiceName: String = "", profile: Profile? = null, initialMode: Int = 0) {
+    initialServiceName: String = "", profile: Profile? = null, initialMode: Int = 0,
+    ampgOnly: Boolean = false, initialYear: Int? = null) {
     var mode by remember { mutableIntStateOf(initialMode.coerceIn(0, 3)) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Генератор паролей") }, text = {
+        SensitiveContent()
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf(listOf(0 to "Случайный", 1 to "2 части"), listOf(2 to "Якорь", 3 to "AMPG")).forEach { row ->
+            (if (ampgOnly) emptyList() else listOf(listOf(0 to "Случайный", 1 to "2 части"), listOf(2 to "Якорь", 3 to "AMPG"))).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { (value, label) -> FilterChip(mode == value, { mode = value }, label = { Text(label) }) }
                 }
             }
-            when (mode) {
+            when (if (ampgOnly) 3 else mode) {
                 0, 1 -> RandomContent(mode == 1) { pwd ->
                     onGenerated(pwd, if (mode == 1) "random_two_part" else "random", null, null, null)
                 }
                 2 -> AnchorContent(initialServiceName) { pwd, hint -> onGenerated(pwd, "random_anchor", hint, null, null) }
-                3 -> AmpgContent(initialServiceName, profile?.id, onGenerated)
+                3 -> AmpgContent(initialServiceName, profile?.id, initialYear, onGenerated)
             }
         }
     }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
@@ -112,7 +119,7 @@ private fun AnchorContent(initialService: String, onGenerated: (String, String) 
     Button(onClick = { onGenerated(password, explanation) }, enabled = password.isNotEmpty()) { Text("Выбрать") }
 }
 @Composable
-private fun AmpgContent(initialService: String, profileId: Int?,
+private fun AmpgContent(initialService: String, profileId: Int?, initialYear: Int?,
     onGenerated: (String, String, String?, String?, String?) -> Unit) {
     var phrase by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
@@ -121,53 +128,80 @@ private fun AmpgContent(initialService: String, profileId: Int?,
     var length by remember { mutableIntStateOf(16) }
     var addService by remember { mutableStateOf(false) }
     var addYear by remember { mutableStateOf(false) }
-    val year = remember { Calendar.getInstance().get(Calendar.YEAR) }
+    var yearText by remember { mutableStateOf((initialYear ?: Calendar.getInstance().get(Calendar.YEAR)).toString()) }
+    var request by remember { mutableIntStateOf(0) }
+    var generating by remember { mutableStateOf(false) }
+    var generatedFor by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationOptions?>(null) }
     var variants by remember { mutableStateOf<List<MnemonicPasswordGenerator.GenerationResult>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     val options = MnemonicPasswordGenerator.GenerationOptions(phrase = phrase,
         phrase2 = second.takeIf { two }, serviceName = service, profileId = profileId,
         targetLength = length, splitMode = if (two) MnemonicPasswordGenerator.SplitMode.TWO_USERS
             else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
-        addServiceMarker = addService, addYearMarker = addYear, year = year)
-    LaunchedEffect(options) { variants = emptyList(); error = null }
-    OutlinedTextField(phrase, { phrase = it }, label = { Text("Мнемоническая фраза") }, modifier = Modifier.fillMaxWidth())
-    Toggle("Два пользователя", two) { two = it; if (it && length !in listOf(16, 18, 20)) length = 16 }
-    if (two) {
-        OutlinedTextField(second, { second = it }, label = { Text("Фраза второго пользователя") })
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(16, 18, 20).forEach { n -> FilterChip(length == n, { length = n }, label = { Text("$n") }) }
+        addServiceMarker = addService, addYearMarker = addYear, year = yearText.toIntOrNull())
+    LaunchedEffect(options, yearText, request) {
+        variants = emptyList(); error = null; generatedFor = null; generating = false
+        if (request == 0) return@LaunchedEffect
+        if (addYear && (yearText.length != 4 || options.year !in 1000..9999)) {
+            error = "Укажите год четырьмя цифрами"; return@LaunchedEffect
         }
-    } else {
-        Text("Длина: $length")
-        Slider(length.toFloat(), { length = it.toInt() }, valueRange = 12f..32f, steps = 19)
+        generating = true
+        try {
+            val result = withContext(Dispatchers.Default) {
+                MnemonicPasswordGenerator.generateVariantsResult(options, 3)
+            }
+            variants = result.getOrDefault(emptyList())
+            error = result.exceptionOrNull()?.message
+            generatedFor = options
+        } finally { generating = false }
     }
-    Toggle("Маркер сервиса", addService) { addService = it }
-    if (addService) OutlinedTextField(service, { service = it }, label = { Text("Сервис") })
-    Toggle("Маркер года ($year)", addYear) { addYear = it }
-    Button(onClick = {
-        variants = if (phrase.isBlank() || (two && second.isBlank())) emptyList()
-            else MnemonicPasswordGenerator.generateVariants(options, 3)
-        error = if (variants.isEmpty()) "Нет подходящих вариантов. Измените фразу, длину или маркеры." else null
-    }) { Text("Сгенерировать варианты") }
-    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    variants.forEach { variant ->
+    val phraseKeyboard = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false)
+    OutlinedTextField(phrase, { phrase = it; request = 0 }, label = { Text("Мнемоническая фраза") },
+        keyboardOptions = phraseKeyboard, modifier = Modifier.fillMaxWidth())
+    Toggle("Две части", two) { two = it; request = 0; if (it) length = length.coerceAtLeast(16).let { n -> n + n % 2 } }
+    if (two) OutlinedTextField(second, { second = it; request = 0 }, label = { Text("Фраза второй части") },
+        keyboardOptions = phraseKeyboard, modifier = Modifier.fillMaxWidth())
+    Text(if (two) "Общая длина: $length; по ${length / 2} в каждой части" else "Длина: $length")
+    Slider(length.toFloat(), { value ->
+        length = if (two) (kotlin.math.round(value / 2).toInt() * 2).coerceIn(16, 56) else value.toInt()
+        request = 0
+    }, valueRange = if (two) 16f..56f else 12f..56f, steps = if (two) 19 else 43)
+    Text("Из каждого слова берётся одинаковое число начальных букв транслитерации. Начало слова — заглавное. " +
+        "Минимум 2 строчные, 2 заглавные и 2 спецсимвола в каждой части. A и a допустимы вместе; точных повторов нет.")
+    Toggle("Маркер сервиса: первая и последняя буквы", addService) { addService = it; request = 0 }
+    if (addService) OutlinedTextField(service, { service = it; request = 0 }, label = { Text("Сервис") },
+        modifier = Modifier.fillMaxWidth())
+    Toggle("Маркер года: две последние цифры", addYear) { addYear = it; request = 0 }
+    if (addYear) OutlinedTextField(yearText, { yearText = it.filter(Char::isDigit).take(4); request = 0 },
+        label = { Text("Год") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+    Text("Маркеры добавляются целиком, если помещаются и не повторяют символы. " +
+        "В двух частях сервис относится к первой, год — ко второй. Остаток длины заполняется показанным суффиксом.")
+    Button(onClick = { request++ }, enabled = !generating) { Text(if (generating) "Подбираю…" else "Сгенерировать варианты") }
+    if (generating) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (request > 0) error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (generatedFor == options && request > 0) variants.forEach { variant ->
         Card(Modifier.fillMaxWidth().clickable {
             val json = JSONObject().apply {
-                put("phrase", phrase); put("phrase2", second.takeIf { two } ?: JSONObject.NULL)
-                put("serviceName", service); put("username", options.username)
-                put("profileId", profileId ?: JSONObject.NULL); put("targetLength", length)
-                put("splitMode", options.splitMode.name); put("variantOffset", variant.variantOffset)
-                put("addServiceMarker", addService); put("addYearMarker", addYear); put("year", year)
-                put("rotationMonth", JSONObject.NULL); put("rotationYear", JSONObject.NULL)
+                put("algorithmVersion", MnemonicPasswordGenerator.ALGORITHM_VERSION)
+                put("phraseStored", false)
+                put("serviceName", service); put("profileId", profileId ?: JSONObject.NULL)
+                put("targetLength", length); put("splitMode", options.splitMode.name)
+                put("variantOffset", variant.variantOffset)
+                put("addServiceMarker", addService); put("addYearMarker", addYear)
+                put("year", options.year ?: JSONObject.NULL)
             }.toString()
-            onGenerated(variant.password, "ampg_v${variant.variantOffset}", variant.explanation,
-                variant.mnemonicHint, json)
+            val hint = "AMPG 3; длина $length; вариант ${variant.variantOffset + 1}; " +
+                "букв из слова: ${variant.prefixLengths.joinToString(" / ")}"
+            onGenerated(variant.password, "ampg_v3_${variant.variantOffset}", hint, variant.mnemonicHint, json)
         }) {
             Column(Modifier.padding(12.dp)) {
-                Text(variant.password, fontFamily = FontFamily.Monospace)
-                Text(variant.variantName); Text(variant.explanation)
+                Text(if (two) "${variant.part1} / ${variant.part2}" else variant.password,
+                    fontFamily = FontFamily.Monospace)
+                Text("Вариант ${variant.variantOffset + 1}"); Text(variant.explanation)
                 Text("Выбрать этот вариант")
             }
         }
     }
+    Text("Запомните собственную непубличную фразу, длину, год и номер варианта. " +
+        "Исходные фразы и расшифровка замен не сохраняются в подсказках.")
 }
