@@ -2,6 +2,8 @@
 package com.securevault.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -130,7 +132,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                 val updated = if (base == null) {
                     val pwd = draft.orEmpty()
                     require(pwd.isNotBlank()) { "Введите пароль" }
-                    val validation = PasswordValidator.validateUniqueCharacters(pwd)
+                    val validation = PasswordValidator.validateUniqueCharacters(pwd, type)
                     require(validation.isValid) { validation.errorMessage.orEmpty() }
                     Entry.create(service.trim(), username, pwd, owner,
                         PasswordValidator.buildPasswordFingerprint(pwd, context),
@@ -174,9 +176,10 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                 OutlinedTextField(username, { username = it }, label = { Text("Логин / Email") }, enabled = !saving,
                     singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(draft.orEmpty(), {
-                    draft = it; type = "manual"; hint = null; mnemonicHint = null; mnemonicJson = null
+                    draft = it; type = if (PasswordValidator.isMnemonicType(type)) "manual_ampg" else "manual"; hint = null; mnemonicHint = null; mnemonicJson = null
                 }, label = { Text("Пароль *") }, enabled = !saving,
                     readOnly = edit && originalPassword == null, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false),
                     placeholder = { if (edit && originalPassword == null) Text("••••••••••••") },
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = { Row {
