@@ -20,17 +20,19 @@ object PasswordValidator {
         val errorMessage: String? = null
     )
 
-    fun hasDuplicateCharacters(password: String): Boolean {
+    fun isMnemonicType(type: String?): Boolean = type?.startsWith("ampg") == true || type == "mnemonic" || type == "manual_ampg"
+
+    fun hasDuplicateCharacters(password: String, caseSensitive: Boolean = false): Boolean {
         val seen = mutableSetOf<Char>()
-        for (char in password.lowercase()) {
+        for (char in if (caseSensitive) password else password.lowercase()) {
             if (char.isWhitespace()) continue
             if (!seen.add(char)) return true
         }
         return false
     }
 
-    fun validateUniqueCharacters(password: String): ValidationResult {
-        return if (hasDuplicateCharacters(password)) {
+    fun validateUniqueCharacters(password: String, generationType: String? = null): ValidationResult {
+        return if (hasDuplicateCharacters(password, isMnemonicType(generationType))) {
             ValidationResult(false, "Пароль содержит повторяющиеся символы. Создайте другой пароль.")
         } else {
             ValidationResult(true)
@@ -149,9 +151,10 @@ object PasswordValidator {
         entry: Entry,
         newPassword: String,
         context: Context,
-        checkHistory: Boolean = true
+        checkHistory: Boolean = true,
+        generationType: String = entry.generationType
     ): ValidationResult {
-        val uniqueCheck = validateUniqueCharacters(newPassword)
+        val uniqueCheck = validateUniqueCharacters(newPassword, generationType)
         if (!uniqueCheck.isValid) return uniqueCheck
 
         if (checkHistory) {
