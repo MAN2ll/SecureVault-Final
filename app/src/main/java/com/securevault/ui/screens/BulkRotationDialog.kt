@@ -2,6 +2,8 @@
 
 package com.securevault.ui.screens
 
+import com.securevault.security.SensitiveContent
+
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -61,9 +63,9 @@ fun BulkRotationDialog(
                     useLower = true, //  Обязательно добавляем useLower
                     useUpper = useUpper,
                     useDigits = useDigits,
-                    useSpecials = useSpecial // ✅ Параметр называется useSpecials
+                    useSpecials = useSpecial // Параметр называется useSpecials
                 )
-                // ✅ Безопасно извлекаем пароль, если генерация успешна, иначе пустая строка
+                //  Безопасно извлекаем пароль, если генерация успешна, иначе пустая строка
                 Triple(entry, result.getOrNull()?.password ?: "", "random")
             }
         } else {
@@ -101,7 +103,7 @@ fun BulkRotationDialog(
     val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
 
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
-        """{"targetLength":16,"algorithmName":"AMPG v2"}"""
+        """{"targetLength":16,"algorithmName":"AMPG 3","algorithmVersion":3,"phraseStored":false}"""
     } else null
 
     AlertDialog(
@@ -114,6 +116,7 @@ fun BulkRotationDialog(
             }
         },
         text = {
+            SensitiveContent()
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -128,7 +131,7 @@ fun BulkRotationDialog(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedMode == BulkMode.MNEMONIC, onClick = { selectedMode = BulkMode.MNEMONIC })
-                            Text("AMPG v2 по общей фразе", Modifier.padding(start = 8.dp))
+                            Text("AMPG 3 по общей фразе", Modifier.padding(start = 8.dp))
                         }
                     }
                 }
@@ -151,7 +154,7 @@ fun BulkRotationDialog(
                     BulkMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG v2 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG 3 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(value = mnemonicPhrase, onValueChange = { mnemonicPhrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: метроном жёлтый камень") }, modifier = Modifier.fillMaxWidth())
                                 Text("Каждый сервис получит уникальный пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -232,8 +235,8 @@ fun BulkRotationDialog(
                         entryId = entry.id,
                         newPassword = password,
                         generationType = generationType,
-                        textHint = if (generationType == "mnemonic") mnemonicPhrase else null,
-                        mnemonicPhraseHint = if (generationType == "mnemonic") mnemonicPhrase else null,
+                        textHint = if (generationType == "mnemonic") "AMPG 3; длина 16" else null,
+                        mnemonicPhraseHint = if (generationType == "mnemonic") "Исходная фраза не сохранена" else null,
                         mnemonicOptionsJson = mnemonicOptionsJson
                     )
                 }
@@ -272,6 +275,7 @@ fun MasterPasswordConfirmDialog(
         icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
         title = { Text(title) },
         text = {
+            SensitiveContent()
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Для подтверждения действия введите мастер-пароль", fontSize = 13.sp)
                 OutlinedTextField(
