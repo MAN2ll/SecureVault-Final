@@ -1,5 +1,7 @@
 package com.securevault.ui.components
 
+import com.securevault.security.SensitiveContent
+
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
@@ -46,6 +48,7 @@ fun ProfileAccessDialog(profile: Profile, allowBiometric: Boolean,
     }
     LaunchedEffect(profile.id, allowBiometric) { authenticate() }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("PIN профиля «${profile.name}»") }, text = {
+        SensitiveContent()
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(pin, { pin = it.filter(Char::isDigit).take(8); error = null },
                 label = { Text("PIN") }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
