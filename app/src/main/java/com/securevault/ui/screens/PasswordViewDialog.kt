@@ -2,6 +2,8 @@
 
 package com.securevault.ui.components
 
+import com.securevault.security.SensitiveContent
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -92,6 +94,7 @@ fun PasswordViewDialog(
         onDismissRequest = safeOnDismiss,
         title = { Text(entry.service, fontWeight = FontWeight.Bold) },
         text = {
+            SensitiveContent()
             Column(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -133,7 +136,7 @@ fun PasswordViewDialog(
                             }
                             
                             if (pwdToCopy != null) {
-                                // ✅ ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
+                                // ИСПОЛЬЗУЕМ ClipboardHelper С АВТООЧИСТКОЙ
                                 ClipboardHelper.copyWithAutoClear(
                                     context = context,
                                     text = pwdToCopy,
