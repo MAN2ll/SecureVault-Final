@@ -2,6 +2,8 @@
 
 package com.securevault.ui.screens
 
+import com.securevault.security.SensitiveContent
+
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -432,6 +434,7 @@ private fun MasterPasswordDialog(context: Context, onConfirm: (String) -> Unit, 
         onDismissRequest = onDismiss,
         title = { Text("Подтверждение") },
         text = {
+            SensitiveContent()
             Column {
                 Text("Введите мастер-пароль для подтверждения операции:")
                 Spacer(Modifier.height(8.dp))
