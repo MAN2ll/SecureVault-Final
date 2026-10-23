@@ -2,6 +2,8 @@
 
 package com.securevault.ui.screens
 
+import com.securevault.security.SensitiveContent
+
 import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -171,6 +173,7 @@ fun RotationJournalScreen(
             onDismissRequest = { revealedHistoryPassword = null },
             title = { Text("Старый пароль") },
             text = {
+                SensitiveContent()
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Сервис: ${historyItemToShow!!.first.service}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Card(modifier = Modifier.fillMaxWidth()) {
