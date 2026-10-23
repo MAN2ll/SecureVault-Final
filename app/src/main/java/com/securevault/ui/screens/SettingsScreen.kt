@@ -25,6 +25,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.work.*
 import com.securevault.ui.components.LockActionButton
+import com.securevault.security.ScreenPrivacyController
 import com.securevault.utils.RotationNotificationWorker
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -37,6 +38,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToExport: () -> Unit = {},
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val prefs = remember { context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE) }
+    var allowScreenshots by remember { mutableStateOf(prefs.getBoolean(ScreenPrivacyController.ALLOW_SCREENSHOTS, false)) }
     var biometric by remember { mutableStateOf(authViewModel.isBiometricLoginEnabled()) }
     var notifications by remember { mutableStateOf(prefs.getBoolean("notifications_rotation_enabled", false)) }
     var timeout by remember { mutableIntStateOf(prefs.getInt("auto_lock_timeout_minutes", 5)) }
@@ -81,6 +83,14 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToExport: () -> Unit = {},
                     }
                 })
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Разрешить скриншоты паролей", Modifier.weight(1f))
+                Switch(allowScreenshots, { enabled ->
+                    allowScreenshots = enabled
+                    prefs.edit().putBoolean(ScreenPrivacyController.ALLOW_SCREENSHOTS, enabled).apply()
+                })
+            }
+            Text("В списке последних приложений пароли скрываются при любом положении переключателя. При выключении экрана открытый пароль закрывается.")
             Text("Автоблокировка")
             listOf(0 to "Сразу при сворачивании", 1 to "Через 1 минуту", 5 to "Через 5 минут",
                 15 to "Через 15 минут", 30 to "Через 30 минут").forEach { (value, label) ->
