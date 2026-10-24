@@ -6,11 +6,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +44,7 @@ fun UnifiedPasswordGeneratorDialog(onDismiss: () -> Unit,
                     onGenerated(pwd, if (mode == 1) "random_two_part" else "random", null, null, null)
                 }
                 2 -> AnchorContent(initialServiceName) { pwd, hint -> onGenerated(pwd, "random_anchor", hint, null, null) }
-                3 -> AmpgContent(initialServiceName, profile?.id, initialYear, onGenerated)
+                3 -> AmpgGeneratorContent(initialServiceName, profile?.id, initialYear, onGenerated)
             }
         }
     }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } })
@@ -119,8 +121,10 @@ private fun AnchorContent(initialService: String, onGenerated: (String, String) 
     Button(onClick = { onGenerated(password, explanation) }, enabled = password.isNotEmpty()) { Text("Выбрать") }
 }
 @Composable
-private fun AmpgContent(initialService: String, profileId: Int?, initialYear: Int?,
-    onGenerated: (String, String, String?, String?, String?) -> Unit) {
+internal fun AmpgGeneratorContent(initialService: String, profileId: Int?, initialYear: Int?,
+    onGenerated: (String, String, String?, String?, String?) -> Unit, actionLabel: String = "Выбрать") {
+    SensitiveContent()
+    var helpVariant by remember { mutableStateOf<MnemonicPasswordGenerator.GenerationResult?>(null) }
     var phrase by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
     var service by remember { mutableStateOf(initialService) }
@@ -140,7 +144,7 @@ private fun AmpgContent(initialService: String, profileId: Int?, initialYear: In
             else MnemonicPasswordGenerator.SplitMode.SINGLE_USER,
         addServiceMarker = addService, addYearMarker = addYear, year = yearText.toIntOrNull())
     LaunchedEffect(options, yearText, request) {
-        variants = emptyList(); error = null; generatedFor = null; generating = false
+        variants = emptyList(); error = null; generatedFor = null; generating = false; helpVariant = null
         if (request == 0) return@LaunchedEffect
         if (addYear && (yearText.length != 4 || options.year !in 1000..9999)) {
             error = "Укажите год четырьмя цифрами"; return@LaunchedEffect
@@ -178,33 +182,26 @@ private fun AmpgContent(initialService: String, profileId: Int?, initialYear: In
             FilterChip(length == n, { length = n; request = 0 }, label = { Text("$n") })
         }
     }
-    Text("Предлоги, союзы, местоимения и односимвольные слова пропускаются. " +
-        "Числа из фразы не используются: год задаётся отдельно. Значимые слова сохраняют порядок.")
     val previews = remember(phrase, second, two) {
         (listOf(phrase) + if (two) listOf(second) else emptyList()).map { MnemonicPasswordGenerator.preparePhrase(it).getOrNull() }
     }
     previews.forEachIndexed { index, preview ->
         preview?.let {
-            Text("Часть ${index + 1}, латиницей: ${it.transliteratedWords.joinToString(" ")}", fontFamily = FontFamily.Monospace)
-            if (it.skippedWords.isNotEmpty()) Text("Пропущено: ${it.skippedWords.joinToString(", ")}")
+            Text((if (two) "${index + 1}: " else "Латиницей: ") + it.transliteratedWords.joinToString(" "),
+                style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
-    Text("Из каждого значимого слова берётся одинаковое число начальных букв транслитерации. " +
-        "Начало каждого слова — заглавное. В каждой части минимум 2 строчные, 2 заглавные и 2 спецсимвола. " +
-        "A и a допустимы вместе; точных повторов нет.")
-    Toggle("Маркер сервиса: первая и последняя буквы", addService) { addService = it; request = 0 }
+    Toggle("Маркер сервиса", addService) { addService = it; request = 0 }
     if (addService) OutlinedTextField(service, { service = it; request = 0 }, label = { Text("Сервис") },
         modifier = Modifier.fillMaxWidth())
-    Toggle("Маркер года: две последние цифры", addYear) { addYear = it; request = 0 }
+    Toggle("Маркер года", addYear) { addYear = it; request = 0 }
     if (addYear) OutlinedTextField(yearText, { yearText = it.filter(Char::isDigit).take(4); request = 0 },
         label = { Text("Год") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-    Text("Маркеры добавляются целиком, если помещаются и не повторяют символы. " +
-        "В двух частях сервис относится к первой, год — ко второй. Остаток длины заполняется показанным суффиксом.")
     Button(onClick = { request++ }, enabled = !generating) { Text(if (generating) "Подбираю…" else "Сгенерировать варианты") }
     if (generating) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (request > 0) error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    if (generatedFor == options && request > 0) variants.forEach { variant ->
-        Card(Modifier.fillMaxWidth().clickable {
+    fun selectVariant(variant: MnemonicPasswordGenerator.GenerationResult) {
             val json = JSONObject().apply {
                 put("algorithmVersion", MnemonicPasswordGenerator.ALGORITHM_VERSION)
                 put("phraseStored", false)
@@ -215,18 +212,53 @@ private fun AmpgContent(initialService: String, profileId: Int?, initialYear: In
                 put("addServiceMarker", addService); put("addYearMarker", addYear)
                 put("year", options.year ?: JSONObject.NULL)
             }.toString()
-            val hint = "AMPG 4; длина $length; вариант ${variant.variantOffset + 1}; " +
-                "букв из слова: ${variant.prefixLengths.joinToString(" / ")}"
-            onGenerated(variant.password, "ampg_v4_${variant.variantOffset}", hint, variant.mnemonicHint, json)
-        }) {
-            Column(Modifier.padding(12.dp)) {
+            val hint = "AMPG ${MnemonicPasswordGenerator.ALGORITHM_VERSION}; длина $length; вариант ${variant.variantOffset + 1}; " +
+                "знаков из основы: ${variant.prefixLengths.joinToString(" / ")}"
+            onGenerated(variant.password, "ampg_v${MnemonicPasswordGenerator.ALGORITHM_VERSION}_${variant.variantOffset}", hint, variant.mnemonicHint, json)
+    }
+    if (generatedFor == options && request > 0) variants.forEach { variant ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("Вариант ${variant.variantOffset + 1}", style = MaterialTheme.typography.labelMedium)
+                    IconButton(onClick = { helpVariant = variant }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Outlined.Info, contentDescription = "Справка о пароле", modifier = Modifier.size(18.dp))
+                    }
+                }
                 Text(if (two) "${variant.part1} / ${variant.part2}" else variant.password,
-                    fontFamily = FontFamily.Monospace)
-                Text("Вариант ${variant.variantOffset + 1}"); Text(variant.explanation)
-                Text("Выбрать этот вариант")
+                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyLarge)
+                TextButton(onClick = { selectVariant(variant) }) { Text(actionLabel) }
             }
         }
     }
-    Text("Запомните собственную непубличную фразу, длину, год и номер варианта. " +
-        "Исходные фразы и расшифровка замен не сохраняются в подсказках.")
+    helpVariant?.let { variant ->
+        AlertDialog(onDismissRequest = { helpVariant = null },
+            title = { Text("Справка о пароле") },
+            text = {
+                SensitiveContent()
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Длина: ${variant.password.length}. Точных повторов нет.")
+                    val parts = if (variant.part1 != null && variant.part2 != null)
+                        listOf(variant.part1, variant.part2) else listOf(variant.password)
+                    parts.forEachIndexed { index, part ->
+                        if (parts.size > 1) Text("Часть ${index + 1}: ${part.length} знаков", style = MaterialTheme.typography.labelLarge)
+                        Text("Строчных: ${part.count(Char::isLowerCase)}; заглавных: ${part.count(Char::isUpperCase)}; " +
+                            "цифр: ${part.count(Char::isDigit)}; спецсимволов: ${part.count { !it.isLetterOrDigit() }}.")
+                    }
+                    HorizontalDivider()
+                    Text("Замены в этом пароле", style = MaterialTheme.typography.titleSmall)
+                    val details = variant.explanation.lineSequence().filterNot {
+                        it.startsWith("AMPG ") || it.startsWith("Известная фраза") ||
+                            it.startsWith("Для повторов") || it.startsWith("Расширенные замены") ||
+                            it.startsWith("Оставшиеся повторы")
+                    }.joinToString("\n")
+                    Text(details, style = MaterialTheme.typography.bodySmall)
+                    Text("Для повторного получения: та же фраза и настройки, вариант ${variant.variantOffset + 1}.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { helpVariant = null }) { Text("Понятно") } })
+    }
 }
