@@ -439,7 +439,7 @@ class CoreRegressionTest {
     }
 
     @Test
-    fun ampgSkipsFunctionWordsAndExplainsUnusablePhrases() {
+    fun ampgSkipsFunctionWordsAndAdaptsRepeatedInitials() {
         val preview = MnemonicPasswordGenerator.preparePhrase("Я был в лесу, и мы нашли грибы 2026!").getOrThrow()
         assertEquals(listOf("лесу", "нашли", "грибы"), preview.words)
         assertEquals(listOf("я", "был", "в", "и", "мы", "2026"), preview.skippedWords)
@@ -449,12 +449,14 @@ class CoreRegressionTest {
         assertTrue(result.all { it.password.length == 16 && MnemonicPasswordGenerator.validatePassword(it.password, it.splitMode) })
         assertEquals(listOf("кот", "сидел", "высокой", "сосной"),
             MnemonicPasswordGenerator.preparePhrase("Наш кот сидел под этой высокой сосной").getOrThrow().words)
-        assertTrue(MnemonicPasswordGenerator.preparePhrase("я и мы в").isFailure)
+        assertEquals(listOf("я", "и", "мы", "в"), MnemonicPasswordGenerator.preparePhrase("я и мы в").getOrThrow().words)
         val repeated = MnemonicPasswordGenerator.generateVariantsResult(
             MnemonicPasswordGenerator.GenerationOptions("Дом дача дуб", targetLength = 16)
         )
-        assertTrue(repeated.isFailure)
-        assertTrue(repeated.exceptionOrNull()!!.message!!.contains("заглавных"))
+        assertTrue(repeated.isSuccess)
+        assertEquals('D', repeated.getOrThrow().first().password.first())
+        repeated.getOrThrow().forEach { assertTrue(MnemonicPasswordGenerator.validatePassword(it.password, it.splitMode)) }
+        assertTrue(repeated.getOrThrow().first().explanation.contains("Начало слова:"))
         assertTrue(MnemonicPasswordGenerator.generateVariantsResult(
             MnemonicPasswordGenerator.GenerationOptions("Летом в горах шумели кедры", phrase2 = "Ранним утром ветер будил птиц",
                 targetLength = 17, splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS)).isFailure)
@@ -480,5 +482,55 @@ class CoreRegressionTest {
         assertEquals("rotation_journal/7", policy.safeReturnRoute("rotation_journal/{profileId}", 7))
         assertEquals("settings", policy.safeReturnRoute("change_password", null))
         assertEquals("profiles", policy.safeReturnRoute("entry/{entryId}", null))
+    }
+
+    @Test
+    fun ampgRepeatedUppercaseNeverRequiresAnotherPhrase() {
+        for (phrase in listOf("Дом дача дуб", "дом дом дом дом", "День день день день", "Дед дача дорога дерево дождь")) {
+            for (two in listOf(false, true)) {
+                val options = MnemonicPasswordGenerator.GenerationOptions(phrase, phrase2 = if (two) phrase else null,
+                    targetLength = 16, splitMode = if (two) MnemonicPasswordGenerator.SplitMode.TWO_USERS
+                        else MnemonicPasswordGenerator.SplitMode.SINGLE_USER)
+                val variants = MnemonicPasswordGenerator.generateVariantsResult(options).getOrThrow()
+                assertTrue(variants.isNotEmpty())
+                variants.forEach { result ->
+                    assertEquals(16, result.password.length)
+                    assertEquals(16, result.password.toSet().size)
+                    assertTrue(MnemonicPasswordGenerator.validatePassword(result.password, options.splitMode))
+                    val reproduced = MnemonicPasswordGenerator.generateVariantsResult(
+                        options.copy(variantOffset = result.variantOffset), 1).getOrThrow().single()
+                    assertEquals(result.password, reproduced.password)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun ampgAdaptsShortLongAndIdenticalPhrasesWithTheSelectedQuotas() {
+        val phrases = listOf("а", "дом", "аааа аааа", "12345", "я и мы в", "мама мыла раму",
+            (1..100).joinToString(" ") { "дуб" })
+        for (phrase in phrases) {
+            for (length in listOf(12, 16, 32, 56)) {
+                val result = MnemonicPasswordGenerator.generateVariantsResult(
+                    MnemonicPasswordGenerator.GenerationOptions(phrase, targetLength = length), 1).getOrThrow().single()
+                assertEquals(length, result.password.length)
+                assertEquals(length, result.password.toSet().size)
+                assertTrue(MnemonicPasswordGenerator.validatePassword(result.password, result.splitMode))
+            }
+            for (length in listOf(16, 24, 56)) {
+                val result = MnemonicPasswordGenerator.generateVariantsResult(
+                    MnemonicPasswordGenerator.GenerationOptions(phrase, phrase2 = phrase, targetLength = length,
+                        serviceName = "Gmail", addServiceMarker = true, addYearMarker = true, year = 2026,
+                        splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS), 1).getOrThrow().single()
+                assertEquals(length, result.password.length)
+                assertEquals(length, result.password.toSet().size)
+                listOf(result.part1!!, result.part2!!).forEach { part ->
+                    assertTrue(part.count(Char::isLowerCase) >= 2)
+                    assertTrue(part.count(Char::isUpperCase) >= 2)
+                    assertTrue(part.count { !it.isLetterOrDigit() } >= 2)
+                }
+            }
+        }
+        assertTrue(MnemonicPasswordGenerator.preparePhrase("").isFailure)
     }
 }
