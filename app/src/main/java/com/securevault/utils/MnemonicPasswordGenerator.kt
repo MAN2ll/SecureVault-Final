@@ -1,12 +1,13 @@
 package com.securevault.utils
 
 import java.text.Normalizer
+import java.security.MessageDigest
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.roundToInt
 
 object MnemonicPasswordGenerator {
-    const val ALGORITHM_VERSION = 4
+    const val ALGORITHM_VERSION = 5
     enum class SplitMode { SINGLE_USER, TWO_USERS }
     data class GenerationOptions(
         val phrase: String, val phrase2: String? = null, val serviceName: String = "",
@@ -21,7 +22,10 @@ object MnemonicPasswordGenerator {
         val splitMode: SplitMode, val explanation: String, val variantOffset: Int = 0,
         val prefixLengths: List<Int> = emptyList()
     )
-    data class PhrasePreview(val words: List<String>, val transliteratedWords: List<String>, val skippedWords: List<String>)
+    data class PhrasePreview(
+        val words: List<String>, val transliteratedWords: List<String>, val skippedWords: List<String>,
+        val notes: List<String> = emptyList(), val predictable: Boolean = false
+    )
     private val translit = mapOf(
         'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "yo",
         'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
@@ -64,22 +68,26 @@ object MnemonicPasswordGenerator {
     private const val PADDING = "!^%?*=-_:;~[]{}>@#$&+|<("
     private const val SPECIAL_PRIORITY = "tasilche"
     private data class Word(val original: String, val spellings: List<String>)
-    private data class Plan(val words: List<Word>, val prefix: Int, val marker: String, val padding: Int)
-    private data class Slot(val part: Int, val base: Char?, val initial: Boolean, val choices: List<Char>)
+    private data class Plan(val words: List<Word>, val prefix: Int, val marker: String, val padding: Int, val grouped: Boolean = false)
+    private data class Slot(val part: Int, val base: Char, val initial: Boolean, val choices: List<Char>)
     private data class Built(val parts: List<String>, val hints: List<List<String>>)
+    private enum class Kind { UPPER, LOWER, SPECIAL }
+    private const val LOWER = "abcdefghijklmnopqrstuvwxyz"
+    private const val UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    private const val COMPLETE = LOWER + UPPER + "0123456789" + PADDING
 
     fun transliterate(text: String): String = buildString {
         text.lowercase(Locale.ROOT).forEach { append(translit[it] ?: it.toString()) }
     }
     fun preparePhrase(phrase: String): Result<PhrasePreview> = runCatching {
-        require(phrase.length <= 512) { "Сократите фразу до 512 знаков" }
+        require(phrase.length <= 8192) { "Допустимо до 8192 знаков во фразе" }
         val text = Normalizer.normalize(phrase, Normalizer.Form.NFKC).lowercase(Locale.ROOT)
             .replace('–', '-').replace('—', '-')
         require(text.none { it.isLetter() && it !in 'а'..'я' && it != 'ё' && it !in 'a'..'z' }) {
             "Для фразы используйте русские или английские буквы"
         }
         val all = Regex("[а-яёa-z]+(?:-[а-яёa-z]+)*|[0-9]+").findAll(text).map { it.value }.toList()
-        require(all.joinToString(" ") !in weakPhrases) { "Выберите собственную непубличную фразу вместо известной" }
+        val predictable = all.joinToString(" ") in weakPhrases
         val kept = mutableListOf<String>(); val skipped = mutableListOf<String>()
         for (token in all) {
             if (token in compoundStopWords || token.all(Char::isDigit)) { skipped.add(token); continue }
@@ -87,14 +95,20 @@ object MnemonicPasswordGenerator {
                 if (word in stopWords || word.length == 1) skipped.add(word) else kept.add(word)
             }
         }
-        require(kept.size >= 2) { "После исключения служебных слов нужно минимум два значимых слова" }
-        PhrasePreview(kept, kept.map { transliterate(it).replaceFirstChar(Char::uppercaseChar) }, skipped)
+        val notes = mutableListOf<String>()
+        if (kept.isEmpty()) {
+            val originals = all.flatMap { it.split('-') }.filter { it.isNotBlank() }
+            require(originals.isNotEmpty()) { "Введите фразу буквами или цифрами" }
+            kept.addAll(originals); skipped.clear()
+            notes.add("В этой фразе нет отдельных значимых слов: для генерации сохранены все введённые слова.")
+        }
+        if (predictable) notes.add("Эта фраза общеизвестна. Замены символов не делают известную фразу непредсказуемой.")
+        PhrasePreview(kept, kept.map { transliterate(it).replaceFirstChar(Char::uppercaseChar) }, skipped, notes, predictable)
     }
     private fun words(preview: PhrasePreview): List<Word> = preview.words.map { word ->
         val starts = initialAlternatives[word.first()] ?: listOf(translit[word.first()] ?: word.first().toString())
-        val spellings = starts.map { it + transliterate(word.drop(1)) }.filter { it.length >= 2 }.distinct()
-        require(spellings.isNotEmpty()) { "Слово «$word» слишком короткое после транслитерации" }
-        Word(word, spellings)
+        val spellings = starts.map { it + transliterate(word.drop(1)) }.filter { it.isNotEmpty() }.distinct()
+        Word(word, spellings.ifEmpty { listOf("x") })
     }
     fun normalizeLength(value: Float, splitMode: SplitMode): Int {
         if (!value.isFinite()) return 16
@@ -124,17 +138,8 @@ object MnemonicPasswordGenerator {
             .map { preparePhrase(it).getOrThrow() }
         val wordLists = previews.map(::words)
         val partLength = options.targetLength / if (two) 2 else 1
-        require(wordLists.all { it.size * 2 <= partLength }) {
-            "После исключения служебных слов осталось слишком много слов: увеличьте длину или сократите фразу"
-        }
-        require(canAssignInitials(wordLists.flatten(), emptySet())) {
-            "Начала значимых слов требуют одинаковых заглавных букв. Замените одно из таких слов: " +
-                wordLists.flatten().groupBy { it.spellings.first().first() }.values.filter { it.size > 1 }
-                    .flatten().joinToString { it.original }
-        }
         val service = transliterate(options.serviceName).filter { it in 'a'..'z' }
-        require(!options.addServiceMarker || service.isNotEmpty()) { "Введите имя сервиса для маркера" }
-        val serviceMarker = if (options.addServiceMarker) "${service.first().uppercaseChar()}${service.last()}" else ""
+        val serviceMarker = if (options.addServiceMarker && service.isNotEmpty()) "${service.first().uppercaseChar()}${service.last()}" else ""
         val year = options.year ?: options.rotationYear ?: Calendar.getInstance().get(Calendar.YEAR)
         require(!options.addYearMarker || year in 1000..9999) { "Укажите год четырьмя цифрами" }
         val yearMarker = if (options.addYearMarker) year.toString().takeLast(2) else ""
@@ -158,141 +163,174 @@ object MnemonicPasswordGenerator {
                 val password = built.parts.joinToString("")
                 if (!validatePassword(password, options.splitMode)) continue
                 val explanation = buildString {
-                    append("AMPG 4: одинаковые начальные префиксы, точные повторы исключены; A и a различаются.\n")
+                    append("AMPG 5: основа из вашей фразы; повторные буквы заменяются автоматически. A и a различаются.\n")
                     built.parts.indices.forEach { i ->
                         append("Часть ${i + 1}. Латиницей: ${previews[i].transliteratedWords.joinToString(" ")}.\n")
                         if (previews[i].skippedWords.isNotEmpty()) append("Пропущено: ${previews[i].skippedWords.joinToString(", ")}.\n")
-                        append("По ${selected[i].prefix} букв от каждого слова.\n")
+                        previews[i].notes.forEach { append(it).append('\n') }
+                        append("По ${selected[i].prefix} знаков от каждой основы.\n")
+                        if (selected[i].grouped) append("Длинная фраза сжата в группы соседних слов; их порядок сохранён.\n")
                         built.hints[i].forEach { append(it).append('\n') }
                     }
                     if (options.addServiceMarker) append(if (sm.isNotEmpty()) "Сервис: $sm.\n" else "Маркер сервиса пропущен: не помещается или повторяет символы.\n")
                     if (options.addYearMarker) append(if (ym.isNotEmpty()) "Год: $ym.\n" else "Маркер года пропущен: не помещается или повторяет цифры.\n")
                     append("Известная фраза и замены предсказуемы: используйте собственную непубличную фразу.")
                 }
-                results.putIfAbsent(password, GenerationResult(password, "AMPG 4: исходная фраза не сохранена",
-                    "Вариант ${offset + 1}", PasswordGenerator.Strength.MEDIUM,
+                results.putIfAbsent(password, GenerationResult(password, "AMPG 5: исходная фраза не сохранена",
+                    "Вариант ${offset + 1}", if (previews.any { it.predictable }) PasswordGenerator.Strength.WEAK else PasswordGenerator.Strength.MEDIUM,
                     if (two) built.parts[0] else null, if (two) built.parts[1] else null,
                     options.splitMode, explanation, offset, selected.map { it.prefix }))
                 break
             }
             if (results.size >= count) break
         }
-        require(results.isNotEmpty()) {
-            "Для этой длины не хватает различных букв или похожих замен в равных префиксах. " +
-                "Выберите другую длину либо замените короткое/повторяющееся слово. " +
-                "Значимые слова: ${previews.joinToString(" / ") { it.words.joinToString(" ") }}"
-        }
+        check(results.isNotEmpty()) { "Внутренняя ошибка распределения символов AMPG" }
         results.values.toList()
     }
     private fun plans(words: List<Word>, length: Int, marker: String): List<Plan> {
-        val maxPrefix = minOf((length - marker.length) / words.size, words.minOf { it.spellings.maxOf(String::length) })
-        if (maxPrefix < 2) return emptyList()
-        return (maxPrefix downTo 2).mapNotNull { prefix ->
-            val padding = length - marker.length - words.size * prefix
-            if (padding in 0..4 && words.all { w -> w.spellings.any { it.length >= prefix } })
-                Plan(words, prefix, marker, padding) else null
+        val space = length - marker.length
+        if (space <= 0) return emptyList()
+        val grouped = words.size > space
+        val adapted = if (!grouped) words else (0 until space).map { i ->
+            val group = words.subList(i * words.size / space, (i + 1) * words.size / space)
+            val spelling = group.joinToString("") { it.spellings.first().take(1) } +
+                group.joinToString("") { it.spellings.first().drop(1) }
+            Word(group.joinToString(" ") { it.original }, listOf(spelling))
         }
-    }
-    private fun canAssignInitials(words: List<Word>, reserved: Set<Char>): Boolean {
-        val owners = mutableMapOf<Char, Int>()
-        fun assign(i: Int, seen: MutableSet<Char>): Boolean {
-            for (char in words[i].spellings.map { it.first().uppercaseChar() }.distinct()) {
-                if (char in reserved || !seen.add(char)) continue
-                val old = owners[char]
-                if (old == null || assign(old, seen)) { owners[char] = i; return true }
-            }
-            return false
-        }
-        return words.indices.all { assign(it, mutableSetOf()) }
+        val prefix = space / adapted.size
+        return listOf(Plan(adapted, prefix, marker, space % adapted.size, grouped))
     }
     private fun <T> rotate(values: List<T>, offset: Int): List<T> {
         val start = Math.floorMod(offset, values.size.coerceAtLeast(1))
         return values.drop(start) + values.take(start)
     }
-    private fun options(char: Char, offset: Int): List<Char> {
-        val replacements = lookalikes[char].orEmpty().toList()
-        return when (Math.floorMod(offset, 3)) {
-            1 -> replacements + char + char.uppercaseChar()
-            2 -> listOf(char, char.uppercaseChar()) + replacements
-            else -> listOf(char) + replacements + char.uppercaseChar()
-        }.distinct()
+    private fun replacements(c: Char): List<Char> = (lookalikes[c] ?: when (c) {
+        '0' -> "oO"; '1' -> "ilIL!|"; '2' -> "zZ"; '3' -> "eE&"; '4' -> "aA@"
+        '5' -> "sS$"; '6', '8' -> "bB"; '7' -> "tT+"; '9' -> "gG"; else -> ""
+    }).toList()
+    private fun options(c: Char, offset: Int): List<Char> = when (Math.floorMod(offset, 4)) {
+        1 -> replacements(c) + c + c.uppercaseChar()
+        2 -> listOf(c, c.uppercaseChar()) + replacements(c)
+        3 -> listOf(c.uppercaseChar(), c) + replacements(c)
+        else -> listOf(c) + replacements(c) + c.uppercaseChar()
+    }.distinct()
+    private fun prefix(spelling: String, length: Int): String = buildString {
+        repeat(length) { append(spelling[it % spelling.length]) }
+    }
+    private fun reserveRow(seed: String): List<Char> {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(seed.toByteArray(Charsets.UTF_8))
+        val shift = ((bytes[0].toInt() and 255) * 256 + (bytes[1].toInt() and 255)) % COMPLETE.length
+        return rotate(COMPLETE.toList(), shift)
     }
     private fun build(plans: List<Plan>, reserved: Set<Char>, offset: Int): Built? {
-        val descriptors = plans.flatMapIndexed { part, plan -> plan.words.map { part to it } }
-        val chosen = mutableListOf<String>(); val starts = reserved.toMutableSet()
-        var spellingAttempts = 0
-        fun select(i: Int): Built? {
-            if (spellingAttempts > 512) return null
-            if (i < descriptors.size) {
-                val (part, word) = descriptors[i]
-                val spellings = rotate(word.spellings.filter { it.length >= plans[part].prefix }, offset)
-                for (spelling in spellings) {
-                    val first = spelling.first().uppercaseChar()
-                    if (!starts.add(first)) continue
-                    chosen.add(spelling)
-                    val remaining = descriptors.drop(i + 1).map { (p, w) ->
-                        w.copy(spellings = w.spellings.filter { it.length >= plans[p].prefix })
-                    }
-                    if (canAssignInitials(remaining, starts)) select(i + 1)?.let { return it }
-                    chosen.removeAt(chosen.lastIndex); starts.remove(first)
-                }
-                return null
+        val spellings = plans.map { p -> p.words.map { rotate(it.spellings, offset).first() } }
+        val seed = plans.joinToString(" / ") { p -> p.words.joinToString(" ") { it.original } }
+        for (stage in 0..3) {
+            val slots = mutableListOf<Slot>()
+            fun add(part: Int, word: Int, position: Int, initial: Boolean) {
+                val spelling = spellings[part][word]
+                val c = spelling[position % spelling.length]
+                val own = spelling.toList().distinct()
+                var choices = if (initial) listOf(c.uppercaseChar()) + replacements(c) +
+                    own.filter { it != c }.map(Char::uppercaseChar) + c + own.filter { it != c }
+                    else options(c, offset)
+                if (stage >= 1) choices = choices + own.flatMap { options(it, offset) }
+                if (stage >= 2) choices = choices + spellings[part].joinToString("").toList().distinct().flatMap { options(it, offset) }
+                if (stage >= 3) choices = choices + reserveRow("$seed:$offset:$part:$word:$position")
+                slots.add(Slot(part, c, initial, choices.distinct()))
             }
-            spellingAttempts++
-            val slots = mutableListOf<Slot>(); var wordIndex = 0
-            for ((part, plan) in plans.withIndex()) {
-                for (word in plan.words) {
-                    val prefix = chosen[wordIndex++].take(plan.prefix)
-                    prefix.forEachIndexed { pos, c -> slots.add(Slot(part, c, pos == 0,
-                        if (pos == 0) listOf(c.uppercaseChar()) else options(c, offset))) }
-                }
-                repeat(plan.padding) { slots.add(Slot(part, null, false, rotate(PADDING.toList(), offset))) }
+            plans.forEachIndexed { part, plan ->
+                plan.words.indices.forEach { word -> repeat(plan.prefix) { pos -> add(part, word, pos, pos == 0) } }
+                repeat(plan.padding) { word -> add(part, word, plan.prefix, false) }
             }
-            var assignment = match(slots, reserved) ?: return null
-            val forced = mutableMapOf<Int, Char>()
-            fun counts(chars: CharArray, part: Int, lower: Boolean): Int =
-                slots.indices.count { slots[it].part == part && category(chars[it], lower) } +
-                    plans[part].marker.count { category(it, lower) }
-            fun deficit(chars: CharArray): Int = plans.indices.sumOf { part ->
-                (2 - counts(chars, part, true)).coerceAtLeast(0) + (2 - counts(chars, part, false)).coerceAtLeast(0)
-            }
-            while (deficit(assignment) > 0) {
-                val before = deficit(assignment); var improved: CharArray? = null
-                repair@ for (part in plans.indices) for (lower in listOf(true, false)) {
-                    if (counts(assignment, part, lower) >= 2) continue
-                    val candidates = slots.indices.filter { slots[it].part == part && !slots[it].initial && it !in forced }
-                        .sortedWith(compareBy({ if (lower) 0 else SPECIAL_PRIORITY.indexOf(slots[it].base ?: ' ').let { n -> if (n < 0) 100 else n } }, { it }))
-                    for (slot in candidates) for (c in slots[slot].choices.filter { category(it, lower) }) {
-                        val attempt = match(slots, reserved, forced + (slot to c), assignment) ?: continue
-                        if (deficit(attempt) < before) { forced[slot] = c; improved = attempt; break@repair }
-                    }
-                }
-                if (improved == null) break
-                assignment = improved
-            }
-            if (deficit(assignment) > 0) assignment = exact(slots, reserved, plans.map { it.marker }, assignment) ?: return null
-            val parts = plans.indices.map { part -> slots.indices.filter { slots[it].part == part }.map { assignment[it] }.joinToString("") + plans[part].marker }
-            val hints = mutableListOf<List<String>>(); var cursor = 0; wordIndex = 0
-            plans.forEach { plan ->
+            val markers = plans.map { it.marker }
+            val assignment = if (stage == 3) complete(slots, reserved, markers)
+                else repair(slots, reserved, markers) ?: continue
+            val parts = plans.indices.map { part -> slots.indices.filter { slots[it].part == part }
+                .map { assignment[it] }.joinToString("") + markers[part] }
+            val hints = mutableListOf<List<String>>(); var cursor = 0
+            plans.forEachIndexed { part, plan ->
                 val lines = mutableListOf<String>()
-                plan.words.forEach { word ->
-                    val prefix = chosen[wordIndex++].take(plan.prefix).replaceFirstChar(Char::uppercaseChar)
-                    val piece = String(assignment, cursor, plan.prefix); cursor += plan.prefix
-                    lines.add("${word.original}: $prefix → $piece")
+                plan.words.forEachIndexed { word, w ->
+                    val spelling = spellings[part][word]
+                    val input = prefix(spelling, plan.prefix).replaceFirstChar(Char::uppercaseChar)
+                    val output = String(assignment, cursor, plan.prefix); cursor += plan.prefix
+                    lines.add("${w.original}: $input → $output")
+                    if (output.first() != input.first()) lines.add("Начало слова: ${input.first()} → ${output.first()} — свободная замена без повтора.")
+                    if (plan.prefix > spelling.length) lines.add("Короткая основа продолжена по кругу до выбранной длины.")
                 }
-                if (plan.padding > 0) { lines.add("Суффикс длины: ${String(assignment, cursor, plan.padding)}"); cursor += plan.padding }
+                if (plan.padding > 0) {
+                    lines.add("Хвост из следующих букв слов: ${String(assignment, cursor, plan.padding)}"); cursor += plan.padding
+                }
+                if (stage >= 1) lines.add("Для повторов использованы дополнительные буквы тех же слов.")
+                if (stage >= 2) lines.add("Расширенные замены учитывают остальные буквы этой фразы.")
+                if (stage == 3) lines.add("Оставшиеся повторы заменены по постоянному резервному словарю. Та же фраза и параметры воспроизводят результат.")
                 hints.add(lines)
             }
             return Built(parts, hints)
         }
-        return select(0)
+        return null
     }
-    private fun category(c: Char, lower: Boolean): Boolean = if (lower) c in 'a'..'z' else c != '\u0000' && !c.isLetterOrDigit()
+    private fun category(c: Char, kind: Kind): Boolean = when (kind) {
+        Kind.UPPER -> c in 'A'..'Z'
+        Kind.LOWER -> c in 'a'..'z'
+        Kind.SPECIAL -> c != '\u0000' && !c.isLetterOrDigit()
+    }
+    private fun count(slots: List<Slot>, chars: CharArray, markers: List<String>, part: Int, kind: Kind): Int =
+        slots.indices.count { slots[it].part == part && category(chars[it], kind) } + markers[part].count { category(it, kind) }
+    private fun candidates(slots: List<Slot>, part: Int, kind: Kind): List<Int> =
+        slots.indices.filter { slots[it].part == part }.sortedWith(compareBy(
+            { if (kind == Kind.UPPER) if (slots[it].initial) 0 else 1 else if (slots[it].initial) 1 else 0 },
+            { if (kind == Kind.SPECIAL) SPECIAL_PRIORITY.indexOf(slots[it].base).let { n -> if (n < 0) 100 else n } else 0 },
+            { it }))
+    private fun repair(slots: List<Slot>, reserved: Set<Char>, markers: List<String>): CharArray? {
+        val forced = mutableMapOf<Int, Char>()
+        val anchored = reserved.toMutableSet()
+        // Сохраняем первое свободное заглавное начало; заменяются именно конфликты.
+        for (i in slots.indices.filter { slots[it].initial }) {
+            val first = slots[i].choices.first()
+            if (first in 'A'..'Z' && anchored.add(first)) forced[i] = first
+        }
+        var assignment = match(slots, reserved, forced) ?: return null
+        fun deficit(chars: CharArray): Int = markers.indices.sumOf { part ->
+            Kind.values().sumOf { kind -> (2 - count(slots, chars, markers, part, kind)).coerceAtLeast(0) }
+        }
+        while (deficit(assignment) > 0) {
+            val before = deficit(assignment); var improved: CharArray? = null
+            categoryRepair@ for (part in markers.indices) for (kind in Kind.values()) {
+                if (count(slots, assignment, markers, part, kind) >= 2) continue
+                for (slot in candidates(slots, part, kind).filter { it !in forced }) {
+                    for (c in slots[slot].choices.filter { category(it, kind) }) {
+                        val attempt = match(slots, reserved, forced + (slot to c), assignment) ?: continue
+                        if (deficit(attempt) < before) { forced[slot] = c; improved = attempt; break@categoryRepair }
+                    }
+                }
+            }
+            if (improved == null) return null
+            assignment = improved
+        }
+        return assignment
+    }
+    // Полный словарь содержит больше разных символов, чем максимальная длина пароля.
+    // Сначала резервируются квоты всех частей, затем заполняется остальная основа.
+    private fun complete(slots: List<Slot>, reserved: Set<Char>, markers: List<String>): CharArray {
+        val chars = CharArray(slots.size); val used = reserved.toMutableSet()
+        for (kind in Kind.values()) for (part in markers.indices) {
+            repeat((2 - markers[part].count { category(it, kind) }).coerceAtLeast(0)) {
+                val i = candidates(slots, part, kind).first { chars[it] == '\u0000' }
+                val c = slots[i].choices.first { it !in used && category(it, kind) }
+                chars[i] = c; used.add(c)
+            }
+        }
+        for (i in slots.indices.filter { chars[it] == '\u0000' }) {
+            val c = slots[i].choices.first { it !in used }; chars[i] = c; used.add(c)
+        }
+        return chars
+    }
     private fun match(slots: List<Slot>, reserved: Set<Char>, forced: Map<Int, Char> = emptyMap(), preferred: CharArray? = null): CharArray? {
-        val chars = CharArray(slots.size); val owner = mutableMapOf<Char, Int>()
-        val fixed = slots.indices.filter { slots[it].initial || it in forced }.toSet()
-        for (i in fixed) {
-            val c = forced[i] ?: slots[i].choices.single()
+        val chars = CharArray(slots.size); val owner = mutableMapOf<Char, Int>(); val fixed = forced.keys
+        for (i in fixed.sorted()) {
+            val c = forced.getValue(i)
             if (c !in slots[i].choices || c in reserved || owner.put(c, i) != null) return null
             chars[i] = c
         }
@@ -305,49 +343,12 @@ object MnemonicPasswordGenerator {
             }
             return false
         }
-        for (i in slots.indices.filter { it !in fixed }) {
+        val order = slots.indices.sortedWith(compareBy({ if (slots[it].initial) 0 else 1 }, { it }))
+        for (i in order.filter { it !in fixed }) {
             val free = choices(i).firstOrNull { it !in reserved && it !in owner }
             if (free != null) { owner[free] = i; chars[i] = free }
             else if (!augment(i, mutableSetOf())) return null
         }
         return chars
-    }
-    private fun exact(slots: List<Slot>, reserved: Set<Char>, markers: List<String>, preferred: CharArray): CharArray? {
-        val chars = CharArray(slots.size); val used = reserved.toMutableSet(); var steps = 0
-        for (i in slots.indices.filter { slots[it].initial }) {
-            val c = slots[i].choices.single(); if (!used.add(c)) return null; chars[i] = c
-        }
-        fun search(): Boolean {
-            if (++steps > 50_000) return false
-            val remaining = slots.indices.filter { chars[it] == '\u0000' }
-            val available = remaining.associateWith { i -> slots[i].choices.filter { it !in used } }
-            if (available.values.any { it.isEmpty() }) return false
-            val needs = markers.indices.map { part ->
-                val owned = slots.indices.filter { slots[it].part == part }.map { chars[it] } + markers[part].toList()
-                (2 - owned.count { category(it, true) }).coerceAtLeast(0) to (2 - owned.count { category(it, false) }).coerceAtLeast(0)
-            }
-            for (part in markers.indices) {
-                val rest = remaining.filter { slots[it].part == part }; val (low, special) = needs[part]
-                if (low + special > rest.size) return false
-                for ((lower, need) in listOf(true to low, false to special)) {
-                    if (rest.flatMap { available.getValue(it).filter { c -> category(c, lower) } }.toSet().size < need) return false
-                    if (rest.count { available.getValue(it).any { c -> category(c, lower) } } < need) return false
-                }
-            }
-            if (remaining.isEmpty()) return needs.all { it.first == 0 && it.second == 0 }
-            val i = remaining.minWith(compareBy({ available.getValue(it).size }, { it }))
-            val part = slots[i].part; val (low, special) = needs[part]; val rest = remaining.count { slots[it].part == part }
-            for (c in (listOf(preferred[i]) + available.getValue(i)).distinct()) {
-                if (c !in available.getValue(i)) continue
-                if (low == rest && !category(c, true)) continue
-                if (special == rest && !category(c, false)) continue
-                if (low + special == rest && !category(c, true) && !category(c, false)) continue
-                chars[i] = c; used.add(c)
-                if (search()) return true
-                used.remove(c); chars[i] = '\u0000'
-            }
-            return false
-        }
-        return if (search()) chars else null
     }
 }
