@@ -408,17 +408,77 @@ class CoreRegressionTest {
     @Test
     fun passwordScreenshotsAndRecentAppPreviewsHaveSeparateRules() {
         val policy = com.securevault.security.ScreenPrivacyPolicy
-        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, true, false),
+        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, true),
             policy.decide(true, true, true, false))
-        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, false),
+        assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true),
             policy.decide(true, false, true, false))
         for (allow in listOf(false, true)) {
-            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, true),
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true),
                 policy.decide(true, allow, false, true))
-            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true, true),
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(true, true),
                 policy.decide(false, allow, true, true))
-            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, false, false),
+            assertEquals(com.securevault.security.ScreenPrivacyPolicy.Decision(false, false),
                 policy.decide(false, allow, true, false))
         }
+    }
+
+    @Test
+    fun ampgExampleHasExactlyTheExplainedPassword() {
+        val options = MnemonicPasswordGenerator.GenerationOptions("Летом в горах шумели кедры", targetLength = 16)
+        val preview = MnemonicPasswordGenerator.preparePhrase(options.phrase).getOrThrow()
+        assertEquals(listOf("летом", "горах", "шумели", "кедры"), preview.words)
+        assertEquals(listOf("Letom", "Gorakh", "Shumeli", "Kedry"), preview.transliteratedWords)
+        assertEquals(listOf("в"), preview.skippedWords)
+        val first = MnemonicPasswordGenerator.generateVariantsResult(options).getOrThrow().first()
+        assertEquals("Le+oG0r@ShumK3dR", first.password)
+        assertEquals(listOf(4), first.prefixLengths)
+        assertEquals(16, first.password.toSet().size)
+        assertEquals(7, first.password.count(Char::isLowerCase))
+        assertEquals(5, first.password.count(Char::isUpperCase))
+        assertEquals(2, first.password.count { !it.isLetterOrDigit() })
+    }
+
+    @Test
+    fun ampgSkipsFunctionWordsAndExplainsUnusablePhrases() {
+        val preview = MnemonicPasswordGenerator.preparePhrase("Я был в лесу, и мы нашли грибы 2026!").getOrThrow()
+        assertEquals(listOf("лесу", "нашли", "грибы"), preview.words)
+        assertEquals(listOf("я", "был", "в", "и", "мы", "2026"), preview.skippedWords)
+        val result = MnemonicPasswordGenerator.generateVariantsResult(
+            MnemonicPasswordGenerator.GenerationOptions("Я был в лесу, и мы нашли грибы 2026!", targetLength = 16)
+        ).getOrThrow()
+        assertTrue(result.all { it.password.length == 16 && MnemonicPasswordGenerator.validatePassword(it.password, it.splitMode) })
+        assertEquals(listOf("кот", "сидел", "высокой", "сосной"),
+            MnemonicPasswordGenerator.preparePhrase("Наш кот сидел под этой высокой сосной").getOrThrow().words)
+        assertTrue(MnemonicPasswordGenerator.preparePhrase("я и мы в").isFailure)
+        val repeated = MnemonicPasswordGenerator.generateVariantsResult(
+            MnemonicPasswordGenerator.GenerationOptions("Дом дача дуб", targetLength = 16)
+        )
+        assertTrue(repeated.isFailure)
+        assertTrue(repeated.exceptionOrNull()!!.message!!.contains("заглавных"))
+        assertTrue(MnemonicPasswordGenerator.generateVariantsResult(
+            MnemonicPasswordGenerator.GenerationOptions("Летом в горах шумели кедры", phrase2 = "Ранним утром ветер будил птиц",
+                targetLength = 17, splitMode = MnemonicPasswordGenerator.SplitMode.TWO_USERS)).isFailure)
+    }
+
+    @Test
+    fun ampgSixteenIsReachableDespiteFloatRounding() {
+        val single = MnemonicPasswordGenerator.SplitMode.SINGLE_USER
+        val two = MnemonicPasswordGenerator.SplitMode.TWO_USERS
+        assertEquals(16, MnemonicPasswordGenerator.normalizeLength(15.999999f, single))
+        assertEquals(16, MnemonicPasswordGenerator.normalizeLength(16.000002f, single))
+        assertEquals(16, MnemonicPasswordGenerator.normalizeLength(16f, two))
+        for (length in 12..56) assertEquals(length, MnemonicPasswordGenerator.normalizeLength(length.toFloat(), single))
+        for (length in 16..56 step 2) assertEquals(length, MnemonicPasswordGenerator.normalizeLength(length.toFloat(), two))
+    }
+
+    @Test
+    fun privacyReturnRouteContainsNoOpenPassword() {
+        val policy = com.securevault.security.ScreenPrivacyPolicy
+        assertEquals("vault/7", policy.safeReturnRoute("entry/{entryId}?profileId={profileId}", 7))
+        assertEquals("vault/7", policy.safeReturnRoute("vault/{profileId}", 7))
+        assertEquals("vault/7", policy.safeReturnRoute("mnemonic_generator/{profileId}", 7))
+        assertEquals("rotation_journal/7", policy.safeReturnRoute("rotation_journal/{profileId}", 7))
+        assertEquals("settings", policy.safeReturnRoute("change_password", null))
+        assertEquals("profiles", policy.safeReturnRoute("entry/{entryId}", null))
     }
 }
