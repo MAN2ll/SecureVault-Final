@@ -155,19 +155,43 @@ private fun AmpgContent(initialService: String, profileId: Int?, initialYear: In
             generatedFor = options
         } finally { generating = false }
     }
-    val phraseKeyboard = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false)
+    val phraseKeyboard = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrect = false)
     OutlinedTextField(phrase, { phrase = it; request = 0 }, label = { Text("Мнемоническая фраза") },
         keyboardOptions = phraseKeyboard, modifier = Modifier.fillMaxWidth())
     Toggle("Две части", two) { two = it; request = 0; if (it) length = length.coerceAtLeast(16).let { n -> n + n % 2 } }
     if (two) OutlinedTextField(second, { second = it; request = 0 }, label = { Text("Фраза второй части") },
         keyboardOptions = phraseKeyboard, modifier = Modifier.fillMaxWidth())
-    Text(if (two) "Общая длина: $length; по ${length / 2} в каждой части" else "Длина: $length")
+    val minimum = if (two) 16 else 12
+    val step = if (two) 2 else 1
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { length = (length - step).coerceAtLeast(minimum); request = 0 }, enabled = length > minimum) { Text("−") }
+        Text(if (two) "$length всего / ${length / 2} в части" else "Длина: $length")
+        OutlinedButton(onClick = { length = (length + step).coerceAtMost(56); request = 0 }, enabled = length < 56) { Text("+") }
+    }
     Slider(length.toFloat(), { value ->
-        length = if (two) (kotlin.math.round(value / 2).toInt() * 2).coerceIn(16, 56) else value.toInt()
+        length = MnemonicPasswordGenerator.normalizeLength(value, options.splitMode)
         request = 0
-    }, valueRange = if (two) 16f..56f else 12f..56f, steps = if (two) 19 else 43)
-    Text("Из каждого слова берётся одинаковое число начальных букв транслитерации. Начало слова — заглавное. " +
-        "Минимум 2 строчные, 2 заглавные и 2 спецсимвола в каждой части. A и a допустимы вместе; точных повторов нет.")
+    }, valueRange = minimum.toFloat()..56f, steps = if (two) 19 else 43)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        (if (two) listOf(16, 20, 24, 32) else listOf(12, 16, 20, 24, 32)).forEach { n ->
+            FilterChip(length == n, { length = n; request = 0 }, label = { Text("$n") })
+        }
+    }
+    Text("Предлоги, союзы, местоимения и односимвольные слова пропускаются. " +
+        "Числа из фразы не используются: год задаётся отдельно. Значимые слова сохраняют порядок.")
+    val previews = remember(phrase, second, two) {
+        (listOf(phrase) + if (two) listOf(second) else emptyList()).map { MnemonicPasswordGenerator.preparePhrase(it).getOrNull() }
+    }
+    previews.forEachIndexed { index, preview ->
+        preview?.let {
+            Text("Часть ${index + 1}, латиницей: ${it.transliteratedWords.joinToString(" ")}", fontFamily = FontFamily.Monospace)
+            if (it.skippedWords.isNotEmpty()) Text("Пропущено: ${it.skippedWords.joinToString(", ")}")
+        }
+    }
+    Text("Из каждого значимого слова берётся одинаковое число начальных букв транслитерации. " +
+        "Начало каждого слова — заглавное. В каждой части минимум 2 строчные, 2 заглавные и 2 спецсимвола. " +
+        "A и a допустимы вместе; точных повторов нет.")
     Toggle("Маркер сервиса: первая и последняя буквы", addService) { addService = it; request = 0 }
     if (addService) OutlinedTextField(service, { service = it; request = 0 }, label = { Text("Сервис") },
         modifier = Modifier.fillMaxWidth())
@@ -184,15 +208,16 @@ private fun AmpgContent(initialService: String, profileId: Int?, initialYear: In
             val json = JSONObject().apply {
                 put("algorithmVersion", MnemonicPasswordGenerator.ALGORITHM_VERSION)
                 put("phraseStored", false)
+                put("stopWordsVersion", 1)
                 put("serviceName", service); put("profileId", profileId ?: JSONObject.NULL)
                 put("targetLength", length); put("splitMode", options.splitMode.name)
                 put("variantOffset", variant.variantOffset)
                 put("addServiceMarker", addService); put("addYearMarker", addYear)
                 put("year", options.year ?: JSONObject.NULL)
             }.toString()
-            val hint = "AMPG 3; длина $length; вариант ${variant.variantOffset + 1}; " +
+            val hint = "AMPG 4; длина $length; вариант ${variant.variantOffset + 1}; " +
                 "букв из слова: ${variant.prefixLengths.joinToString(" / ")}"
-            onGenerated(variant.password, "ampg_v3_${variant.variantOffset}", hint, variant.mnemonicHint, json)
+            onGenerated(variant.password, "ampg_v4_${variant.variantOffset}", hint, variant.mnemonicHint, json)
         }) {
             Column(Modifier.padding(12.dp)) {
                 Text(if (two) "${variant.part1} / ${variant.part2}" else variant.password,
