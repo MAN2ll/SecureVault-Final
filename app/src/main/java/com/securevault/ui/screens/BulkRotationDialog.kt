@@ -103,7 +103,7 @@ fun BulkRotationDialog(
     val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
 
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
-        """{"targetLength":16,"algorithmName":"AMPG 3","algorithmVersion":3,"phraseStored":false}"""
+        """{"targetLength":16,"algorithmName":"AMPG 4","algorithmVersion":4,"phraseStored":false}"""
     } else null
 
     AlertDialog(
@@ -131,7 +131,7 @@ fun BulkRotationDialog(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedMode == BulkMode.MNEMONIC, onClick = { selectedMode = BulkMode.MNEMONIC })
-                            Text("AMPG 3 по общей фразе", Modifier.padding(start = 8.dp))
+                            Text("AMPG 4 по общей фразе", Modifier.padding(start = 8.dp))
                         }
                     }
                 }
@@ -154,7 +154,7 @@ fun BulkRotationDialog(
                     BulkMode.MNEMONIC -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("AMPG 3 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("AMPG 4 — Общая фраза", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 OutlinedTextField(value = mnemonicPhrase, onValueChange = { mnemonicPhrase = it }, label = { Text("Мнемоническая фраза") }, placeholder = { Text("например: метроном жёлтый камень") }, modifier = Modifier.fillMaxWidth())
                                 Text("Каждый сервис получит уникальный пароль", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -235,7 +235,7 @@ fun BulkRotationDialog(
                         entryId = entry.id,
                         newPassword = password,
                         generationType = generationType,
-                        textHint = if (generationType == "mnemonic") "AMPG 3; длина 16" else null,
+                        textHint = if (generationType == "mnemonic") "AMPG 4; длина 16" else null,
                         mnemonicPhraseHint = if (generationType == "mnemonic") "Исходная фраза не сохранена" else null,
                         mnemonicOptionsJson = mnemonicOptionsJson
                     )
