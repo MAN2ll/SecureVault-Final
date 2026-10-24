@@ -4,13 +4,13 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.MotionEvent
 import android.view.Window
+import android.view.View
 import android.view.WindowManager
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -19,11 +19,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.IdentityHashMap
 
 object ScreenPrivacyPolicy {
-    data class Decision(val blockCapture: Boolean, val blockRecents: Boolean, val conceal: Boolean)
+    data class Decision(val blockCapture: Boolean, val blockRecents: Boolean)
     fun decide(sensitive: Boolean, allowScreenshots: Boolean, foreground: Boolean, latched: Boolean): Decision {
         val protected = sensitive || latched
-        return Decision(protected && (!allowScreenshots || !foreground || latched),
-            protected, protected && (!foreground || latched))
+        return Decision(protected && (!allowScreenshots || !foreground || latched), protected)
+    }
+    fun safeReturnRoute(route: String?, profileId: Int?): String {
+        val id = profileId?.takeIf { it > 0 }
+        return when {
+            route == "settings" || route == "change_password" -> "settings"
+            route == "profiles" || route == null -> "profiles"
+            route == "export" -> "export"
+            id == null -> "profiles"
+            route.startsWith("profile_settings/") -> "profile_settings/$id"
+            route.startsWith("rotation_journal/") -> "rotation_journal/$id"
+            route.startsWith("rotation/") -> "rotation/$id"
+            route.startsWith("audit/") -> "audit/$id"
+            route.startsWith("export/") -> "export/$id"
+            else -> "vault/$id"
+        }
     }
 }
 interface ScreenPrivacyHost { val screenPrivacy: ScreenPrivacyController }
@@ -32,10 +46,10 @@ class ScreenPrivacyController(private val activity: Activity, private val onInte
     companion object { const val ALLOW_SCREENSHOTS = "allow_password_screenshots" }
     private val prefs = activity.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
     private val owners = IdentityHashMap<Any, Window>()
-    private val curtains = IdentityHashMap<Window, ColorDrawable>()
     private val callbacks = IdentityHashMap<Window, Pair<Window.Callback, Window.Callback>>()
-    private val _foreground = MutableStateFlow(false)
-    val foreground = _foreground.asStateFlow()
+    private val _safePageEpoch = MutableStateFlow(0L)
+    val safePageEpoch = _safePageEpoch.asStateFlow()
+    private var foreground = false
     private var latched = false
     private var closed = false
     val hasSensitiveContent: Boolean get() = owners.isNotEmpty()
@@ -45,8 +59,7 @@ class ScreenPrivacyController(private val activity: Activity, private val onInte
     init { prefs.registerOnSharedPreferenceChangeListener(preferenceListener) }
 
     fun register(window: Window): () -> Unit {
-        val token = Any()
-        owners[token] = window
+        val token = Any(); owners[token] = window
         if (!callbacks.containsKey(window)) {
             val original = window.callback
             val wrapped = object : Window.Callback by original {
@@ -55,96 +68,64 @@ class ScreenPrivacyController(private val activity: Activity, private val onInte
                     return original.dispatchTouchEvent(event)
                 }
             }
-            callbacks[window] = original to wrapped
-            window.callback = wrapped
+            callbacks[window] = original to wrapped; window.callback = wrapped
         }
         applyPolicy()
         return {
             owners.remove(token)
             if (owners.values.none { it === window }) {
                 callbacks.remove(window)?.let { (original, wrapped) -> if (window.callback === wrapped) window.callback = original }
-                if (_foreground.value && !latched && window !== activity.window) {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                    curtains.remove(window)?.let { window.decorView.overlay.remove(it) }
-                }
+                if (foreground && !latched && window !== activity.window) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
             applyPolicy()
         }
     }
     fun onPause() {
+        val reset = hasSensitiveContent && !latched
         latched = latched || hasSensitiveContent
-        _foreground.value = false
+        foreground = false
         applyPolicy()
+        if (reset) {
+            // Старый Dialog скрывается сразу; новая композиция закроет его и покажет безопасную страницу.
+            owners.values.distinct().filter { it !== activity.window }.forEach { it.decorView.visibility = View.INVISIBLE }
+            _safePageEpoch.value += 1
+        }
     }
     fun onResume() {
-        _foreground.value = true
-        applyPolicy()
-    }
-    // Снимаем занавес после кадров новой композиции, когда старый пароль уже закрыт.
-    fun revealForeground() {
-        if (!_foreground.value || closed) return
-        latched = false
-        curtains.forEach { (window, drawable) -> window.decorView.overlay.remove(drawable) }
-        curtains.clear()
+        foreground = true; latched = false
         applyPolicy()
     }
     private fun applyPolicy() {
         if (closed) return
         val decision = ScreenPrivacyPolicy.decide(hasSensitiveContent,
-            prefs.getBoolean(ALLOW_SCREENSHOTS, false), _foreground.value, latched)
-        val windows = (listOf(activity.window) + owners.values + curtains.keys).distinct()
-        windows.forEach { window ->
+            prefs.getBoolean(ALLOW_SCREENSHOTS, false), foreground, latched)
+        (listOf(activity.window) + owners.values).distinct().forEach { window ->
             if (decision.blockCapture) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            if (decision.conceal && !curtains.containsKey(window)) {
-                val decor = window.decorView
-                val drawable = ColorDrawable(Color.BLACK)
-                drawable.setBounds(0, 0, maxOf(decor.width, activity.resources.displayMetrics.widthPixels),
-                    maxOf(decor.height, activity.resources.displayMetrics.heightPixels))
-                decor.overlay.add(drawable)
-                curtains[window] = drawable
-            }
         }
         if (Build.VERSION.SDK_INT >= 33) activity.setRecentsScreenshotEnabled(!decision.blockRecents)
     }
     override fun close() {
-        closed = true
-        prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
+        closed = true; prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         callbacks.forEach { (window, pair) -> if (window.callback === pair.second) window.callback = pair.first }
-        curtains.forEach { (window, drawable) -> window.decorView.overlay.remove(drawable) }
-        curtains.clear(); callbacks.clear(); owners.clear()
+        callbacks.clear(); owners.clear()
     }
 }
-private fun Context.privacyHost(): ScreenPrivacyHost? {
+internal fun Context.privacyHost(): ScreenPrivacyHost? {
     var context = this
     while (context is ContextWrapper) {
         if (context is ScreenPrivacyHost) return context
-        val base = context.baseContext
-        if (base === context) break
-        context = base
+        val base = context.baseContext; if (base === context) break; context = base
     }
     return context as? ScreenPrivacyHost
 }
 @Composable
 fun SensitiveContent() {
     val host = LocalContext.current.privacyHost() ?: return
-    val view = LocalView.current
-    val window = (view.parent as? DialogWindowProvider)?.window
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         ?: (host as? Activity)?.window ?: return
     DisposableEffect(host, window) {
         val unregister = host.screenPrivacy.register(window)
         onDispose { unregister() }
-    }
-}
-@Composable
-fun PrivacyTransitionGuard(authState: Any) {
-    val host = LocalContext.current.privacyHost() ?: return
-    val foreground by host.screenPrivacy.foreground.collectAsState()
-    LaunchedEffect(host, foreground, authState) {
-        if (foreground) {
-            withFrameNanos { }
-            withFrameNanos { }
-            host.screenPrivacy.revealForeground()
-        }
     }
 }
