@@ -1,3 +1,4 @@
+=======
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.securevault.ui
@@ -12,6 +13,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.ui.platform.LocalContext
+import com.securevault.security.privacyHost
+import com.securevault.security.ScreenPrivacyPolicy
+import com.securevault.security.SensitiveContent
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -22,12 +32,28 @@ import androidx.navigation.navArgument
 import com.securevault.ui.screens.*
 import com.securevault.viewmodel.AuthViewModel
 
+private class SafeNavigationMemory {
+    var controller: NavHostController? = null
+    var returnRoute = "profiles"
+    var epoch = -1L
+}
+
 @Composable
 fun SecureVaultNavHost(
-    navController: NavHostController = rememberNavController(),
+    navController: NavHostController? = null,
     authViewModel: AuthViewModel
 ) {
     val authState by authViewModel.authState.collectAsState()
+    val host = LocalContext.current.privacyHost()
+    val epoch = host?.screenPrivacy?.safePageEpoch?.collectAsState()?.value ?: 0L
+    val memory = remember { SafeNavigationMemory() }
+    if (memory.epoch != epoch || authState != AuthViewModel.AuthState.Unlocked) {
+        memory.controller?.currentBackStackEntry?.let { entry ->
+            memory.returnRoute = ScreenPrivacyPolicy.safeReturnRoute(entry.destination.route,
+                entry.arguments?.getInt("profileId")?.takeIf { it > 0 })
+        }
+        memory.epoch = epoch
+    }
 
     when (authState) {
         AuthViewModel.AuthState.SetupRequired -> {
@@ -41,9 +67,29 @@ fun SecureVaultNavHost(
             return
         }
     }
-    LaunchedEffect(Unit) {
-        navController.navigate("profiles") { popUpTo(0) { inclusive = true } }
+    // Новая композиция удаляет все окна паролей и их remember-состояния.
+    CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
+        key(epoch) {
+            val activeController = navController ?: rememberNavController()
+            SideEffect { memory.controller = activeController }
+            DisposableEffect(activeController) {
+                onDispose { if (memory.controller === activeController) memory.controller = null }
+            }
+            UnlockedVaultNavigation(activeController, authViewModel)
+            LaunchedEffect(activeController) {
+                val route = memory.returnRoute
+                if (route != "profiles") {
+                    val parent = route.substringAfter('/', "").toIntOrNull()
+                    if (parent != null && !route.startsWith("vault/")) activeController.navigate("vault/$parent")
+                    activeController.navigate(route) { launchSingleTop = true }
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun UnlockedVaultNavigation(navController: NavHostController, authViewModel: AuthViewModel) {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = "profiles") {
             composable("setup") {
@@ -115,6 +161,7 @@ fun SecureVaultNavHost(
                     navArgument("profileId") { type = NavType.IntType; defaultValue = -1 }
                 )
             ) { backStackEntry ->
+                SensitiveContent()
                 val entryId = backStackEntry.arguments?.getString("entryId")
                 val rawProfileId = backStackEntry.arguments?.getInt("profileId") ?: -1
                 val profileId = rawProfileId.takeIf { it > 0 }
@@ -207,6 +254,7 @@ fun SecureVaultNavHost(
                 route = "qr_scanner/{profileId}",
                 arguments = listOf(navArgument("profileId") { type = NavType.IntType })
             ) { backStackEntry ->
+                SensitiveContent()
                 val profileId = backStackEntry.arguments?.getInt("profileId")
                 QrScannerScreen(
                     profileId = profileId,
@@ -230,6 +278,7 @@ fun SecureVaultNavHost(
             }
 
             composable("change_password") {
+                SensitiveContent()
                 ChangeMasterPasswordScreen(
                     viewModel = authViewModel,
                     onBack = { navController.popBackStack() },
