@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import org.json.JSONObject
+import com.securevault.utils.MnemonicHint
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import com.securevault.viewmodel.BulkPasswordReplacement
@@ -103,7 +105,15 @@ fun BulkRotationDialog(
     val hasUniquePasswords = generatedPasswords.map { it.second }.toSet().size == generatedPasswords.size
 
     val mnemonicOptionsJson = if (selectedMode == BulkMode.MNEMONIC) {
-        """{"targetLength":16,"algorithmName":"AMPG","algorithmVersion":${MnemonicPasswordGenerator.ALGORITHM_VERSION},"phraseStored":false}"""
+        JSONObject().apply {
+            put("targetLength", 16)
+            put("algorithmName", "AMPG")
+            put("algorithmVersion", MnemonicPasswordGenerator.ALGORITHM_VERSION)
+            put("phraseStored", true)
+            put("phrase", mnemonicPhrase.trim())
+            put("cardHintStored", true)
+            put("cardHintVersion", 1)
+        }.toString()
     } else null
 
     AlertDialog(
@@ -236,7 +246,7 @@ fun BulkRotationDialog(
                         newPassword = password,
                         generationType = generationType,
                         textHint = if (generationType == "mnemonic") "AMPG ${MnemonicPasswordGenerator.ALGORITHM_VERSION}; длина 16" else null,
-                        mnemonicPhraseHint = if (generationType == "mnemonic") "Исходная фраза не сохранена" else null,
+                        mnemonicPhraseHint = if (generationType == "mnemonic") MnemonicHint.normalize(mnemonicPhrase) else null,
                         mnemonicOptionsJson = mnemonicOptionsJson
                     )
                 }
