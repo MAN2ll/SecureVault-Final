@@ -28,7 +28,7 @@ import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.AccessResult
 import com.securevault.utils.ClipboardHelper
 import com.securevault.utils.CryptoUtils
-import com.securevault.utils.resolveAccess
+import com.securevault.utils.resolvePasswordRevealAccess
 import com.securevault.viewmodel.AuthViewModel
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
@@ -124,7 +124,7 @@ fun RotationJournalScreen(
                                             revealedHistoryPassword = null
                                             
                                             val fallbackProfile = currentProfile ?: return@IconButton
-                                            val result = resolveAccess(entry, fallbackProfile)
+                                            val result = resolvePasswordRevealAccess(entry, fallbackProfile)
                                             
                                             when (result) {
                                                 is AccessResult.Granted -> {
