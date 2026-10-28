@@ -81,7 +81,8 @@ object SecureQrManager {
                 if (canRead(centered, content)) return QrPresentation(centered, true)
             }
         }
-        return QrPresentation(plain, false)
+        // Without a center panel, use the less dense M code to make scanning easier.
+        return QrPresentation(generateQrBitmap(content, size), false)
     }
 
     private fun encodeBitmap(content: String, size: Int, correction: ErrorCorrectionLevel): Bitmap {
@@ -115,7 +116,6 @@ object SecureQrManager {
         val layout = StaticLayout.Builder.obtain(phrase, 0, phrase.length, paint, textWidth)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(false)
-            .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .build()
         val boxHeight = layout.height + padding * 2
