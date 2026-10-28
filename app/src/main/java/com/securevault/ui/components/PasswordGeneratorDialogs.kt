@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.securevault.data.Profile
+import com.securevault.utils.MnemonicHint
 import com.securevault.utils.MnemonicPasswordGenerator
 import com.securevault.utils.PasswordGenerator
 import org.json.JSONObject
@@ -165,6 +166,12 @@ internal fun AmpgGeneratorContent(initialService: String, profileId: Int?, initi
     Toggle("Две части", two) { two = it; request = 0; if (it) length = length.coerceAtLeast(16).let { n -> n + n % 2 } }
     if (two) OutlinedTextField(second, { second = it; request = 0 }, label = { Text("Фраза второй части") },
         keyboardOptions = phraseKeyboard, modifier = Modifier.fillMaxWidth())
+    var cardHint by remember(phrase, second, two) {
+        mutableStateOf(MnemonicHint.fromPhrases(phrase, second.takeIf { two }))
+    }
+    OutlinedTextField(cardHint, { cardHint = it }, label = { Text("Подсказка на карточке") },
+        supportingText = { Text("Видна без PIN. Можно заменить фразу коротким напоминанием или очистить поле.") },
+        modifier = Modifier.fillMaxWidth())
     val minimum = if (two) 16 else 12
     val step = if (two) 2 else 1
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,7 +211,11 @@ internal fun AmpgGeneratorContent(initialService: String, profileId: Int?, initi
     fun selectVariant(variant: MnemonicPasswordGenerator.GenerationResult) {
             val json = JSONObject().apply {
                 put("algorithmVersion", MnemonicPasswordGenerator.ALGORITHM_VERSION)
-                put("phraseStored", false)
+                put("phraseStored", true)
+                put("phrase", phrase.trim())
+                if (two) put("phrase2", second.trim())
+                put("cardHintStored", MnemonicHint.normalize(cardHint) != null)
+                put("cardHintVersion", 1)
                 put("stopWordsVersion", 1)
                 put("serviceName", service); put("profileId", profileId ?: JSONObject.NULL)
                 put("targetLength", length); put("splitMode", options.splitMode.name)
@@ -214,7 +225,7 @@ internal fun AmpgGeneratorContent(initialService: String, profileId: Int?, initi
             }.toString()
             val hint = "AMPG ${MnemonicPasswordGenerator.ALGORITHM_VERSION}; длина $length; вариант ${variant.variantOffset + 1}; " +
                 "знаков из основы: ${variant.prefixLengths.joinToString(" / ")}"
-            onGenerated(variant.password, "ampg_v${MnemonicPasswordGenerator.ALGORITHM_VERSION}_${variant.variantOffset}", hint, variant.mnemonicHint, json)
+            onGenerated(variant.password, "ampg_v${MnemonicPasswordGenerator.ALGORITHM_VERSION}_${variant.variantOffset}", hint, MnemonicHint.normalize(cardHint), json)
     }
     if (generatedFor == options && request > 0) variants.forEach { variant ->
         Card(Modifier.fillMaxWidth()) {
