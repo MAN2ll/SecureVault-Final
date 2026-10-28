@@ -24,10 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
+import com.securevault.utils.MnemonicHint
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.PasswordViewDialog
@@ -409,6 +411,11 @@ private fun EntryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(entry.service, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(entry.username, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                MnemonicHint.forDisplay(entry.mnemonicPhraseHint)?.let { hint ->
+                    Text("Подсказка: $hint", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 if (entry.tags.isNotEmpty()) {
                     Text(entry.tags.joinToString(", "), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                 }
