@@ -10,6 +10,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.PowerManager
 import android.view.MotionEvent
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
@@ -22,15 +24,34 @@ import com.securevault.security.ScreenPrivacyController
 import com.securevault.security.ScreenPrivacyHost
 import com.securevault.ui.SecureVaultNavHost
 import com.securevault.ui.theme.SecureVaultTheme
+import com.securevault.utils.QrImageSaver
+import com.securevault.utils.QrSaveHost
 import com.securevault.utils.RotationNotificationWorker
 import com.securevault.viewmodel.AuthViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
-class MainActivity : FragmentActivity(), ScreenPrivacyHost {
+class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
+    private val qrDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        lifecycleScope.launch {
+            try {
+                val saved = withContext(Dispatchers.IO) { QrImageSaver.finishDocumentSave(applicationContext, uri) }
+                if (saved) Toast.makeText(this@MainActivity, "QR-код сохранён в выбранный файл", Toast.LENGTH_LONG).show()
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, e.message ?: "Не удалось сохранить QR-код", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    override fun launchQrDocumentSave(fileName: String) {
+        qrDocumentLauncher.launch(fileName)
+    }
     private val authViewModel: AuthViewModel by viewModels()
     override lateinit var screenPrivacy: ScreenPrivacyController
         private set
