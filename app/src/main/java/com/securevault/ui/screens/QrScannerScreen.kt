@@ -9,6 +9,8 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +28,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.securevault.data.Entry
+import com.securevault.security.SensitiveContent
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.ProfileAccessDialog
 import com.securevault.utils.*
@@ -33,6 +36,8 @@ import com.securevault.viewmodel.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
+
+private enum class QrSecretAction { REVEAL, COPY }
 
 @Composable
 fun QrScannerScreen(profileId: Int?, onBack: () -> Unit, onLock: () -> Unit,
@@ -44,19 +49,46 @@ fun QrScannerScreen(profileId: Int?, onBack: () -> Unit, onLock: () -> Unit,
     var permitted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context,
         Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permitted = it }
-    var entry by remember { mutableStateOf<Entry?>(null) }
-    var password by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var access by remember { mutableStateOf(false) }
-    var biometric by remember { mutableStateOf(false) }
+    var entry by remember(profileId) { mutableStateOf<Entry?>(null) }
+    var password by remember(profileId) { mutableStateOf<String?>(null) }
+    var qrPhrase by remember(profileId) { mutableStateOf<String?>(null) }
+    var error by remember(profileId) { mutableStateOf<String?>(null) }
+    var loading by remember(profileId) { mutableStateOf(false) }
+    var access by remember(profileId) { mutableStateOf(false) }
+    var pending by remember(profileId) { mutableStateOf<QrSecretAction?>(null) }
     val profile = profiles.find { it.id == entry?.profileId }
-    fun reveal() {
-        try { password = requireNotNull(entry).password }
-        catch (e: Exception) { error = "Ошибка расшифровки: ${e.message}" }
+
+    fun reset() {
+        password = null; entry = null; qrPhrase = null; access = false; pending = null; error = null
+    }
+    fun requestAccess(action: QrSecretAction) {
+        password = null; error = null; pending = null
+        if (authViewModel.authState.value !is AuthViewModel.AuthState.Unlocked) return
+        val owner = profile ?: run { error = "Папка записи не найдена"; return }
+        val item = entry ?: return
+        when (resolvePasswordRevealAccess(item, owner)) {
+            AccessResult.PinRequired -> { pending = action; access = true }
+            AccessResult.PinNotSet -> error = "Сначала задайте PIN папки в настройках профиля"
+            else -> error = "Для доступа требуется PIN папки"
+        }
+    }
+    fun finishAccess() {
+        val action = pending
+        pending = null; access = false
+        if (action == null || authViewModel.authState.value !is AuthViewModel.AuthState.Unlocked) return
+        val item = entry ?: return
+        val owner = profile ?: return
+        if (resolvePasswordRevealAccess(item, owner) !is AccessResult.PinRequired) return
+        try {
+            val value = CryptoUtils.decrypt(item.encryptedPassword)
+            when (action) {
+                QrSecretAction.REVEAL -> password = value
+                QrSecretAction.COPY -> ClipboardHelper.copyWithAutoClear(context, value, "qr_password")
+            }
+        } catch (_: Exception) { error = "Не удалось расшифровать пароль" }
     }
     LaunchedEffect(authViewModel) {
-        authViewModel.clearSensitiveEvent.collect { password = null; entry = null; access = false }
+        authViewModel.clearSensitiveEvent.collect { reset() }
     }
     Scaffold(topBar = { TopAppBar(title = { Text("Сканирование QR") },
         navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Назад") } },
@@ -67,21 +99,23 @@ fun QrScannerScreen(profileId: Int?, onBack: () -> Unit, onLock: () -> Unit,
                     Text("Для сканирования нужна камера")
                     Button(onClick = { permission.launch(Manifest.permission.CAMERA) }) { Text("Разрешить камеру") }
                 }
-                error != null -> Column(Modifier.padding(24.dp)) {
+                entry == null && error != null -> Column(Modifier.padding(24.dp)) {
                     Text(error!!, color = MaterialTheme.colorScheme.error)
-                    Button(onClick = { error = null; entry = null; password = null }) { Text("Попробовать снова") }
+                    Button(onClick = { reset() }) { Text("Попробовать снова") }
                 }
                 entry == null && !loading -> CameraPreview(onResult = { raw ->
                     if (!loading) {
                         loading = true
                         scope.launch {
                             try {
-                                val owner = requireNotNull(profileId) { "Профиль не выбран" }
+                                val owner = requireNotNull(profileId) { "Папка не выбрана" }
                                 val result = SecureQrManager.validateQrToken(raw, owner, context)
                                 require(result.isValid) { "Недействительный QR-код" }
                                 val found = viewModel.getEntryById(requireNotNull(result.entryId))
-                                require(found != null && found.profileId == owner) { "Запись QR-кода не найдена в профиле" }
-                                entry = found
+                                require(found != null && found.profileId == owner) { "Запись QR-кода не найдена в папке" }
+                                if (authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) {
+                                    entry = found; qrPhrase = result.mnemonicPhrase
+                                }
                             } catch (e: CancellationException) { throw e
                             } catch (e: Exception) { error = e.message ?: "Ошибка QR"
                             } finally { loading = false }
@@ -89,29 +123,44 @@ fun QrScannerScreen(profileId: Int?, onBack: () -> Unit, onLock: () -> Unit,
                     }
                 }, onError = { error = it })
                 loading -> CircularProgressIndicator()
-                else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(entry!!.service); Text(entry!!.username)
-                    Text(password ?: "••••••••••••", fontFamily = FontFamily.Monospace)
-                    Button(onClick = {
-                        val owner = profile
-                        if (owner == null) error = "Профиль записи не найден"
-                        else when (val policy = resolveAccess(entry!!, owner)) {
-                            AccessResult.Granted -> reveal()
-                            AccessResult.PinNotSet -> error = "Сначала задайте PIN профиля"
-                            else -> { biometric = policy is AccessResult.BiometricOrPin; access = true }
+                else -> {
+                    SensitiveContent()
+                    val item = entry ?: return@Box
+                    val hint = MnemonicHint.forDisplay(item.mnemonicPhraseHint)
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(item.service, style = MaterialTheme.typography.titleMedium)
+                        Text(item.username)
+                        hint?.let {
+                            Text("Мнемоническая подсказка", style = MaterialTheme.typography.labelMedium)
+                            Text(it)
                         }
-                    }) { Text("Показать пароль") }
-                    password?.let { pwd ->
-                        OutlinedButton(onClick = { ClipboardHelper.copyWithAutoClear(context, pwd, "qr_password") }) { Text("Копировать на 30 секунд") }
-                        OutlinedButton(onClick = { password = null }) { Text("Скрыть") }
+                        if (!qrPhrase.isNullOrBlank() && qrPhrase != hint) {
+                            Text("Фраза в QR на момент его создания", style = MaterialTheme.typography.labelMedium)
+                            Text(qrPhrase.orEmpty())
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(password ?: "••••••••••••", fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(1f))
+                            IconButton(onClick = {
+                                if (password != null) password = null else requestAccess(QrSecretAction.REVEAL)
+                            }) {
+                                Icon(if (password != null) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    if (password != null) "Скрыть пароль" else "Показать после PIN папки")
+                            }
+                        }
+                        OutlinedButton(onClick = { requestAccess(QrSecretAction.COPY) }) {
+                            Text("Копировать после PIN папки")
+                        }
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { reset() }) { Text("Сканировать другой QR") }
                     }
-                    TextButton(onClick = { password = null; entry = null }) { Text("Сканировать другой QR") }
                 }
             }
         }
     }
-    if (access && profile != null) ProfileAccessDialog(profile, biometric,
-        onDismiss = { access = false }, onGranted = { access = false; reveal() })
+    if (access && profile != null) ProfileAccessDialog(profile, allowBiometric = false,
+        onDismiss = { access = false; pending = null }, onGranted = { finishAccess() })
 }
 
 @androidx.annotation.OptIn(ExperimentalGetImage::class)
