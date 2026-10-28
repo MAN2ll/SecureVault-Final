@@ -56,7 +56,6 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
     var error by remember { mutableStateOf<String?>(null) }
     var generator by remember { mutableStateOf(false) }
     var accessDialog by remember { mutableStateOf(false) }
-    var biometric by remember { mutableStateOf(false) }
     var accessConfirmed by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
     val effectiveProfileId = original?.profileId ?: profileId
@@ -73,7 +72,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                 rotation = item.rotationEnabled; months = item.rotationPeriodMonths
                 mode = AccessMode.fromString(item.passwordAccessMode)
                 type = item.generationType; hint = item.textHint
-                mnemonicHint = item.mnemonicPhraseHint; mnemonicJson = item.mnemonicOptionsJson
+                mnemonicHint = MnemonicHint.forDisplay(item.mnemonicPhraseHint); mnemonicJson = item.mnemonicOptionsJson
             } else require(profileId != null && profileId > 0) { "Профиль не выбран" }
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) { loadError = e.message ?: "Ошибка загрузки"
@@ -87,16 +86,15 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
     }
     fun requestAccess(action: () -> Unit) {
         error = null
+        visible = false
+        if (authViewModel.authState.value !is AuthViewModel.AuthState.Unlocked) return
         val base = original
         if (!edit) { action(); return }
         val owner = profile ?: run { error = "Профиль записи не найден"; return }
-        when (resolveAccess(base ?: return, owner)) {
-            AccessResult.Granted -> { accessConfirmed = true; action() }
-            AccessResult.PinNotSet -> error = "Сначала задайте PIN профиля"
-            else -> {
-                biometric = resolveAccess(base, owner) is AccessResult.BiometricOrPin
-                pending = action; accessDialog = true
-            }
+        when (resolvePasswordRevealAccess(base ?: return, owner)) {
+            AccessResult.PinRequired -> { pending = action; accessDialog = true }
+            AccessResult.PinNotSet -> error = "Сначала задайте PIN папки в настройках профиля"
+            else -> error = "Для доступа требуется PIN папки"
         }
     }
     fun loadPassword(after: () -> Unit) {
@@ -108,7 +106,8 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                 after()
             } catch (e: Exception) { error = "Не удалось расшифровать пароль: ${e.message}" }
         }
-        if (!edit || originalPassword != null) after() else requestAccess { decrypt() }
+        // A cached draft must never bypass a new PIN request for revealing a saved entry.
+        if (!edit) after() else requestAccess { decrypt() }
     }
     fun save() {
         if (saving) return
@@ -137,7 +136,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                     Entry.create(service.trim(), username, pwd, owner,
                         PasswordValidator.buildPasswordFingerprint(pwd, context),
                         url.ifBlank { null }, notes.ifBlank { null }, hint, rotation, months,
-                        favorite, type, mnemonicHint, mnemonicJson, mode.value, finalTags)
+                        favorite, type, MnemonicHint.normalize(mnemonicHint), mnemonicJson, mode.value, finalTags)
                 } else {
                     val changed = draft != null && draft != originalPassword
                     require(!changed || originalPassword != null) { "Сначала подтвердите доступ к паролю" }
@@ -148,6 +147,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                         isFavorite = favorite, rotationEnabled = rotation, rotationPeriodMonths = months,
                         passwordAccessMode = if (mode == AccessMode.fromString(base.passwordAccessMode))
                             base.passwordAccessMode else mode.value,
+                        mnemonicPhraseHint = MnemonicHint.normalize(mnemonicHint),
                         nextRotationDate = EntryChanges.nextRotationDate(base, rotation, months,
                             changed, System.currentTimeMillis()))
                 }
@@ -183,14 +183,20 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                     placeholder = { if (edit && originalPassword == null) Text("••••••••••••") },
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = { Row {
-                        IconButton(onClick = { loadPassword { visible = !visible } }) {
+                        IconButton(onClick = {
+                            if (visible) visible = false else loadPassword { visible = true }
+                        }) {
                             Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Показать / скрыть")
                         }
                         IconButton(onClick = { loadPassword { visible = false; generator = true } }) {
                             Icon(Icons.Default.AutoAwesome, "Генератор")
                         }
                     } }, modifier = Modifier.fillMaxWidth())
-                Text("Ручной ввод или генерация. Просмотр пароля не считается заменой.")
+                Text("Просмотр сохранённого пароля требует PIN папки и не считается заменой.")
+                OutlinedTextField(mnemonicHint.orEmpty(), { mnemonicHint = it },
+                    label = { Text("Подсказка на карточке") }, enabled = !saving,
+                    supportingText = { Text("Видна без PIN. Напишите напоминание, по которому сможете вспомнить пароль.") },
+                    modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(tags, { tags = it }, label = { Text("Теги через запятую") },
                     enabled = !saving, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(url, { url = it }, label = { Text("URL сайта") },
@@ -223,10 +229,11 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
             }
         }
     }
-    if (accessDialog && profile != null) ProfileAccessDialog(profile, biometric,
+    if (accessDialog && profile != null) ProfileAccessDialog(profile, allowBiometric = false,
         onDismiss = { accessDialog = false; pending = null }, onGranted = {
             accessDialog = false; accessConfirmed = true
-            val action = pending; pending = null; action?.invoke()
+            val action = pending; pending = null
+            if (authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) action?.invoke()
         })
     if (generator) UnifiedPasswordGeneratorDialog(onDismiss = { generator = false },
         onGenerated = { pwd, generatedType, generatedHint, phrase, options ->
