@@ -57,7 +57,6 @@ object QrImageSaver {
         val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, qr.width - padding * 2)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(false)
-            .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .build()
         return Bitmap.createBitmap(qr.width, qr.height + layout.height + padding * 2,
