@@ -28,3 +28,9 @@ fun resolveAccess(entry: Entry, profile: Profile): AccessResult {
     return resolve(if (entryMode == AccessMode.INHERIT) AccessMode.fromString(profile.passwordAccessMode) else entryMode, profile)
 }
 fun resolveProfileAccess(profile: Profile): AccessResult = resolve(AccessMode.fromString(profile.profileAccessMode), profile)
+
+/** Revealing or copying a saved secret always requires the PIN of its own folder. */
+fun resolvePasswordRevealAccess(entry: Entry, profile: Profile): AccessResult {
+    require(entry.profileId == profile.id) { "Профиль записи не совпадает" }
+    return resolve(AccessMode.PIN_REQUIRED, profile)
+}
