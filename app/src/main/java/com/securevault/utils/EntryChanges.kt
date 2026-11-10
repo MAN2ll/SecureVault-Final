@@ -3,6 +3,10 @@ package com.securevault.utils
 import android.content.Context
 import com.securevault.data.Entry
 
+internal class PasswordPolicyException(message: String) : IllegalArgumentException(message)
+
+internal fun isManualPasswordType(type: String) = type == "manual" || type == "manual_ampg"
+
 object EntryChanges {
     fun nextRotationDate(original: Entry?, enabled: Boolean, months: Int,
                          passwordChanged: Boolean, now: Long): Long? = when {
@@ -17,12 +21,15 @@ object EntryChanges {
 
     fun replace(entry: Entry, password: String, type: String, context: Context,
                 hint: String? = null, mnemonicHint: String? = null,
-                mnemonicJson: String? = null, relatedService: String? = null): Entry {
+                mnemonicJson: String? = null, relatedService: String? = null,
+                acceptManualPolicyWarning: Boolean = false): Entry {
         val old = CryptoUtils.decrypt(entry.encryptedPassword)
         if (password == old) return entry
         require(password.isNotBlank()) { "Пароль не может быть пустым" }
-        val validation = PasswordValidator.validateNewPasswordForEntry(entry, password, context, generationType = type)
-        require(validation.isValid) { validation.errorMessage.orEmpty() }
+        if (!acceptManualPolicyWarning || !isManualPasswordType(type)) {
+            val validation = PasswordValidator.validateNewPasswordForEntry(entry, password, context, generationType = type)
+            if (!validation.isValid) throw PasswordPolicyException(validation.errorMessage.orEmpty())
+        }
         val now = System.currentTimeMillis()
         val oldFingerprint = PasswordValidator.buildPasswordFingerprint(old, context)
         return entry.addToPasswordHistory(old, type, oldFingerprint, relatedService).copy(
