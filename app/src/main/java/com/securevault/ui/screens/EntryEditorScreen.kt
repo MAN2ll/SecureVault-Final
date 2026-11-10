@@ -25,6 +25,8 @@ import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private data class ManualPasswordWarning(val password: String, val generationType: String, val reason: String)
+
 @Composable
 fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
     onLock: () -> Unit = {}, authViewModel: AuthViewModel,
@@ -58,6 +60,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
     var accessDialog by remember { mutableStateOf(false) }
     var accessConfirmed by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var policyWarning by remember(id, profileId) { mutableStateOf<ManualPasswordWarning?>(null) }
     val effectiveProfileId = original?.profileId ?: profileId
     val profile = profiles.find { it.id == effectiveProfileId }
 
@@ -82,6 +85,7 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
         authViewModel.clearSensitiveEvent.collect {
             originalPassword = null; draft = null; visible = false
             generator = false; accessDialog = false; pending = null; accessConfirmed = false
+            policyWarning = null
         }
     }
     fun requestAccess(action: () -> Unit) {
@@ -109,13 +113,18 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
         // A cached draft must never bypass a new PIN request for revealing a saved entry.
         if (!edit) after() else requestAccess { decrypt() }
     }
-    fun save() {
-        if (saving) return
+    fun save(approval: ManualPasswordWarning? = null) {
+        if (saving || authViewModel.authState.value !is AuthViewModel.AuthState.Unlocked) return
         if (service.isBlank()) { error = "Укажите сервис"; return }
         if (edit && mode != AccessMode.fromString(original?.passwordAccessMode) && !accessConfirmed) {
-            requestAccess { accessConfirmed = true; save() }
+            requestAccess { accessConfirmed = true; save(approval) }
             return
         }
+        val enteredPassword = draft
+        val generationType = type
+        val approved = approval != null && approval.password == enteredPassword &&
+            approval.generationType == generationType && isManualPasswordType(generationType)
+        error = null
         saving = true
         scope.launch {
             try {
@@ -129,19 +138,21 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                     .distinctBy { it.lowercase() }.joinToString(",")
                 val base = original
                 val updated = if (base == null) {
-                    val pwd = draft.orEmpty()
+                    val pwd = enteredPassword.orEmpty()
                     require(pwd.isNotBlank()) { "Введите пароль" }
-                    val validation = PasswordValidator.validateUniqueCharacters(pwd, type)
-                    require(validation.isValid) { validation.errorMessage.orEmpty() }
+                    if (!approved) {
+                        val validation = PasswordValidator.validateUniqueCharacters(pwd, generationType)
+                        if (!validation.isValid) throw PasswordPolicyException(validation.errorMessage.orEmpty())
+                    }
                     Entry.create(service.trim(), username, pwd, owner,
                         PasswordValidator.buildPasswordFingerprint(pwd, context),
                         url.ifBlank { null }, notes.ifBlank { null }, hint, rotation, months,
-                        favorite, type, MnemonicHint.normalize(mnemonicHint), mnemonicJson, mode.value, finalTags)
+                        favorite, generationType, MnemonicHint.normalize(mnemonicHint), mnemonicJson, mode.value, finalTags)
                 } else {
-                    val changed = draft != null && draft != originalPassword
+                    val changed = enteredPassword != null && enteredPassword != originalPassword
                     require(!changed || originalPassword != null) { "Сначала подтвердите доступ к паролю" }
-                    val passwordEntry = if (changed) EntryChanges.replace(base, draft.orEmpty(), type,
-                        context, hint, mnemonicHint, mnemonicJson) else base
+                    val passwordEntry = if (changed) EntryChanges.replace(base, enteredPassword.orEmpty(), generationType,
+                        context, hint, mnemonicHint, mnemonicJson, acceptManualPolicyWarning = approved) else base
                     passwordEntry.copy(service = service.trim(), username = username,
                         url = url.ifBlank { null }, notes = notes.ifBlank { null }, tagsCsv = finalTags,
                         isFavorite = favorite, rotationEnabled = rotation, rotationPeriodMonths = months,
@@ -152,8 +163,15 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                             changed, System.currentTimeMillis()))
                 }
                 viewModel.saveEntry(updated, base)
-                onBack()
+                if (authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) onBack()
             } catch (e: CancellationException) { throw e
+            } catch (e: PasswordPolicyException) {
+                val message = e.message.orEmpty().removeSuffix(" Создайте другой пароль.")
+                if (isManualPasswordType(generationType) && enteredPassword != null &&
+                    authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) {
+                    visible = false
+                    policyWarning = ManualPasswordWarning(enteredPassword, generationType, message)
+                } else error = message
             } catch (e: Exception) { error = e.message ?: "Ошибка сохранения"
             } finally { saving = false }
         }
@@ -228,6 +246,17 @@ fun EntryEditorScreen(id: String? = null, profileId: Int?, onBack: () -> Unit,
                 }
             }
         }
+    }
+    policyWarning?.let { warning ->
+        AlertDialog(
+            onDismissRequest = { policyWarning = null },
+            title = { Text("Пароль не соответствует требованиям") },
+            text = { Text("${warning.reason}\n\nСохранить введённый пароль без изменений?") },
+            confirmButton = {
+                Button(onClick = { policyWarning = null; save(warning) }) { Text("Сохранить всё равно") }
+            },
+            dismissButton = { TextButton(onClick = { policyWarning = null }) { Text("Исправить") } }
+        )
     }
     if (accessDialog && profile != null) ProfileAccessDialog(profile, allowBiometric = false,
         onDismiss = { accessDialog = false; pending = null }, onGranted = {
