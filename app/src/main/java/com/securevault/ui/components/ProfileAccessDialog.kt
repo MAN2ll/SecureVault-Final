@@ -1,6 +1,7 @@
 package com.securevault.ui.components
 
 import com.securevault.security.SensitiveContent
+import com.securevault.security.privacyHost
 
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -22,13 +23,13 @@ import com.securevault.security.ProfilePasswordHasher
 fun ProfileAccessDialog(profile: Profile, allowBiometric: Boolean,
     onDismiss: () -> Unit, onGranted: () -> Unit) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
+    val activity = context as? FragmentActivity ?: context.privacyHost() as? FragmentActivity
     val grant by rememberUpdatedState(onGranted)
     var active by remember { mutableStateOf(true) }
     var pin by remember(profile.id) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    val prompt = remember(activity, profile.id) {
-        activity?.let {
+    val prompt = remember(activity, profile.id, allowBiometric) {
+        activity?.takeIf { allowBiometric }?.let {
             BiometricPrompt(it, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     if (active) { active = false; grant() }
