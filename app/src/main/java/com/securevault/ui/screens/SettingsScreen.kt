@@ -91,8 +91,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToExport: () -> Unit = {},
                 })
             }
             Text("В списке последних приложений пароли скрываются при любом положении переключателя. При выключении экрана открытый пароль закрывается.")
-            Text("Автоблокировка")
-            listOf(0 to "Сразу при сворачивании", 1 to "Через 1 минуту", 5 to "Через 5 минут",
+            Text("Блокировка при бездействии")
+            listOf(0 to "Без таймера", 1 to "Через 1 минуту", 5 to "Через 5 минут",
                 15 to "Через 15 минут", 30 to "Через 30 минут").forEach { (value, label) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(timeout == value, {
@@ -100,6 +100,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToExport: () -> Unit = {},
                     }); Text(label)
                 }
             }
+            Text("При сворачивании приложение запрашивает PIN текущего профиля. Если PIN не задан, откроется общий экран входа.")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Напоминания о сроках смены", Modifier.weight(1f))
                 Switch(notifications, { enabled ->
