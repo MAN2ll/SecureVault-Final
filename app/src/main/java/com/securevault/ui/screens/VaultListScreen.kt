@@ -5,7 +5,6 @@ package com.securevault.ui.screens
 import com.securevault.security.SensitiveContent
 
 import android.content.Context
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.securevault.data.Entry
 import com.securevault.utils.MnemonicHint
+import com.securevault.utils.rememberVaultDocumentLauncher
 import com.securevault.security.MasterPasswordHasher
 import com.securevault.ui.components.LockActionButton
 import com.securevault.ui.components.PasswordViewDialog
@@ -84,7 +84,7 @@ fun VaultListScreen(
     
     var searchQuery by remember { mutableStateOf("") }
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()) }
-    val envelopeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+    val launchEnvelopePicker = rememberVaultDocumentLauncher(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         val ids = envelopeIds; envelopeIds = emptySet()
         if (uri != null && ids.isNotEmpty() && authViewModel.authState.value is AuthViewModel.AuthState.Unlocked) {
             scope.launch {
@@ -107,6 +107,12 @@ fun VaultListScreen(
                 } catch (e: CancellationException) { throw e
                 } catch (e: Exception) { operationMessage = "Ошибка конверта: ${e.message}" }
             }
+        }
+    }
+    LaunchedEffect(envelopeIds, showMasterPasswordDialog) {
+        // Let the password confirmation dialog leave the composition before opening the picker.
+        if (envelopeIds.isNotEmpty() && !showMasterPasswordDialog) {
+            launchEnvelopePicker("securevault_envelope_${System.currentTimeMillis()}.txt")
         }
     }
 
@@ -197,12 +203,12 @@ fun VaultListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Поиск по сервису, логину или тегам...") },
+                onValueChange = { searchQuery = it.replace('\n', ' ').replace('\r', ' ') },
+                placeholder = { Text("Сервис, логин или тег", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Clear, "Очистить") } },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
             )
 
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -222,7 +228,6 @@ fun VaultListScreen(
                 OutlinedButton(onClick = {
                     pendingDeleteAction = {
                         envelopeIds = selectedEntryIds
-                        envelopeLauncher.launch("securevault_envelope_${System.currentTimeMillis()}.txt")
                     }
                     showMasterPasswordDialog = true
                 }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
