@@ -22,6 +22,7 @@ import com.securevault.security.privacyHost
 import com.securevault.security.ScreenPrivacyPolicy
 import com.securevault.security.SensitiveContent
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -35,6 +36,7 @@ private class SafeNavigationMemory {
     var controller: NavHostController? = null
     var returnRoute = "profiles"
     var epoch = -1L
+    var awaitingProfilePin = false
 }
 
 @Composable
@@ -53,6 +55,15 @@ fun SecureVaultNavHost(
         }
         memory.epoch = epoch
     }
+    val profileToUnlock = (authState as? AuthViewModel.AuthState.Locked)?.profileId
+    if (profileToUnlock != null) {
+        memory.returnRoute = "vault/$profileToUnlock"
+        memory.awaitingProfilePin = true
+    } else if (memory.awaitingProfilePin) {
+        // After abandoning the PIN prompt, opening a profile goes through its usual access check.
+        if (authState != AuthViewModel.AuthState.Unlocked) memory.returnRoute = "profiles"
+        memory.awaitingProfilePin = false
+    }
 
     when (authState) {
         AuthViewModel.AuthState.SetupRequired -> {
@@ -62,7 +73,7 @@ fun SecureVaultNavHost(
         AuthViewModel.AuthState.Unlocked -> Unit
         else -> {
             LockScreen(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                onUnlocked = {}, onSetupRequired = {}, viewModel = authViewModel)
+                viewModel = authViewModel)
             return
         }
     }
@@ -71,8 +82,15 @@ fun SecureVaultNavHost(
         key(epoch) {
             val activeController = navController ?: rememberNavController()
             SideEffect { memory.controller = activeController }
-            DisposableEffect(activeController) {
-                onDispose { if (memory.controller === activeController) memory.controller = null }
+            DisposableEffect(activeController, authViewModel) {
+                val listener = NavController.OnDestinationChangedListener { _, _, arguments ->
+                    authViewModel.setActiveProfile(arguments?.getInt("profileId"))
+                }
+                activeController.addOnDestinationChangedListener(listener)
+                onDispose {
+                    activeController.removeOnDestinationChangedListener(listener)
+                    if (memory.controller === activeController) memory.controller = null
+                }
             }
             UnlockedVaultNavigation(activeController, authViewModel)
             LaunchedEffect(activeController) {
