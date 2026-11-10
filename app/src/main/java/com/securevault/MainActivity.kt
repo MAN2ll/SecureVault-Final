@@ -27,6 +27,7 @@ import com.securevault.ui.theme.SecureVaultTheme
 import com.securevault.utils.QrImageSaver
 import com.securevault.utils.QrSaveHost
 import com.securevault.utils.RotationNotificationWorker
+import com.securevault.utils.VaultDocumentHost
 import com.securevault.viewmodel.AuthViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
@@ -37,7 +38,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
-class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
+class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost, VaultDocumentHost {
     private val qrDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         lifecycleScope.launch {
             try {
@@ -56,11 +57,13 @@ class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
     override lateinit var screenPrivacy: ScreenPrivacyController
         private set
     private var screenWasOff = false
+    private var documentRequest: Any? = null
     private var receiverRegistered = false
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_OFF) {
                 screenWasOff = true
+                documentRequest = null
                 screenPrivacy.onPause()
                 authViewModel.lock()
             }
@@ -91,18 +94,17 @@ class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         return !power.isInteractive || keyguard.isDeviceLocked
     }
-    override fun onStart() {
-        super.onStart()
-        val prefs = getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-        val minutes = prefs.getInt("auto_lock_timeout_minutes", 5)
-        val last = prefs.getLong("last_background_at", 0L)
-        if (screenWasOff || deviceLocked() || (last > 0 &&
-                (minutes == 0 || System.currentTimeMillis() - last >= minutes * 60_000L))) authViewModel.lock()
-    }
     override fun onResume() {
-        if (screenWasOff || deviceLocked()) authViewModel.lock()
-        screenWasOff = false
         super.onResume()
+        if (screenWasOff || deviceLocked()) {
+            documentRequest = null
+            authViewModel.lock()
+        } else if (documentRequest != null) {
+            // A return without a picker result is an ordinary foreground return.
+            documentRequest = null
+            authViewModel.lockForBackground()
+        }
+        screenWasOff = false
         screenPrivacy.onResume()
     }
     override fun onPause() {
@@ -110,11 +112,30 @@ class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
         if (deviceLocked()) { screenWasOff = true; authViewModel.lock() }
         super.onPause()
     }
+    override fun onUserLeaveHint() {
+        if (documentRequest == null) authViewModel.lockForBackground()
+        super.onUserLeaveHint()
+    }
     override fun onStop() {
-        val prefs = getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-        if (screenPrivacy.hasSensitiveContent || prefs.getInt("auto_lock_timeout_minutes", 5) == 0 || deviceLocked()) authViewModel.lock()
-        prefs.edit().putLong("last_background_at", System.currentTimeMillis()).apply()
+        if (!isChangingConfigurations) {
+            if (screenWasOff || deviceLocked()) {
+                documentRequest = null
+                authViewModel.lock()
+            } else if (documentRequest == null) {
+                authViewModel.lockForBackground()
+            }
+        }
         super.onStop()
+    }
+    override fun beginVaultDocumentPicker(request: Any): Boolean {
+        if (documentRequest != null || authViewModel.authState.value !is AuthViewModel.AuthState.Unlocked) return false
+        documentRequest = request
+        return true
+    }
+    override fun finishVaultDocumentPicker(request: Any): Boolean {
+        if (documentRequest !== request) return false
+        documentRequest = null
+        return !screenWasOff && !deviceLocked() && authViewModel.authState.value is AuthViewModel.AuthState.Unlocked
     }
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_MOVE)
@@ -132,3 +153,4 @@ class MainActivity : FragmentActivity(), ScreenPrivacyHost, QrSaveHost {
             ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 }
+
