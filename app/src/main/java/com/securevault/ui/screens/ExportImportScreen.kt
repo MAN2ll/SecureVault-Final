@@ -4,7 +4,6 @@ package com.securevault.ui.screens
 
 import android.content.Context
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,6 +30,7 @@ import com.securevault.ui.components.LockActionButton
 import com.securevault.utils.BackupManager
 import com.securevault.utils.ExportManager
 import com.securevault.utils.ImportMode
+import com.securevault.utils.rememberVaultDocumentLauncher
 import com.securevault.viewmodel.ProfileViewModel
 import com.securevault.viewmodel.VaultViewModel
 import kotlinx.coroutines.Dispatchers
@@ -154,7 +154,7 @@ fun ExportImportScreen(
         return true
     }
 
-    val csvExportLauncher = rememberLauncherForActivityResult(
+    val launchCsvExport = rememberVaultDocumentLauncher(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         scope.launch {
@@ -196,7 +196,7 @@ fun ExportImportScreen(
         }
     }
 
-    val csvImportLauncher = rememberLauncherForActivityResult(
+    val launchCsvImport = rememberVaultDocumentLauncher(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) scope.launch {
@@ -218,7 +218,7 @@ fun ExportImportScreen(
         }
     }
 
-    val backupExportLauncher = rememberLauncherForActivityResult(
+    val launchBackupExport = rememberVaultDocumentLauncher(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         scope.launch {
@@ -256,7 +256,7 @@ fun ExportImportScreen(
         }
     }
 
-    val backupImportLauncher = rememberLauncherForActivityResult(
+    val launchBackupImport = rememberVaultDocumentLauncher(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         scope.launch {
@@ -514,10 +514,10 @@ fun ExportImportScreen(
                             BackupMasterPasswordAction.CREATE_BACKUP -> showBackupPasswordDialog = true
                             BackupMasterPasswordAction.IMPORT_BACKUP -> showImportPasswordDialog = true
                             BackupMasterPasswordAction.EXPORT_CSV -> {
-                                csvExportLauncher.launch(exportManager.generateExportFilename())
+                                launchCsvExport(exportManager.generateExportFilename())
                             }
                             BackupMasterPasswordAction.IMPORT_CSV -> {
-                                csvImportLauncher.launch(arrayOf("text/csv", "*/*"))
+                                launchCsvImport(arrayOf("text/csv", "*/*"))
                             }
                             else -> {}
                         }
@@ -568,7 +568,7 @@ fun ExportImportScreen(
                         backupPassword != confirmBackupPassword -> backupPasswordError = "Пароли не совпадают"
                         else -> {
                             showBackupPasswordDialog = false
-                            backupExportLauncher.launch("securevault_backup_${System.currentTimeMillis()}.json")
+                            launchBackupExport("securevault_backup_${System.currentTimeMillis()}.json")
                         }
                     }
                 }) { Text("Создать") }
@@ -596,7 +596,7 @@ fun ExportImportScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { if (importPassword.isNotEmpty()) { showImportPasswordDialog = false; backupImportLauncher.launch(arrayOf("application/json", "*/*")) } }, enabled = importPassword.isNotEmpty()) { Text("Импортировать") }
+                Button(onClick = { if (importPassword.isNotEmpty()) { showImportPasswordDialog = false; launchBackupImport(arrayOf("application/json", "*/*")) } }, enabled = importPassword.isNotEmpty()) { Text("Импортировать") }
             },
             dismissButton = { TextButton(onClick = { showImportPasswordDialog = false; importPassword = "" }) { Text("Отмена") } }
         )
