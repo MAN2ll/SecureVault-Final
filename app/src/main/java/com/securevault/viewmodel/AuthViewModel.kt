@@ -4,6 +4,10 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.securevault.data.Profile
+import com.securevault.data.VaultRepository
+import com.securevault.security.MasterPasswordHasher
+import com.securevault.security.ProfilePasswordHasher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,16 +17,19 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import com.securevault.security.MasterPasswordHasher
 
 @HiltViewModel
-class AuthViewModel @Inject constructor(application: Application) : AndroidViewModel(application) {
+class AuthViewModel @Inject constructor(
+    application: Application,
+    private val repository: VaultRepository
+) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
 
     sealed class AuthState {
         object SetupRequired : AuthState()
-        object Locked : AuthState()
+        // Each lock is a separate request. A result from an older prompt cannot unlock it.
+        class Locked(val profileId: Int? = null) : AuthState()
         object Unlocked : AuthState()
         data class BruteForceLocked(val remainingMillis: Long) : AuthState()
     }
@@ -35,6 +42,7 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
 
     private val _clearSensitiveEvent = MutableSharedFlow<Unit>(replay = 0)
     val clearSensitiveEvent: SharedFlow<Unit> = _clearSensitiveEvent.asSharedFlow()
+    private var activeProfileId: Int? = null
 
     init { updateBruteForceState() }
 
@@ -43,14 +51,15 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         updateBruteForceState()
     }
 
-    private fun checkInitialState(): AuthState {
+    private fun checkInitialState(profileId: Int? = null): AuthState {
         val hasMasterPassword = prefs.contains("master_hash")
         val bruteForceUntil = prefs.getLong("brute_force_until", 0L)
         if (bruteForceUntil > System.currentTimeMillis()) {
             _remainingMillis.value = bruteForceUntil - System.currentTimeMillis()
             return AuthState.BruteForceLocked(_remainingMillis.value)
         }
-        return if (!hasMasterPassword) AuthState.SetupRequired else AuthState.Locked
+        _remainingMillis.value = 0L
+        return if (!hasMasterPassword) AuthState.SetupRequired else AuthState.Locked(profileId)
     }
 
     private fun updateBruteForceState() {
@@ -62,13 +71,13 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         } else if (bruteForceUntil > 0) {
             prefs.edit().remove("brute_force_until").apply()
             _remainingMillis.value = 0L
-            _authState.value = AuthState.Locked
+            if (_authState.value is AuthState.BruteForceLocked) _authState.value = checkInitialState()
         }
     }
 
-    fun attemptUnlock(password: String): Boolean {
+    fun attemptUnlock(password: String, expected: AuthState.Locked): Boolean {
         updateBruteForceState()
-        if (_authState.value is AuthState.BruteForceLocked) return false
+        if (_authState.value !== expected || expected.profileId != null) return false
         val storedHash = prefs.getString("master_hash", null)
         val storedSalt = prefs.getString("master_salt", null)
         val iterations = prefs.getInt("master_iterations", 100_000)
@@ -76,8 +85,7 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         return if (storedHash != null && storedSalt != null && MasterPasswordHasher.verify(password, storedHash, storedSalt, iterations)) {
             prefs.edit().putInt("failed_attempts", 0)
                 .putLong("last_master_password_confirmed_at", System.currentTimeMillis()).apply()
-            _authState.value = AuthState.Unlocked
-            prefs.edit().putLong("last_interaction_time", System.currentTimeMillis()).apply()
+            finishUnlock()
             true
         } else {
             incrementFailedAttempts()
@@ -119,20 +127,61 @@ class AuthViewModel @Inject constructor(application: Application) : AndroidViewM
         return true
     }
 
-    fun lock() {
-        _authState.value = if (prefs.contains("master_hash")) AuthState.Locked else AuthState.SetupRequired
+    fun setActiveProfile(profileId: Int?) {
+        if (_authState.value is AuthState.Unlocked) activeProfileId = profileId?.takeIf { it > 0 }
+    }
+
+    fun lockForBackground() {
+        when (val state = _authState.value) {
+            AuthState.Unlocked -> enterLock(activeProfileId)
+            is AuthState.Locked -> enterLock(state.profileId)
+            else -> Unit
+        }
+    }
+
+    fun lock() = enterLock((_authState.value as? AuthState.Locked)?.profileId)
+
+    private fun enterLock(profileId: Int?) {
+        _authState.value = checkInitialState(profileId)
         prefs.edit().putBoolean("is_unlocked", false).apply()
         viewModelScope.launch { _clearSensitiveEvent.emit(Unit) }
     }
 
-    fun unlockWithBiometric(): Boolean {
+    fun showMasterUnlock(expected: AuthState.Locked) {
+        if (_authState.value === expected && expected.profileId != null) enterLock(null)
+    }
+
+    suspend fun profileForUnlock(expected: AuthState.Locked): Profile? {
+        val profileId = expected.profileId ?: return null
+        if (_authState.value !== expected) return null
+        return repository.getProfileById(profileId)?.takeIf {
+            _authState.value === expected && it.passwordHash.isNotBlank() && it.passwordSalt.isNotBlank()
+        }
+    }
+
+    suspend fun attemptProfileUnlock(expected: AuthState.Locked, pin: String): Boolean {
         updateBruteForceState()
-        if (!isBiometricLoginEnabled() || isMasterPasswordRequired() ||
-            _authState.value is AuthState.BruteForceLocked ||
-            _authState.value is AuthState.SetupRequired) return false
+        val profile = profileForUnlock(expected) ?: return false
+        if (!ProfilePasswordHasher.verify(pin, profile.passwordHash, profile.passwordSalt)) {
+            incrementFailedAttempts()
+            return false
+        }
+        prefs.edit().putInt("failed_attempts", 0).apply()
+        finishUnlock()
+        return true
+    }
+
+    fun unlockWithBiometric(expected: AuthState.Locked): Boolean {
+        updateBruteForceState()
+        if (_authState.value !== expected || expected.profileId != null ||
+            !isBiometricLoginEnabled() || isMasterPasswordRequired()) return false
+        finishUnlock()
+        return true
+    }
+
+    private fun finishUnlock() {
         _authState.value = AuthState.Unlocked
         prefs.edit().putLong("last_interaction_time", System.currentTimeMillis()).apply()
-        return true
     }
 
     fun isBiometricLoginEnabled(): Boolean = prefs.getBoolean("biometric_login_enabled", false)
